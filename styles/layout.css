@@ -1,0 +1,1099 @@
+/* ============================ Base Layout ============================ */
+:root {
+  --container-width: 1000px;
+  --accent: #628141;
+  --accent-hover: #7a9a5a;
+  --bg: #fdf6f0;
+  --card-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  --elevated-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  --nav-font-size: 16px;
+  --nav-line-height: 1.2;
+  --nav-gap: 20px;
+  --nav-horizontal-padding: 20px;
+  /* Single source of truth for header height (keeps mobile and desktop identical) */
+  --nav-height: 48px;
+}
+
+html {
+  font-size: 16px;
+  scrollbar-gutter: stable;
+  text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Standard "sr-only" utility - keeps an element in the accessibility
+   tree (screen readers, page-outline/SEO tools) while removing it from
+   visual layout entirely. Used where a real semantic element (e.g. an
+   <h1>) is still wanted for structure, but showing it on screen would
+   visually repeat something already conveyed another way (e.g. text
+   baked into a banner graphic). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1.4;
+  background-color: var(--bg);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  /* Optional: enable to reserve scrollbar space on all pages */
+  /* overflow-y: scroll; */
+}
+
+/* Shared content wrapper */
+.content-wrapper {
+  max-width: var(--container-width);
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* ============================ Top navigation ============================ */
+header {
+  width: 100%;
+  background: var(--bg);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+/* Use locked height so mobile and desktop navs match */
+.nav-wrapper {
+  max-width: var(--container-width);
+  margin: 0 auto;
+  padding: 0 var(--nav-horizontal-padding);
+  display: flex;
+  align-items: center;
+  position: relative;
+  height: var(--nav-height);
+  min-height: var(--nav-height);
+}
+
+/* Order ensures nav links left, hamburger right */
+.main-nav {
+  order: 1;
+  flex-grow: 1;
+  flex-shrink: 0;
+  flex-basis: auto;
+  font-size: var(--nav-font-size);
+  line-height: var(--nav-line-height);
+}
+
+.main-nav .nav-links {
+  list-style: none;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--nav-gap);
+  margin: 0;
+  padding: 0;
+  align-items: center; /* vertically center links inside locked height */
+}
+
+.main-nav .nav-links a {
+  font-size: var(--nav-font-size);
+  line-height: var(--nav-line-height);
+  text-decoration: none;
+  font-weight: bold;
+  color: var(--accent);
+  transition: color 0.2s ease;
+  white-space: nowrap;
+  letter-spacing: 0;
+  padding: 0 4px; /* small horizontal hit area without increasing header height */
+}
+
+/* Underline current page link (supports aria-current or .active) */
+.main-nav .nav-links a[aria-current="page"],
+.main-nav .nav-links a.active {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 2px;
+  color: var(--accent);
+}
+
+/* Focus style for keyboard users */
+.main-nav .nav-links a:focus {
+  outline: 2px solid rgba(98,129,65,0.18);
+  outline-offset: 3px;
+}
+
+.menu-toggle {
+  order: 2;
+  margin-left: 12px;
+  display: none;
+  font-size: 26px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  height: var(--nav-height);
+  line-height: var(--nav-height);
+  padding: 0 8px; /* comfortable hit area without growing header */
+}
+
+/* Mobile nav dropdown */
+@media (max-width: 768px) {
+  .main-nav .nav-links {
+    display: none;
+    flex-direction: column;
+    background: var(--bg);
+    position: absolute;
+    /* dropdown sits just below the locked header */
+    top: calc(var(--nav-height) + 8px);
+    right: var(--nav-horizontal-padding);
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    animation: slideDown 0.25s ease forwards;
+    gap: 12px;
+  }
+
+  .main-nav .nav-links.show {
+    display: flex;
+  }
+
+  .menu-toggle {
+    display: block;
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================ Flyer & images ============================ */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+  box-shadow: var(--elevated-shadow);
+}
+
+.flyer {
+  width: 80%;
+  max-width: 600px;
+}
+
+@media (max-width: 768px) {
+  .flyer {
+    width: 95%;
+    max-width: none;
+  }
+}
+
+/* ============================ Buttons ============================ */
+.btn {
+  display: inline-block;
+  margin: 8px 0;
+  padding: 10px;
+  background-color: var(--accent);
+  color: white;
+  text-decoration: none;
+  border: none;
+  border-radius: 5px;
+  font-weight: bold;
+  cursor: pointer;
+  line-height: 1.2;
+  font-size: 16px;
+  text-align: center;
+}
+
+.btn:hover {
+  background-color: var(--accent-hover);
+}
+
+.btn.full-width {
+  width: 100%;
+  display: block;
+  margin: 8px 0;
+  padding: 10px;
+}
+
+/* ============================ Page headings ============================ */
+.page-container h1 {
+  text-align: center;
+  margin-bottom: 30px;
+  font-size: 1.8rem;
+  color: var(--accent);
+}
+
+.page-container h2 {
+  margin-top: 30px;
+  font-size: 1.3rem;
+  color: var(--accent);
+}
+
+/* ============================ Cancellation & About pages ============================ */
+.page-container {
+  background-color: #fff;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: var(--card-shadow);
+  color: #333;
+}
+
+.about-figure {
+  margin: 0 0 20px;
+  text-align: center;
+}
+
+.about-figure img {
+  max-width: 100%;
+  width: 420px;
+}
+
+.about-figure figcaption {
+  margin-top: 10px;
+  font-size: 0.9rem;
+  font-style: italic;
+  color: #666;
+}
+
+/* ============================ Register page ============================ */
+.form-container {
+  background-color: #fff;
+  padding: 24px;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  max-width: 420px;
+  margin: 40px auto;
+}
+
+.form-container h2 {
+  text-align: center;
+  margin: 0 0 18px;
+  font-size: 1.6rem;
+  color: var(--accent);
+}
+
+.form-container .qr-code {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.form-container .qr-code img {
+  width: 120px;
+  height: auto;
+}
+
+.form-container .qr-code a {
+  display: block;
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.form-container .qr-code a:hover {
+  text-decoration: underline;
+}
+
+.form-container input,
+.form-container textarea,
+.form-container select {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin: 8px 0;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  font-size: 15px;
+  font-family: inherit;
+  background: #fff;
+}
+
+.four-day-label {
+  display: block;
+  margin: 10px 0 2px;
+  font-size: 14px;
+  color: #444;
+}
+
+/* ============================ Gallery page ============================ */
+.gallery-intro {
+  text-align: center;
+  margin: -6px 0 14px;
+}
+
+.gallery-status {
+  text-align: center;
+  margin: 16px 0 24px;
+  color: #666;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.gallery-item {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.gallery-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  margin: 0;
+  border-radius: 8px;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gallery-item:hover .gallery-thumb,
+.gallery-item:focus .gallery-thumb,
+.gallery-item:focus-visible .gallery-thumb {
+  transform: scale(1.02);
+  box-shadow: var(--elevated-shadow);
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.lightbox[hidden] {
+  display: none;
+}
+
+.lightbox-image {
+  width: auto;
+  height: auto;
+  max-width: min(92vw, 1200px);
+  max-height: 84vh;
+  margin: 0;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 2.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+/* Prev/next arrows + counter for photo-viewer-modal's gallery mode.
+   Hidden by default (via the [hidden] attribute set in the HTML) -
+   only shown when a card image opens as a multi-photo gallery. */
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.lightbox-nav:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.lightbox-nav[hidden] {
+  display: none;
+}
+
+.lightbox-nav-prev {
+  left: 14px;
+}
+
+.lightbox-nav-next {
+  right: 14px;
+}
+
+.photo-viewer-counter {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+}
+
+.photo-viewer-counter[hidden] {
+  display: none;
+}
+
+body.lightbox-open {
+  overflow: hidden;
+}
+
+/* ============================ Home hero & Save the Date ============================ */
+/* .home-hero now lives OUTSIDE .content-wrapper in both index.php and
+   the maintenance page (moved 2026-08-14 so the banner could grow past
+   the site's 1000px container width - see .home-logo below), so it
+   needs its own horizontal padding here to keep the same side gutter
+   .content-wrapper used to provide. */
+.home-hero {
+  text-align: center;
+  padding: 4px 20px 12px;
+}
+
+/* Was a small square-ish logo mark (264px, capped at 72% on narrow
+   screens). Replaced 2026-08-14 with a wide banner graphic (~2.7:1),
+   updated again the same day once the white background behind the
+   ribbon artwork was cut to real transparency (alpha channel, not just
+   a white canvas) - so it sits directly on the page's cream --bg with
+   no visible rectangle at all - and updated a third time the same day
+   to double the display size (560px -> 1120px) per Steve's follow-up.
+   That's wider than the site's 1000px container, which is why
+   .home-hero was pulled out of .content-wrapper above; otherwise this
+   max-width would just get clamped down to the container's ~960px
+   inner width and never actually reach double size. Still comfortably
+   under the source artwork's native 2060px width, so no upscaling
+   softness even at this size. box-shadow is explicitly none here: a
+   CSS box-shadow follows an element's rectangular box regardless of its
+   alpha channel, so leaving it on would draw a shadow rectangle right
+   behind the transparent corners - exactly the artifact transparency
+   was meant to remove. (The merch page banner is a different image and
+   is NOT transparent, so its own shadow in the merch-page section below
+   is unaffected by this.) */
+.home-logo {
+  width: 100%;
+  max-width: 1120px;
+  height: auto;
+  margin: 0 auto 14px;
+  box-shadow: none;
+}
+
+.home-tagline {
+  max-width: 560px;
+  margin: 0 auto;
+  font-size: 1.05rem;
+  color: #444;
+}
+
+.save-the-dates h1 {
+  text-align: center;
+  margin-bottom: 4px;
+  font-size: 1.8rem;
+  color: var(--accent);
+}
+
+.std-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 20px;
+  margin-top: 14px;
+}
+
+.std-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 12px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: var(--card-shadow);
+  text-align: center;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+}
+
+.std-card:hover,
+.std-card:focus,
+.std-card:focus-visible {
+  transform: scale(1.02);
+  box-shadow: var(--elevated-shadow);
+}
+
+.std-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: #fff;
+}
+
+.std-badge-sold-out {
+  background-color: #a8585c;
+}
+
+.std-card-placeholder {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.std-card-placeholder:hover,
+.std-card-placeholder:focus {
+  transform: none;
+  box-shadow: var(--card-shadow);
+}
+
+.std-thumb {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  margin: 0 0 10px;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.std-caption {
+  display: block;
+  font-weight: bold;
+  color: var(--accent);
+  font-size: 1rem;
+}
+
+.std-subcaption {
+  display: block;
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 2px;
+}
+
+/* ============================ Event detail pages ============================ */
+.event-page {
+  text-align: center;
+}
+
+.event-cta {
+  margin-top: 24px;
+}
+
+.event-cta-top {
+  margin-top: 0;
+  margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.event-cta .btn {
+  display: inline-block;
+  padding: 14px 28px;
+  font-size: 1.1rem;
+}
+
+.btn-secondary {
+  background-color: #fff;
+  color: var(--accent);
+  border: 2px solid var(--accent);
+}
+
+.btn-secondary:hover {
+  background-color: #f3f0e8;
+  color: var(--accent);
+}
+
+.btn-sold-out {
+  background-color: #a8585c;
+  color: #fff;
+  cursor: not-allowed;
+  opacity: 0.9;
+}
+
+.btn-sold-out:hover {
+  background-color: #a8585c;
+}
+
+.details-modal-content {
+  background: #fff;
+  border-radius: 10px;
+  padding: 28px;
+  max-width: 480px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+  text-align: left;
+}
+
+.details-modal-content h2 {
+  text-align: center;
+  margin: 0 0 16px;
+  font-size: 1.4rem;
+  color: var(--accent);
+}
+
+.details-modal-content h3 {
+  margin: 18px 0 6px;
+  font-size: 1.05rem;
+  color: var(--accent);
+}
+
+.details-modal-content p {
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.details-modal-content a {
+  color: var(--accent);
+}
+
+/* ============================ Registration event indicator ============================ */
+.event-display {
+  text-align: center;
+  background: #f3f0e8;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0 0 16px;
+  font-size: 0.95rem;
+  color: #444;
+}
+
+.no-event-notice {
+  text-align: center;
+  padding: 10px 4px 4px;
+}
+
+.no-event-notice p {
+  margin: 0 0 14px;
+  color: #555;
+}
+
+/* ============================ Merch page ============================ */
+.merch-page-container {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.65), rgba(255,255,255,0.65)),
+    url('../images/merch-bg.jpg');
+  background-size: cover;
+  background-position: center;
+}
+
+/* Banner that leads the merch page, above the announcement text. Capped
+   width so it doesn't stretch edge-to-edge on wide screens - same width
+   discipline as .demand-banner below it. The banner artwork's own
+   background is close in color to the page's --bg, so a border + shadow
+   are added directly on the image (rather than relying on a background-
+   color behind it) - that gives a visible edge no matter what colors the
+   artwork itself uses. */
+.merch-banner-wrapper {
+  text-align: center;
+  padding: 20px 20px 0;
+}
+
+.merch-banner-img {
+  width: 100%;
+  max-width: 900px;
+  height: auto;
+  border: 1px solid rgba(0,0,0,0.1);
+  box-shadow: var(--card-shadow);
+}
+
+.merch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.merch-card {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: var(--card-shadow);
+  padding: 16px;
+  text-align: center;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.merch-photo {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  margin: 0 0 12px;
+}
+
+.merch-photo.zoomable {
+  cursor: zoom-in;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.merch-photo.zoomable:hover {
+  transform: scale(1.02);
+  box-shadow: var(--elevated-shadow);
+}
+
+.merch-video-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 260px;
+  margin: 0 auto 12px;
+  /* portrait 608x1080 video: height as a percentage of width, via the padding-top trick.
+     More reliable across mobile browsers than the CSS aspect-ratio property. */
+  padding-top: 177.63%;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.merch-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 6px;
+  background: #000;
+  box-sizing: border-box;
+  object-fit: cover;
+}
+
+.merch-photo-wide {
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
+.merch-card h2 {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+  color: var(--accent);
+}
+
+.merch-desc {
+  font-size: 0.95rem;
+  color: #555;
+  margin: 0 0 10px;
+}
+
+.merch-price {
+  font-weight: bold;
+  color: #333;
+  margin: 0 0 12px;
+}
+
+.merch-price-note {
+  font-weight: normal;
+  font-size: 0.85rem;
+  color: #777;
+}
+
+/* ============================ Merch order estimate ============================ */
+.merch-estimate {
+  background: rgba(98, 129, 65, 0.07);
+  border: 1px solid rgba(98, 129, 65, 0.25);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 4px 0 14px;
+  font-size: 0.9rem;
+  color: #444;
+}
+
+.merch-estimate:empty {
+  display: none;
+}
+
+.merch-estimate-total {
+  font-weight: bold;
+  color: var(--accent);
+  margin-top: 6px;
+  font-size: 1rem;
+}
+
+.merch-estimate-note {
+  font-style: italic;
+  color: #777;
+  margin-top: 4px;
+}
+
+/* ============================ Merch color chart note ============================ */
+.merch-color-note {
+  text-align: center;
+  background: rgba(255,255,255,0.85);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 18px 0;
+}
+
+.merch-color-note p {
+  margin: 0 0 10px;
+  color: #444;
+  font-size: 0.95rem;
+}
+
+.merch-color-chart-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 32px;
+  margin-top: 4px;
+}
+
+.merch-color-chart-trigger {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.merch-color-chart-trigger img {
+  width: 140px;
+  max-width: 60vw;
+  border-radius: 6px;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.merch-color-chart-trigger:hover img,
+.merch-color-chart-trigger:focus img {
+  transform: scale(1.03);
+  box-shadow: var(--elevated-shadow);
+}
+
+.merch-color-chart-trigger span {
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: var(--accent);
+}
+
+/* ============================ Merch request modal ============================ */
+.merch-modal-content {
+  background: #fff;
+  border-radius: 10px;
+  padding: 24px;
+  max-width: 420px;
+  width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+}
+
+.merch-modal-content h2 {
+  text-align: center;
+  margin: 0 0 16px;
+  font-size: 1.4rem;
+  color: var(--accent);
+}
+
+.merch-modal-content .qr-code {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.merch-modal-content .qr-code img {
+  width: 110px;
+  height: auto;
+}
+
+.merch-modal-content .qr-code a {
+  display: block;
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.merch-modal-content .qr-code a:hover {
+  text-decoration: underline;
+}
+
+.merch-modal-content input,
+.merch-modal-content select,
+.merch-modal-content textarea {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin: 8px 0;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  font-size: 15px;
+  font-family: inherit;
+  background: #fff;
+}
+
+.address-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 8px;
+}
+
+.address-row input,
+.address-row select {
+  margin: 8px 0;
+}
+
+@media (max-width: 480px) {
+  .address-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .std-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+  }
+}
+
+/* ============================ Responsive tweaks ============================ */
+@media (max-height: 600px) {
+  .form-container {
+    margin-top: 24px;
+    padding: 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .form-container {
+    width: 95%;
+    max-width: 360px;
+    padding: 20px;
+  }
+
+  .gallery-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+  }
+
+  .lightbox {
+    padding: 16px;
+  }
+
+  .lightbox-image {
+    max-width: 94vw;
+    max-height: 80vh;
+  }
+}
+
+@media (max-width: 480px) {
+  .form-container {
+    width: 98%;
+    max-width: none;
+    padding: 16px;
+  }
+
+  .form-container h2 {
+    font-size: 1.4rem;
+  }
+
+  .form-container input,
+  .form-container textarea,
+  .form-container select,
+  .btn.full-width {
+    font-size: 14px;
+    padding: 10px;
+  }
+
+  .gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lightbox-close {
+    top: 8px;
+    right: 12px;
+    font-size: 2rem;
+  }
+
+  .lightbox-nav {
+    font-size: 1.3rem;
+    padding: 8px 12px;
+  }
+
+  .lightbox-nav-prev {
+    left: 6px;
+  }
+
+  .lightbox-nav-next {
+    right: 6px;
+  }
+}
+
+/* ============================ Notes on changes ============================ */
+/* - Added --nav-height and used it to lock header height across viewports.
+   - Kept hamburger right-aligned via flex order and ensured its height/line-height match the header.
+   - Added accessible current-link underline using aria-current or .active.
+   - Removed heavy debugging overrides and !important rules for a clean, maintainable stylesheet.
+   - Added gallery grid and lightbox styling for gallery.html. */
+
+/* ============================ Merch demand banner ============================ */
+/* Previously a full-bleed strip (background ran edge-to-edge, no matter
+   how wide the viewport). Changed to a contained card, same width as
+   every other block on the page (.demand-banner sits inside its own
+   .content-wrapper in merch.php, which supplies the max-width + centering
+   + side gutter) - this was the odd-one-out full-width element on an
+   otherwise boxed-content page. */
+.demand-banner {
+  background-color: #f3ead6;
+  border: 1px solid #e3d4b0;
+  border-radius: 10px;
+  padding: 14px 20px;
+  margin-top: 20px;
+}
+
+.demand-banner p {
+  margin: 0;
+  text-align: center;
+  color: #5a4a2f;
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .demand-banner {
+    padding: 12px 16px;
+  }
+  .demand-banner p {
+    font-size: 1rem;
+  }
+}

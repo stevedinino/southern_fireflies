@@ -1,0 +1,11 @@
+Thank you for registering, {{name}}!
+
+{{eventLineText}}Name: {{name}}
+Phone: {{phone}}
+Email: {{email}}
+Length of stay: {{fourDay}}
+{{notesLineText}}
+Don't forget your $50 deposit via Venmo (@{{venmoHandle}}) or PayPal ({{paypalEmail}}) to hold your spot.
+See southernfirefliesretreats.com/cancellation.html for details.
+
+We can't wait to craft with you!

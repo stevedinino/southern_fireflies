@@ -1,0 +1,1 @@
+<p>If you're prompted for the last four digits of my phone number by Venmo (first time paying someone new) it's {{last4}}.</p>

@@ -1,0 +1,6 @@
+<div style='font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif; color:#333; max-width:500px; margin:0 auto;'>
+  <p>Hi {{name}}!</p>
+  <p>Thanks so much for your request - we've got it on file and will follow up separately by email with your exact total (including tax and shipping) and payment instructions.</p>
+  <p>Thanks for your patience!</p>
+  <p>Mr. Firefly (aka Steve)<br/>Southern Fireflies Retreats</p>
+</div>

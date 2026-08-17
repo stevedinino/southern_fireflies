@@ -1,0 +1,14 @@
+<h1>About Southern Fireflies Retreats</h1>
+<p>Southern Fireflies Retreats is a warm, creative getaway for crafters who want to relax, make, and connect. We host curated weekends with plenty of table space, good company, and time to dive deep into your projects.</p>
+<p>Questions or special requests? We're happy to help — reach out anytime during registration.</p>
+<hr />
+<h2>Meet Your Hosts</h2>
+<img src="images/hosts.jpeg" alt="Melissa and Janet" />
+<p>Janet and Melissa are lifelong crafters and community-builders who believes creativity shines brightest together. They bring thoughtful planning, kindness, and a bit of sparkle to every retreat.</p>
+<hr />
+
+<h2>Meet Mr. Firefly</h2>
+<figure class="about-figure">
+  <img src="images/mr-firefly.jpg" alt="Mr. Firefly" />
+  <figcaption><em>A rare sighting of Mr. Firefly relaxing in his favorite watering hole between jobs.</em></figcaption>
+</figure>

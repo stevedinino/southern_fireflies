@@ -1,0 +1,21 @@
+# Southern Fireflies Retreats — Pickup Invoice
+
+**Customer:** {{name}}
+**Generated:** {{date}}
+**Order #:** {{orderIds}}
+
+## Items
+
+{{lineItemsText}}
+
+---
+
+Subtotal: {{subtotal}}
+Tax (7%): {{tax}}
+**Total Due: {{total}}**
+
+---
+
+Pay by cash or check at pickup.
+
+Paid: [ ]     Picked up: [ ]

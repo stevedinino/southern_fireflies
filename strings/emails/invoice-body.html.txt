@@ -1,0 +1,15 @@
+<div style='font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif; color:#333; max-width:500px; margin:0 auto;'>
+  <p>Hi {{name}}!</p>
+  <p>The response to Mr. Firefly's merchandise has been overwhelming, and we're so grateful you're one of the folks who jumped in early!</p>
+  <p>A quick update since you placed your order: we've gotten our pricing squared away, so instead of leaving you guessing, here's exactly what you owe:</p>
+  <ul>
+    {{lineItemsHtml}}
+    <li>Tax (7%): {{tax}}</li>
+    {{shippingLineHtml}}
+    <li><strong>Total: {{total}}</strong></li>
+  </ul>
+  {{last4Html}}
+  <p>You can send that whenever it's convenient via Venmo (<strong>@{{venmoHandle}}</strong>) or PayPal (<strong>{{paypalEmail}}</strong>){{accountNote}}</p>
+  <p>As I said on the website: these are handmade to order, so please allow a couple of weeks as we (ok, I) work through the queue. That said &ndash; I'll ship as soon as I match a payment to a request, so it's first-pay, first-ship. We'll follow up by email as soon as it ships. Thanks so much for your patience and your enthusiasm &mdash; rest assured, more good things are coming soon!</p>
+  <p>Mr. Firefly (aka Steve)<br/>Southern Fireflies Retreats</p>
+</div>

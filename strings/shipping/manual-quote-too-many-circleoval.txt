@@ -1,0 +1,1 @@
+Orders of more than {{maxCircleOval}} small printed items (Circle/Oval/Rectangle Cutter Holders, Tape Gun Holder) need their own shipping quote - we'll follow up separately.

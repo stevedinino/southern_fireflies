@@ -1,0 +1,1 @@
+<p>Your registration was saved. (We had trouble sending the confirmation email, but your spot is secured &mdash; Janet also has a record of your submission.)</p>

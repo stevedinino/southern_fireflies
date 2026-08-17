@@ -1,0 +1,16 @@
+<div style='font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif; color:#333; max-width:500px; margin:0 auto;'>
+  <h2 style='color:#628141;'>Thank you for registering, {{name}}!</h2>
+  {{eventLineHtml}}
+  <p>We've received your pre-registration for Southern Fireflies Retreat. Here's a copy of what you submitted:</p>
+  <table style='width:100%; border-collapse: collapse;'>
+    <tr><td style='padding:6px 0; font-weight:bold;'>Name:</td><td style='padding:6px 0;'>{{name}}</td></tr>
+    <tr><td style='padding:6px 0; font-weight:bold;'>Phone:</td><td style='padding:6px 0;'>{{phone}}</td></tr>
+    <tr><td style='padding:6px 0; font-weight:bold;'>Email:</td><td style='padding:6px 0;'>{{email}}</td></tr>
+    <tr><td style='padding:6px 0; font-weight:bold;'>Length of stay:</td><td style='padding:6px 0;'>{{fourDay}}</td></tr>
+    {{notesRowHtml}}
+  </table>
+  <p style='margin-top:20px;'>Don't forget your $50 deposit via Venmo (<strong>@{{venmoHandle}}</strong>) or PayPal (<strong>{{paypalEmail}}</strong>) to hold your spot &mdash; see our
+  <a href='https://southernfirefliesretreats.com/cancellation.html' style='color:#628141;'>policies page</a> for deposit and payment details.</p>
+  <p>We can't wait to craft with you!</p>
+  <p style='color:#888; font-size:13px; margin-top:30px;'>Southern Fireflies Retreat</p>
+</div>

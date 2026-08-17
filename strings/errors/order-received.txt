@@ -1,0 +1,3 @@
+<h2>Thanks for your request!</h2>
+<p>Your request was saved. We'll follow up by email with your total shortly.</p>
+<p>You will be redirected back to the merch page in a moment.</p>

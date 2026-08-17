@@ -1,0 +1,3 @@
+<h1 class="visually-hidden">Mr. Firefly's Merchandise and Scrapbooking Gadgets</h1>
+<p style="text-align:center;">T-shirts, hats, and handy tools we design ourselves &mdash; available by request.</p>
+<p style="text-align:center;"> Want one? Click "Request This Item" below, or ask about availability at any retreat.</p>

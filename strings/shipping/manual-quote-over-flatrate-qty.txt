@@ -1,0 +1,1 @@
+Orders over {{maxQty}} items don't qualify for flat-rate shipping - we'll follow up separately with a shipping cost.

@@ -1,0 +1,8 @@
+Hi {{name}}!
+
+Thanks so much for your request - we've got it on file. Because of what you ordered, we need to work out an accurate shipping cost by hand rather than using our usual flat rate, so we'll follow up separately with your total before asking you to pay anything.
+
+Thanks for your patience!
+
+Mr. Firefly (aka Steve)
+Southern Fireflies Retreats
