@@ -1,7 +1,8 @@
 <?php
-// Build: 2026-08-15-A
+// Build: 2026-08-18-A
 session_start();
 require __DIR__ . '/config.php';
+require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 
 // Log out
 if (isset($_POST['logout'])) {
@@ -90,6 +91,17 @@ if (!isset($_SESSION['sff_admin_ok'])) {
     .merch-view-btn.active {
       background: #333;
     }
+    /* Click affordance for the editable Color cell - same idea as a
+       plain-text "click to edit" field, so it reads as interactive next
+       to the checkbox/button cells beside it. */
+    .merch-color-display {
+      cursor: pointer;
+      text-decoration: underline dotted;
+      text-underline-offset: 2px;
+    }
+    .merch-color-edit {
+      font-size: 0.85em;
+    }
   </style>
 </head>
 <body>
@@ -129,6 +141,11 @@ if (!isset($_SESSION['sff_admin_ok'])) {
       $fulfillmentIndex = array_search('Fulfillment', $header, true);
       $nameIndex = array_search('Name', $header, true);
       $zipIndex = array_search('Zip', $header, true);
+      // 2026-08-18: for the editable Color dropdown below - itemIndex is
+      // needed alongside colorIndex since which color LIST a row gets
+      // (Gildan vs. filament, or none) depends on that row's own Item.
+      $colorIndex = array_search('Color', $header, true);
+      $itemIndex = array_search('Item', $header, true);
 
       // ---- Pre-scan: group rows into "shipments" the same way
       // shippo_export.php and packing_slips.php already do - normalized
@@ -180,6 +197,11 @@ if (!isset($_SESSION['sff_admin_ok'])) {
 
           foreach ($rows as $data) {
               $orderId = $orderIdIndex !== false ? ($data[$orderIdIndex] ?? '') : '';
+              // 2026-08-18: computed up front (not inside the per-cell
+              // loop below) since the Color cell needs to know this
+              // row's Item regardless of which column comes first in
+              // the CSV's header order.
+              $rowItem = $itemIndex !== false ? trim($data[$itemIndex] ?? '') : '';
               $rowIsCreated = $createdIndex !== false && trim($data[$createdIndex] ?? '') !== '';
               $rowIsFulfilled = $fulfilledIndex !== false && trim($data[$fulfilledIndex] ?? '') !== '';
               $rowIsInvoiced = $invoiceDateIndex !== false && trim($data[$invoiceDateIndex] ?? '') !== '';
@@ -237,6 +259,56 @@ if (!isset($_SESSION['sff_admin_ok'])) {
                           echo '<button type="button" class="btn merch-invoice-btn" style="padding:4px 10px; font-size:0.85em;" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '">Send Invoice</button>';
                       }
                       echo '</span>';
+                      echo '</td>';
+                  } elseif ($i === $colorIndex) {
+                      // 2026-08-18: editable color, for customers who
+                      // change their mind after ordering. Click the
+                      // displayed value to reveal a <select> populated
+                      // from THIS row's own item (merch_color_options_for_
+                      // item() in pricing.php - the same list merch.php's
+                      // request form itself offers); shared JS handler
+                      // below posts the change to merch_update.php.
+                      // Items with no color choice at all (colorOptions
+                      // empty) fall back to plain text, same as before
+                      // this feature existed.
+                      $currentColor = trim($cell);
+                      $colorOptions = $itemIndex !== false ? merch_color_options_for_item($rowItem) : [];
+                      echo '<td style="padding:6px; border-bottom:1px solid #eee; white-space:nowrap;">';
+                      if (!empty($colorOptions)) {
+                          echo '<span class="merch-color-display" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '">' . htmlspecialchars($currentColor !== '' ? $currentColor : '(none)') . '</span>';
+                          echo '<select class="merch-color-edit" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-original-value="' . htmlspecialchars($currentColor, ENT_QUOTES) . '" hidden>';
+                          // Explicit blank prompt option, same as
+                          // merch.php's own request-form dropdown - matters
+                          // here because a blank stored Color has to map
+                          // to a REAL selected option (this one), not just
+                          // "none of the below happen to match," or the
+                          // browser would default to showing the first
+                          // real color as if it had been chosen.
+                          $blankSelected = ($currentColor === '') ? ' selected' : '';
+                          echo '<option value=""' . $blankSelected . '>Select a color&hellip;</option>';
+                          // If the stored value isn't (or is no longer) a
+                          // valid option for this item - an older order,
+                          // or the color list changed since it was
+                          // placed - add it as an extra option so simply
+                          // opening the dropdown never silently discards
+                          // it; it stays put until the admin actually
+                          // picks something else.
+                          if ($currentColor !== '' && !in_array($currentColor, $colorOptions, true)) {
+                              echo '<option value="' . htmlspecialchars($currentColor, ENT_QUOTES) . '" selected>' . htmlspecialchars($currentColor) . ' (current \xe2\x80\x93 no longer a valid choice)</option>';
+                          }
+                          foreach ($colorOptions as $opt) {
+                              $selected = ($opt === $currentColor) ? ' selected' : '';
+                              echo '<option value="' . htmlspecialchars($opt, ENT_QUOTES) . '"' . $selected . '>' . htmlspecialchars($opt) . '</option>';
+                          }
+                          echo '</select>';
+                          // Same two chart images merch.php's own photo
+                          // viewer uses - so the admin isn't picking
+                          // "CM Blue" vs. "Sky Blue" from memory alone.
+                          $chartImage = in_array($rowItem, FILAMENT_COLOR_ITEMS, true) ? 'images/filament-color-chart.jpg' : 'images/color-chart.jpg';
+                          echo ' <a href="' . htmlspecialchars($chartImage, ENT_QUOTES) . '" target="_blank" rel="noopener" style="font-size:0.75em;">chart</a>';
+                      } else {
+                          echo htmlspecialchars($currentColor);
+                      }
                       echo '</td>';
                   } else {
                       echo '<td style="padding:6px; border-bottom:1px solid #eee;">' . htmlspecialchars($cell) . '</td>';
@@ -321,6 +393,68 @@ if (!isset($_SESSION['sff_admin_ok'])) {
           })
           .finally(() => {
             box.disabled = false;
+          });
+      });
+    });
+
+    // Editable Color cell - click the displayed value to reveal the
+    // <select> (rendered but hidden server-side, populated with only
+    // that row's own valid colors - see the Color branch in the PHP
+    // above). Picking a new value posts it to merch_update.php the same
+    // way the status checkboxes do, then swaps back to plain text.
+    document.querySelectorAll('.merch-color-display').forEach((span) => {
+      span.addEventListener('click', () => {
+        const select = span.nextElementSibling;
+        if (!select || !select.classList.contains('merch-color-edit')) return;
+        span.hidden = true;
+        select.hidden = false;
+        select.focus();
+      });
+    });
+
+    document.querySelectorAll('.merch-color-edit').forEach((select) => {
+      const span = select.previousElementSibling;
+
+      // Clicking away without picking a different color just closes the
+      // dropdown back to plain text - no request needed. Guarded on
+      // select.disabled so this doesn't fire mid-save and hide the
+      // dropdown before the fetch below has a chance to update it.
+      select.addEventListener('blur', () => {
+        if (!select.disabled && select.value === select.dataset.originalValue) {
+          select.hidden = true;
+          span.hidden = false;
+        }
+      });
+
+      select.addEventListener('change', () => {
+        const orderId = select.dataset.orderId;
+        const newValue = select.value;
+        const previousValue = select.dataset.originalValue;
+
+        select.disabled = true;
+        fetch('merch_update.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `orderId=${encodeURIComponent(orderId)}&field=Color&value=${encodeURIComponent(newValue)}`
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.ok) {
+              span.textContent = data.value !== '' ? data.value : '(none)';
+              select.dataset.originalValue = data.value;
+            } else {
+              alert('Could not save: ' + (data.error || 'unknown error'));
+              select.value = previousValue;
+            }
+          })
+          .catch(() => {
+            alert('Could not save - check your connection and try again.');
+            select.value = previousValue;
+          })
+          .finally(() => {
+            select.disabled = false;
+            select.hidden = true;
+            span.hidden = false;
           });
       });
     });

@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-07-26-H
+// Build: 2026-08-18-A
 // Marks a single order's status, called via fetch() from ourmerch.php's
 // checkboxes. Same admin session gate as the rest of the admin pages -
 // this is not a public endpoint.
@@ -26,6 +26,19 @@
 // Invoice Date itself is NOT editable from here - it's only ever set
 // by merch_invoice.php when an invoice email actually sends (which can
 // affect several rows at once, for a combined invoice).
+//
+// 2026-08-18: Color joined as a second kind of editable field, for
+// customers who change their mind after ordering. It doesn't fit the
+// checked/unchecked date pattern above - it takes a free-text VALUE
+// instead - so it's handled as its own branch throughout rather than
+// forced into the boolean shape. A submitted color is only ever
+// accepted if it's actually in that order's OWN item's color list
+// (merch_color_options_for_item() in pricing.php, the same list
+// merch.php's request form itself would have offered) - never an
+// arbitrary string, even though this endpoint is already session-
+// gated. Color never cascades into another column.
+
+require __DIR__ . '/pricing.php';
 
 session_start();
 header('Content-Type: application/json');
@@ -46,17 +59,28 @@ $checked = isset($_POST['checked']) && $_POST['checked'] === '1';
 // arbitrary column name in, even though this is session-gated. Value
 // is either null (no cascade) or the name of the column to backfill/
 // match when this field is checked.
-$editableFields = [
+$booleanFields = [
     'Created' => null,
     'Fulfilled' => 'Created',
     'Pymt Date' => 'Invoice Date',
 ];
-if (!array_key_exists($field, $editableFields) || $orderId === '' || !ctype_digit($orderId)) {
+// Color is the only value-based (non-checkbox) field right now - kept
+// as its own small allowlist rather than folded into $booleanFields
+// above, since it doesn't have a $checked/cascade shape at all.
+$valueFields = ['Color'];
+
+$isBooleanField = array_key_exists($field, $booleanFields);
+$isValueField = in_array($field, $valueFields, true);
+
+if ((!$isBooleanField && !$isValueField) || $orderId === '' || !ctype_digit($orderId)) {
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => 'Invalid request.']);
     exit;
 }
-$cascadeField = $editableFields[$field];
+$cascadeField = $isBooleanField ? $booleanFields[$field] : null;
+// Only read/trimmed for a value field - $checked above already covers
+// the boolean fields, so this stays null (and unused) for those.
+$submittedValue = $isValueField ? trim((string) ($_POST['value'] ?? '')) : null;
 
 $handle = fopen($csvFile, 'c+');
 if (!$handle) {
@@ -96,8 +120,11 @@ if (isset($header[0])) {
 $fieldIndex = array_search($field, $header, true);
 $orderIdIndex = array_search('OrderID', $header, true);
 $cascadeIndex = $cascadeField !== null ? array_search($cascadeField, $header, true) : null;
+// Only needed for Color - that's the one field whose valid values
+// depend on ANOTHER column in the same row (what item was ordered).
+$itemIndex = $isValueField ? array_search('Item', $header, true) : null;
 
-if ($fieldIndex === false || $orderIdIndex === false || ($cascadeField !== null && $cascadeIndex === false)) {
+if ($fieldIndex === false || $orderIdIndex === false || ($cascadeField !== null && $cascadeIndex === false) || ($isValueField && $itemIndex === false)) {
     flock($handle, LOCK_UN);
     fclose($handle);
     http_response_code(500);
@@ -113,7 +140,30 @@ foreach ($rows as $i => &$row) {
         continue; // header
     }
     if (isset($row[$orderIdIndex]) && $row[$orderIdIndex] === $orderId) {
-        if ($checked) {
+        if ($isValueField) {
+            // Color: only accept a value that's actually in the color
+            // list THIS row's own item offers - e.g. a Circle Cutter
+            // Holder can only be changed to a filament color (and not
+            // Rainbow, since it's not RAINBOW_ELIGIBLE_ITEMS), a Logo
+            // Shirt only to a Gildan color. Same allowlist principle as
+            // $booleanFields above, just resolved per-row instead of
+            // being fixed ahead of time.
+            $rowItem = trim($row[$itemIndex] ?? '');
+            $allowedColors = merch_color_options_for_item($rowItem);
+            // An empty value is always accepted for a colorable item -
+            // that's "clear the color choice," the same as how it never
+            // got picked in the first place. It's deliberately NOT in
+            // $allowedColors itself (that list is real chart colors
+            // only) - checked here as its own explicit case instead.
+            if (empty($allowedColors) || ($submittedValue !== '' && !in_array($submittedValue, $allowedColors, true))) {
+                flock($handle, LOCK_UN);
+                fclose($handle);
+                http_response_code(400);
+                echo json_encode(['ok' => false, 'error' => 'Not a valid color choice for this item.']);
+                exit;
+            }
+            $newValue = $submittedValue;
+        } elseif ($checked) {
             if ($cascadeIndex !== false && $cascadeIndex !== null) {
                 $existingCascadeDate = trim($row[$cascadeIndex] ?? '');
                 if ($existingCascadeDate === '') {
@@ -179,5 +229,5 @@ echo json_encode([
     'value' => $newValue,
     'cascadeField' => $cascadeField,
     'cascadeValue' => $cascadeValue,
-    'build' => '2026-07-26-H',
+    'build' => '2026-08-18-A',
 ]);

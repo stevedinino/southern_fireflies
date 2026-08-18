@@ -70,6 +70,75 @@ const RAINBOW_ELIGIBLE_ITEMS = ['Tool Holder Stand', 'Tape Gun Holder'];
 const OVERSIZE_SURCHARGE_SIZES = ['3XL', '4XL', '5XL'];
 
 // ------------------------------------------------------------
+// Color option lists - added 2026-08-18 so ourmerch.php can offer an
+// admin an editable color dropdown for an existing order, alongside
+// merch.php's customer-facing request form. Which item gets which
+// list mirrors the identically-named GILDAN_COLOR_ITEMS/
+// FILAMENT_COLOR_ITEMS JS arrays in merch.php exactly - keep both in
+// sync if an item ever moves between the two.
+//
+// The VALUE lists (GILDAN_COLORS/FILAMENT_COLORS below) are NOT read
+// by merch.php - its <select> markup is still hand-written HTML,
+// since the option text there needs &ndash; entities and optgroup
+// labels the admin editor doesn't. But every value here must match
+// one of merch.php's <option value="..."> strings EXACTLY, or an
+// order placed from the live form won't validate when an admin later
+// tries to edit its color. If you ever add, rename, or remove a color
+// in merch.php, mirror the change here too.
+// ------------------------------------------------------------
+const GILDAN_COLOR_ITEMS = ['Logo Shirt', 'Finding Your Way Shirt', 'Mr. Firefly Shirt', 'Logo Hat'];
+const FILAMENT_COLOR_ITEMS = ['Tool Holder Stand', 'Circle Cutter Holder', 'Oval Cutter Holder', 'Rectangle Cutter Holder', 'Tape Gun Holder'];
+
+const GILDAN_COLORS = [
+    '#1 White', '#2 Ice Gray', '#3 Sport Gray', '#6 Graphite Heather', '#7 Dark Heather', '#8 Charcoal',
+    '#4 Natural', '#5 Sand',
+    '#9 Cornsilk', '#10 Daisy', '#11 Gold',
+    '#12 Heather Orange', '#13 Orange',
+    '#14 Light Pink', '#15 Azalea', '#16 Coral Silk', '#17 Heather Coral Silk', '#18 Heather Heliconia', '#19 Heliconia', '#20 Antique Heliconia',
+    '#21 Heather Bronze', '#22 Berry', '#23 Heather Maroon', '#24 Heather Red', '#25 Antique Cherry Red', '#26 Cherry Red', '#27 Heather Cardinal', '#28 Red', '#29 Maroon', '#30 Cardinal',
+    '#31 Pistachio', '#32 Mint Green', '#33 Lime', '#34 Heather Military Green', '#35 Heather Seafoam', '#36 Sage', '#37 Heather Irish Green', '#38 Kiwi', '#39 Electric Green', '#40 Olive', '#41 Military Green', '#42 Kelly Green', '#43 Jade Dome', '#44 Heather Forest Green', '#45 Irish Green', '#46 Forest',
+    '#47 Light Blue', '#48 Iris', '#49 Sky', '#50 Carolina Blue', '#51 Antique Sapphire', '#52 Heather Indigo', '#53 Sapphire', '#54 Indigo', '#55 Heather Galapagos Blue', '#56 Metro Blue', '#57 Heather Sapphire', '#58 Tropical Blue', '#59 Heather Royal', '#60 Royal', '#61 Heather Navy', '#62 Navy',
+    '#63 Heather Berry', '#64 Heather Radiant Orchid', '#65 Heather Purple', '#66 Purple', '#67 Blackberry', '#68 Paragon',
+    '#69 Dark Chocolate', '#70 Black',
+    'Not applicable / no color choice',
+];
+
+const FILAMENT_COLORS = [
+    '#1 Red', '#2 Coral', '#3 Maroon', '#4 Orange', '#5 Silk Orange', '#6 Yellow', '#7 Gold', '#8 Hot Pink', '#9 Magenta',
+    '#10 Light Pink', '#11 Plum', '#12 Purple', '#13 Lilac', '#14 Sky Blue', '#15 CM Blue', '#16 Navy Blue', '#17 Teal', '#18 Silk Green',
+    '#19 Green', '#20 Light Green', '#21 Olive Green', '#22 Black', '#23 Gray', '#24 Ice', '#25 White', '#26 Tan', '#27 Brown',
+    // Rainbow lives only in the filament list (it's a print option, not
+    // a garment color) - merch_color_options_for_item() below strips it
+    // back out again for a filament item that isn't in
+    // RAINBOW_ELIGIBLE_ITEMS, same restriction the live form enforces.
+    'Rainbow (+$2)',
+    'Not applicable / no color choice',
+];
+
+/**
+ * The list of valid color values for a given item: GILDAN_COLORS,
+ * FILAMENT_COLORS (with Rainbow removed unless the item is actually
+ * RAINBOW_ELIGIBLE_ITEMS), or an empty array if the item doesn't offer
+ * a color choice at all. Used by merch_update.php to validate an
+ * admin's color edit, and by ourmerch.php to build that edit dropdown -
+ * so an order's color can only ever be changed to a value that item's
+ * own request-form dropdown would have allowed in the first place.
+ */
+function merch_color_options_for_item(string $item): array
+{
+    if (in_array($item, GILDAN_COLOR_ITEMS, true)) {
+        return GILDAN_COLORS;
+    }
+    if (in_array($item, FILAMENT_COLOR_ITEMS, true)) {
+        if (in_array($item, RAINBOW_ELIGIBLE_ITEMS, true)) {
+            return FILAMENT_COLORS;
+        }
+        return array_values(array_diff(FILAMENT_COLORS, ['Rainbow (+$2)']));
+    }
+    return [];
+}
+
+// ------------------------------------------------------------
 // Printed-item shipping tiers (Steve's items only - shirts/hats
 // still use the simple FLAT_SHIPPING_RATE/FLAT_SHIPPING_MAX_QTY
 // rule below, since that's Janet's side and hasn't been revisited).
