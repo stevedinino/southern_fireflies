@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-05-A
+// Build: 2026-08-20-A
 // Admin-only download: reads merchandise.csv AND archive/merchandise-
 // archive.csv, pulls Email + Name from every row in both files, and
 // writes out a deduped CSV ready to import into Brevo (or anywhere
@@ -22,13 +22,11 @@
 // alone rather than failing. merchandise.csv itself is still required,
 // same as every other admin tool here.
 
-session_start();
-require __DIR__ . '/config.php';
+require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 
-if (empty($_SESSION['sff_admin_ok'])) {
-    header('Location: ourmerch.php');
-    exit;
-}
+// Shared implementation in admin_guard.php as of 2026-08-20 (Finding
+// 11, 2026-08-19 code review) - was previously duplicated across 8 files.
+merch_require_admin_redirect('ourmerch.php');
 
 /**
  * Reads one CSV file and returns [email => name] pairs for every row

@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-16-B
+// Build: 2026-08-20-A
 // ============================================================
 // SINGLE SOURCE OF TRUTH for Southern Fireflies merch pricing.
 //
@@ -45,6 +45,16 @@ const MERCH_PRICES = [
 ];
 
 const SHIRT_ITEMS = ['Logo Shirt', 'Finding Your Way Shirt', 'Mr. Firefly Shirt'];
+// Canonical size/sleeve option lists - the shirts are the only items
+// that use either (see SHIRT_ITEMS just above). Added 2026-08-20
+// alongside merch_order.php's new server-side validation (Finding 2,
+// 2026-08-19 code review), so a size/sleeve submitted for a non-shirt
+// item, or a value that isn't one of these, gets rejected/cleared
+// instead of stored as-is. Must match merch.php's <select name="size">
+// / <select name="sleeve"> <option value="..."> strings exactly - same
+// rule as GILDAN_COLORS/FILAMENT_COLORS below.
+const MERCH_SIZES = ['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'];
+const MERCH_SLEEVE_LENGTHS = ['Short Sleeve', 'Long Sleeve'];
 // The complete set of 3D-printed items - this is the single source of
 // truth for "does this item pay to Steve's personal account." Do NOT
 // use this list for shipping-tier or color-option decisions - those
@@ -69,6 +79,26 @@ const BOX_SHIPPING_ITEMS = ['Tool Holder Stand', 'Circle Cutter Holder', 'Oval C
 const RAINBOW_ELIGIBLE_ITEMS = ['Tool Holder Stand', 'Tape Gun Holder'];
 const OVERSIZE_SURCHARGE_SIZES = ['3XL', '4XL', '5XL'];
 
+// Canonical column order for merchandise.csv - the single source of
+// truth for the header row. merch_order.php uses this to write a
+// header into a brand-new/empty file and to build every new row keyed
+// by column name rather than position (see code review 2026-08-19,
+// Finding 1 - a positional writer here had silently shifted every
+// column from Size onward in every web order, because a stale comment
+// listed the pre-"Original Color" 24-column header while the live file
+// had grown to 25). Every reader keys off the file's OWN header row at
+// read time and doesn't need this constant - but if you ever add,
+// rename, or reorder a column, update it here too so a from-scratch
+// file starts correct, and add the matching key to merch_order.php's
+// $values array or new orders will fail loudly (by design) instead of
+// silently misaligning again.
+const MERCH_CSV_HEADER = [
+    'OrderID', 'Name', 'Email', 'Phone', 'Item', 'Quantity', 'Color',
+    'Original Color', 'Size', 'Sleeve', 'Notes', 'Fulfillment', 'Address',
+    'City', 'State', 'Zip', 'Price', 'Tax', 'Shipping', 'Invoice Date',
+    'Pymt Date', 'Created', 'Fulfilled', 'Timestamp', 'IP',
+];
+
 // ------------------------------------------------------------
 // Color option lists - added 2026-08-18 so ourmerch.php can offer an
 // admin an editable color dropdown for an existing order, alongside
@@ -85,14 +115,23 @@ const OVERSIZE_SURCHARGE_SIZES = ['3XL', '4XL', '5XL'];
 // order placed from the live form won't validate when an admin later
 // tries to edit its color. If you ever add, rename, or remove a color
 // in merch.php, mirror the change here too.
+//
+// Numbers are zero-padded to two digits ('#01' not '#1') so a plain
+// string sort of the Color column lands in the same order the color
+// charts display them in. If you ever add a color, pad its number the
+// same way (both lists top out under 100, so two digits always cover
+// it). Historical merchandise.csv rows written before this convention
+// may still hold unpadded values ('#1 Red') - those are treated as
+// legacy data, not errors, but won't string-sort correctly until
+// corrected by hand.
 // ------------------------------------------------------------
 const GILDAN_COLOR_ITEMS = ['Logo Shirt', 'Finding Your Way Shirt', 'Mr. Firefly Shirt', 'Logo Hat'];
 const FILAMENT_COLOR_ITEMS = ['Tool Holder Stand', 'Circle Cutter Holder', 'Oval Cutter Holder', 'Rectangle Cutter Holder', 'Tape Gun Holder'];
 
 const GILDAN_COLORS = [
-    '#1 White', '#2 Ice Gray', '#3 Sport Gray', '#6 Graphite Heather', '#7 Dark Heather', '#8 Charcoal',
-    '#4 Natural', '#5 Sand',
-    '#9 Cornsilk', '#10 Daisy', '#11 Gold',
+    '#01 White', '#02 Ice Gray', '#03 Sport Gray', '#06 Graphite Heather', '#07 Dark Heather', '#08 Charcoal',
+    '#04 Natural', '#05 Sand',
+    '#09 Cornsilk', '#10 Daisy', '#11 Gold',
     '#12 Heather Orange', '#13 Orange',
     '#14 Light Pink', '#15 Azalea', '#16 Coral Silk', '#17 Heather Coral Silk', '#18 Heather Heliconia', '#19 Heliconia', '#20 Antique Heliconia',
     '#21 Heather Bronze', '#22 Berry', '#23 Heather Maroon', '#24 Heather Red', '#25 Antique Cherry Red', '#26 Cherry Red', '#27 Heather Cardinal', '#28 Red', '#29 Maroon', '#30 Cardinal',
@@ -104,7 +143,7 @@ const GILDAN_COLORS = [
 ];
 
 const FILAMENT_COLORS = [
-    '#1 Red', '#2 Coral', '#3 Maroon', '#4 Orange', '#5 Silk Orange', '#6 Yellow', '#7 Gold', '#8 Hot Pink', '#9 Magenta',
+    '#01 Red', '#02 Coral', '#03 Maroon', '#04 Orange', '#05 Silk Orange', '#06 Yellow', '#07 Gold', '#08 Hot Pink', '#09 Magenta',
     '#10 Light Pink', '#11 Plum', '#12 Purple', '#13 Lilac', '#14 Sky Blue', '#15 CM Blue', '#16 Navy Blue', '#17 Teal', '#18 Silk Green',
     '#19 Green', '#20 Light Green', '#21 Olive Green', '#22 Black', '#23 Gray', '#24 Ice', '#25 White', '#26 Tan', '#27 Brown',
     // Rainbow lives only in the filament list (it's a print option, not
@@ -186,23 +225,33 @@ const CIRCLE_OVAL_WITH_TOOL_STAND_MAX = 2; // how many can ride along in the Too
 const CIRCLE_OVAL_WITH_TOOL_STAND_EXPANDED_MAX = 4; // above CIRCLE_OVAL_WITH_TOOL_STAND_MAX but up to this many -> PRINTED_SHIP_RATE_BOX_EXPANDED instead of manual
 
 // ------------------------------------------------------------
-// Real per-unit weights (oz), by Steve (2026-08-10), for shippo_export.php.
-// Only applies when there's NO Tool Stand in the shipment - Tool
-// Stand shipments always use scavenged one-off boxes of varying size,
-// so those stay hand-weighed/measured by Steve directly in Shippo
-// (also because Steve's never given a per-unit weight for the Tool
-// Stand itself - only these four fit-in-a-mailer items have real
-// numbers). Replaced the old count-indexed POLY_MAILER_WEIGHT_OZ
-// table (which assumed every item weighed the same ~2oz) once mixed
-// combos of different-weight items became common enough that a
-// per-count lookup was no longer accurate - Rectangle and Tape Gun
-// Holder are real ounces heavier than Circle/Oval.
+// Real per-unit weights (oz), by Steve (2026-08-10; Tool Holder Stand
+// added 2026-08-19), for shippo_export.php.
+//
+// The automatic mailer-tier Order Weight/Package dimensions fill-in
+// (merch_printed_shipping()-adjacent logic in shippo_export.php) only
+// sums the four small items below - Tool Holder Stand shipments always
+// use scavenged one-off boxes of varying size, so Order Weight/
+// dimensions stay hand-measured by Steve directly in Shippo regardless
+// of having a weight here. Tool Holder Stand's entry is read-only for
+// the export's per-LINE Item Weight column instead (added 2026-08-19,
+// so Steve can see each item's own weight - Tool Stand included - when
+// hand-grouping items into a box); it does NOT feed the mailer-tier
+// tare/weight math the other four items do, since that logic branches
+// on TOOL_STAND_ITEM before it ever looks at this table.
+//
+// Replaced the old count-indexed POLY_MAILER_WEIGHT_OZ table (which
+// assumed every item weighed the same ~2oz) once mixed combos of
+// different-weight items became common enough that a per-count lookup
+// was no longer accurate - Rectangle and Tape Gun Holder are real
+// ounces heavier than Circle/Oval.
 // ------------------------------------------------------------
 const ITEM_WEIGHT_OZ = [
     'Circle Cutter Holder' => 2,
     'Oval Cutter Holder' => 2,
     'Rectangle Cutter Holder' => 3,
     'Tape Gun Holder' => 3,
+    'Tool Holder Stand' => 8,
 ];
 // Packaging/padding weight added on top of the items themselves.
 // Validated against several real historical single-item-type

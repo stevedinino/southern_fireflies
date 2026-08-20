@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-11-C
+// Build: 2026-08-20-B
 // Admin-triggered: given ONE OrderID (the row the button was clicked
 // on), finds every OTHER not-yet-invoiced order from the same email
 // address that pays to the same account (printed vs. shop items) and
@@ -30,11 +30,11 @@
 // (locked again, briefly, by OrderID rather than array index in case
 // the file changed in between).
 
-session_start();
+require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 header('Content-Type: application/json');
-require __DIR__ . '/config.php';
 require __DIR__ . '/pricing.php';
 require __DIR__ . '/merch_notify.php';
+require __DIR__ . '/merch_backup.php';
 require_once __DIR__ . '/strings.php';
 
 /**
@@ -84,17 +84,12 @@ function merch_invoice_stamp_invoice_date(string $csvFile, array $groupOrderIds)
         }
         unset($row);
 
-        // Backup before writing. Create backups/ if it doesn't exist yet
-        // instead of silently doing nothing - @copy() alone fails quietly
-        // if the target directory is missing, which is why the backups
-        // folder was empty (found 2026-07-26).
-        $backupDir = __DIR__ . '/backups';
-        if (!is_dir($backupDir)) {
-            @mkdir($backupDir, 0755, true);
-        }
-        if (is_dir($backupDir)) {
-            @copy($csvFile, $backupDir . '/merchandise_' . date('Ymd_His') . '.csv');
-        }
+        // Backup before writing. Shared implementation in
+        // merch_backup.php as of 2026-08-20 (Findings 12 and 14,
+        // 2026-08-19 code review) - failures are now logged instead of
+        // silently swallowed, and old backups are pruned instead of
+        // accumulating forever.
+        merch_backup_csv($csvFile, __DIR__ . '/backups');
 
         rewind($handle);
         ftruncate($handle, 0);
@@ -110,11 +105,10 @@ function merch_invoice_stamp_invoice_date(string $csvFile, array $groupOrderIds)
     return ['ok' => true, 'invoicedOrderIds' => $invoicedOrderIds, 'invoicedDate' => $invoicedDate];
 }
 
-if (empty($_SESSION['sff_admin_ok'])) {
-    http_response_code(403);
-    echo json_encode(['ok' => false, 'error' => 'Not logged in.']);
-    exit;
-}
+// Shared implementation in admin_guard.php as of 2026-08-20 (Finding
+// 11, 2026-08-19 code review) - was previously duplicated here and in
+// merch_update.php.
+merch_require_admin_json();
 
 $csvFile = __DIR__ . '/merchandise.csv';
 

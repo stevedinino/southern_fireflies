@@ -1,0 +1,12 @@
+merchandise.csv
+merchandise_archive.csv
+registrations.csv
+config.php
+
+# Timestamped backups of the customer-data CSVs above - same
+# sensitivity as the files they're copies of, so never committed.
+# The .htaccess is the one exception - it's what locks the directory
+# down on the live host (Finding 6, 2026-08-19 code review), so it's
+# deliberately tracked.
+/backups/*
+!/backups/.htaccess

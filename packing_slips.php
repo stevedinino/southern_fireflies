@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-15-B
+// Build: 2026-08-20-B
 // Admin-only page: a single working checklist for packing a batch of
 // mailers, opened alongside the Shippo export (same click, from
 // ourmerch.php's footer link - see the onclick there).
@@ -40,59 +40,28 @@
 // a page break between shipments - it's meant to read as one list, not
 // one page per customer.
 
-session_start();
-require __DIR__ . '/config.php';
+require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php';
+require __DIR__ . '/merch_shipments.php';
 
-if (empty($_SESSION['sff_admin_ok'])) {
-    header('Location: ourmerch.php');
-    exit;
-}
+// Shared implementation in admin_guard.php as of 2026-08-20 (Finding
+// 11, 2026-08-19 code review) - was previously duplicated across 8 files.
+merch_require_admin_redirect('ourmerch.php');
 
 $csvFile = __DIR__ . '/merchandise.csv';
-if (!file_exists($csvFile)) {
-    die('merchandise.csv not found.');
-}
-
-$handle = fopen($csvFile, 'r');
-if (!$handle) {
-    die('Could not open merchandise.csv.');
-}
-
-$rows = [];
-while (($row = fgetcsv($handle)) !== false) {
-    $rows[] = $row;
-}
-fclose($handle);
-
-if (empty($rows)) {
-    die('merchandise.csv is empty.');
-}
-
-$header = $rows[0];
-if (isset($header[0])) {
-    $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
-}
-
-$col = [];
-foreach ([
+// Shared with shippo_export.php as of 2026-08-20 (Finding 10, same
+// review) - see merch_shipments.php for why.
+$loaded = merch_load_csv($csvFile, 'merchandise.csv');
+$rows = $loaded['rows'];
+$col = merch_csv_column_map($loaded['header'], [
     'OrderID', 'Item', 'Quantity', 'Name', 'Fulfillment', 'Address', 'City',
     'State', 'Zip', 'Email', 'Phone', 'Color', 'Timestamp', 'Price', 'Fulfilled',
     'Invoice Date', 'Pymt Date', 'Created',
-] as $name) {
-    $col[$name] = array_search($name, $header, true);
-}
-foreach (['OrderID', 'Pymt Date', 'Fulfillment', 'Fulfilled', 'Created'] as $required) {
-    if ($col[$required] === false) {
-        die("Expected column '{$required}' not found in merchandise.csv header - has it changed?");
-    }
-}
+], ['OrderID', 'Pymt Date', 'Fulfillment', 'Fulfilled', 'Created'], 'merchandise.csv');
 
 // ---- Same safety filter as shippo_export.php ----
 $eligible = [];
-foreach ($rows as $i => $row) {
-    if ($i === 0) continue; // header
-
+foreach ($rows as $row) {
     $paid = $col['Pymt Date'] !== false ? trim($row[$col['Pymt Date']] ?? '') : '';
     $fulfillment = trim($row[$col['Fulfillment']] ?? '');
     $fulfilled = trim($row[$col['Fulfilled']] ?? '');
@@ -103,30 +72,17 @@ foreach ($rows as $i => $row) {
 }
 
 // ---- Same grouping as shippo_export.php: name + zip, normalized ----
-$allGroups = [];
-foreach ($eligible as $row) {
-    $normalizedName = strtolower(trim(preg_replace('/\s+/', ' ', $row[$col['Name']] ?? '')));
-    $zip = strtolower(trim($row[$col['Zip']] ?? ''));
-    $key = $normalizedName . '|' . $zip;
-    $allGroups[$key][] = $row;
-}
+$allGroups = merch_group_shipments($eligible, $col);
 
 // ---- Same whole-shipment Created gate as shippo_export.php ----
 // A shipment only belongs on the main checklist once every item bound
 // for that address is Created - one un-printed item holds the whole
 // shipment back, not just its own row (2026-08-15, per Steve). Groups
-// that DON'T pass this go to $inProgressGroups instead of just being
-// dropped, so they can show up in the "Still In Progress" section below.
-$isGroupAllCreated = function ($groupRows) use ($col) {
-    foreach ($groupRows as $row) {
-        if (trim($row[$col['Created']] ?? '') === '') {
-            return false;
-        }
-    }
-    return true;
-};
-$groups = array_filter($allGroups, $isGroupAllCreated);
-$inProgressGroups = array_filter($allGroups, fn($groupRows) => !$isGroupAllCreated($groupRows));
+// that DON'T pass this land in the "Still In Progress" section below
+// instead of just being dropped.
+$split = merch_split_groups_by_created($allGroups, $col);
+$groups = $split['complete'];
+$inProgressGroups = $split['incomplete'];
 
 // Same "lowest OrderID in the group" numbering as shippo_export.php's
 // Order Number column, so a shipment can be matched between the

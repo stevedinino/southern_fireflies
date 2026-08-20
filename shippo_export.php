@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-15-B
+// Build: 2026-08-20-B
 // Admin-only download: reads merchandise.csv, filters to orders that
 // are actually SAFE to buy a label for, and writes out a CSV in
 // Shippo's bulk-import column format (per shippo_sample_csv_v3.csv).
@@ -43,54 +43,34 @@
 // Holder, still ships in a scavenged one-off box or needs a hand-pack
 // look, so those rows are deliberately left blank for Steve to
 // weigh/measure by hand directly in Shippo.
+//
+// 2026-08-19: the per-row Item Weight column (previously always left
+// blank, since Order Weight above was the only total that mattered for
+// the automatic mailer tier) now also gets filled in per-unit from that
+// same ITEM_WEIGHT_OZ table, whenever a real number exists for that
+// item - blank for Tool Holder Stand and any shirt/hat, same as
+// before, since those don't have one. Per Steve: seeing each line
+// item's own weight in Shippo (not just the mailer-tier group total)
+// makes it easier to hand-group items into a box together.
 
-session_start();
-require __DIR__ . '/config.php';
+require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php';
+require __DIR__ . '/merch_shipments.php';
 
-if (empty($_SESSION['sff_admin_ok'])) {
-    header('Location: ourmerch.php');
-    exit;
-}
+// Shared implementation in admin_guard.php as of 2026-08-20 (Finding
+// 11, 2026-08-19 code review) - was previously duplicated across 8 files.
+merch_require_admin_redirect('ourmerch.php');
 
 $csvFile = __DIR__ . '/merchandise.csv';
-if (!file_exists($csvFile)) {
-    die('merchandise.csv not found.');
-}
-
-$handle = fopen($csvFile, 'r');
-if (!$handle) {
-    die('Could not open merchandise.csv.');
-}
-
-$rows = [];
-while (($row = fgetcsv($handle)) !== false) {
-    $rows[] = $row;
-}
-fclose($handle);
-
-if (empty($rows)) {
-    die('merchandise.csv is empty.');
-}
-
-$header = $rows[0];
-if (isset($header[0])) {
-    $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
-}
-
-$col = [];
-foreach ([
+// Shared with packing_slips.php as of 2026-08-20 (Finding 10, same
+// review) - see merch_shipments.php for why.
+$loaded = merch_load_csv($csvFile, 'merchandise.csv');
+$rows = $loaded['rows'];
+$col = merch_csv_column_map($loaded['header'], [
     'OrderID', 'Item', 'Quantity', 'Name', 'Fulfillment', 'Address', 'City',
     'State', 'Zip', 'Email', 'Phone', 'Color', 'Timestamp', 'Price', 'Fulfilled',
     'Invoice Date', 'Pymt Date', 'Created',
-] as $name) {
-    $col[$name] = array_search($name, $header, true);
-}
-foreach (['OrderID', 'Pymt Date', 'Fulfillment', 'Fulfilled', 'Created'] as $required) {
-    if ($col[$required] === false) {
-        die("Expected column '{$required}' not found in merchandise.csv header - has it changed?");
-    }
-}
+], ['OrderID', 'Pymt Date', 'Fulfillment', 'Fulfilled', 'Created'], 'merchandise.csv');
 
 // ---- Filter to rows that are actually safe to make a label for ----
 // This is just the raw per-row membership (paid, Ship, not yet
@@ -98,9 +78,7 @@ foreach (['OrderID', 'Pymt Date', 'Fulfillment', 'Fulfilled', 'Created'] as $req
 // it needs to be checked across the whole shipment, not one row at a
 // time.
 $eligible = [];
-foreach ($rows as $i => $row) {
-    if ($i === 0) continue; // header
-
+foreach ($rows as $row) {
     // Pymt Date is the single source of truth for "actually paid" now
     // (the separate 'Paid' marker column was removed 2026-07-26 - a
     // date here already means paid, same as every other status column).
@@ -132,13 +110,10 @@ if (empty($eligible)) {
 // this export is always manually reviewed before buying labels anyway,
 // that's an acceptable risk versus the alternative (real shipments
 // splintering apart because of how someone abbreviated "Street").
-$groups = []; // key -> array of rows
-foreach ($eligible as $row) {
-    $normalizedName = strtolower(trim(preg_replace('/\s+/', ' ', $row[$col['Name']] ?? '')));
-    $zip = strtolower(trim($row[$col['Zip']] ?? ''));
-    $key = $normalizedName . '|' . $zip;
-    $groups[$key][] = $row;
-}
+// Shared with packing_slips.php as of 2026-08-20 (Finding 10, same
+// review) - see merch_shipments.php for the grouping-key formula and
+// its known tradeoff.
+$groups = merch_group_shipments($eligible, $col);
 
 // ---- Only export shipments where EVERY item is Created ----
 // A shipment ships as one box, so it only counts as ready once every
@@ -146,14 +121,7 @@ foreach ($eligible as $row) {
 // the whole shipment back, not just its own row. Same rule as
 // ourmerch.php's "Needs Shipping" view and packing_slips.php
 // (2026-08-15, per Steve).
-$groups = array_filter($groups, function ($groupRows) use ($col) {
-    foreach ($groupRows as $row) {
-        if (trim($row[$col['Created']] ?? '') === '') {
-            return false;
-        }
-    }
-    return true;
-});
+$groups = merch_split_groups_by_created($groups, $col)['complete'];
 
 if (empty($groups)) {
     die('No shipments are fully ready to export yet. (Every item bound for the same address needs to be marked Created - not just this one - before that shipment will appear here.)');
@@ -250,6 +218,15 @@ foreach ($groups as $groupRows) {
         $timestamp = $col['Timestamp'] !== false ? trim($row[$col['Timestamp']] ?? '') : '';
         $orderDate = $timestamp !== '' ? date('Y-m-d', strtotime($timestamp)) : '';
         $color = trim($row[$col['Color']] ?? '');
+        // 2026-08-19: per-unit Item Weight, when a real number exists for
+        // this item (ITEM_WEIGHT_OZ, pricing.php - the same weights
+        // Order Weight above is built from). Blank for Tool Holder Stand
+        // and any shirt/hat - those don't have a real per-unit weight on
+        // file, so this stays blank rather than guessing, same principle
+        // as Order Weight/Package dimensions above. Filling this in lets
+        // Steve see each item's individual weight in Shippo when hand-
+        // grouping items into a box, not just the mailer-tier total.
+        $itemWeight = ITEM_WEIGHT_OZ[$item] ?? '';
 
         fputcsv($out, [
             $orderNumber,
@@ -268,7 +245,7 @@ foreach ($groups as $groupRows) {
             $item,
             $color, // Repurposing SKU (not otherwise used) to carry Color, so it's visible for the inventory cross-check
             $quantity,
-            '', // Item Weight - per-item weight isn't meaningful here; Order Weight below is the real total
+            $itemWeight, // blank unless ITEM_WEIGHT_OZ has a real number for this item (see comment above)
             'oz',
             $unitPrice,
             'USD',

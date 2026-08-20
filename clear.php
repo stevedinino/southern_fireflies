@@ -1,10 +1,10 @@
 <?php
-session_start();
+// Build: 2026-08-20-A
+require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 
-if (empty($_SESSION['sff_admin_ok'])) {
-    header('Location: ourguests.php');
-    exit;
-}
+// Shared implementation in admin_guard.php as of 2026-08-20 (Finding
+// 11, 2026-08-19 code review) - was previously duplicated across 8 files.
+merch_require_admin_redirect('ourguests.php');
 
 $csvFile = 'registrations.csv';
 

@@ -1,0 +1,49 @@
+# Block direct web access to the CSV "databases" and their backups.
+# These files live in the web root (needed so the PHP scripts here can
+# read/write them with plain relative paths) but were previously
+# fetchable by anyone who knew or guessed a filename - no login
+# required, since serving a static file bypasses every session check
+# in the PHP admin pages entirely. This was Finding 6 in the 2026-08-19
+# code review: merchandise.csv, registrations.csv, and every timestamped
+# backup in backups/ were confirmed downloadable with a plain GET.
+#
+# This rule only takes effect at all once this file is actually loaded
+# as .htaccess by Apache - see the note on the misnamed-file bug this
+# fixed alongside it (Finding 7, same review). If Steve's host doesn't
+# have AllowOverride enabled for this directory, this block silently
+# does nothing, same as the SSL-enforcement rule below always did -
+# worth him confirming with Network Solutions if there's any doubt.
+<FilesMatch "\.csv$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        # Apache 2.2-style host - "Require all denied" above is the
+        # Apache 2.4+ syntax. This is the equivalent for an older
+        # mod_access_compat setup, in case Network Solutions' shared
+        # hosting is still on 2.2.
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Begin EnforceSSL southernfirefliesretreats.com
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteCond %{HTTP_HOST} ^(www\.)?southernfirefliesretreats\.com$
+RewriteCond %{HTTPS} !=on
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L]
+</IfModule>
+# End EnforceSSL
+
+DirectoryIndex index.php index.html
+
+# Old bookmarks to /index.html (from before the site ran on index.php)
+# always land here instead of on stale content. Uses mod_alias, a
+# separate/simpler mechanism from the SSL rewrite rules above - fires
+# on the exact literal path only, so it's safe alongside the
+# maintenance-page swap process (renaming index.php away and dropping
+# content at index.html): a direct hit on /index.html still bounces to
+# "/", which then correctly shows whichever is actually live right now.
+
+Redirect 301 /index.html /

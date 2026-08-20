@@ -1,55 +1,14 @@
 <?php
-// Build: 2026-08-18-A
-session_start();
-require __DIR__ . '/config.php';
+// Build: 2026-08-20-C
+require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
+require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
 
-// Log out
-if (isset($_POST['logout'])) {
-    unset($_SESSION['sff_admin_ok']);
-    header('Location: ourmerch.php');
-    exit;
-}
-
-// Simple password gate (same login as ourguests.php - one admin, two lists).
-$loginError = '';
-if (!isset($_SESSION['sff_admin_ok'])) {
-    if (isset($_POST['admin_password'])) {
-        if (hash_equals(ADMIN_PASSWORD, $_POST['admin_password'])) {
-            $_SESSION['sff_admin_ok'] = true;
-        } else {
-            $loginError = 'Incorrect password.';
-        }
-    }
-}
-
-if (!isset($_SESSION['sff_admin_ok'])) {
-    ?>
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <title>Admin Login – Southern Fireflies Retreats</title>
-      <link rel="stylesheet" href="styles/layout.css" />
-    </head>
-    <body>
-      <div class="content-wrapper">
-        <div class="form-container">
-          <h2>Admin Login</h2>
-          <?php if ($loginError !== ''): ?>
-            <p style="color:#b00020; text-align:center;"><?= htmlspecialchars($loginError) ?></p>
-          <?php endif; ?>
-          <form method="POST">
-            <input type="password" name="admin_password" placeholder="Password" required />
-            <button type="submit" class="btn full-width">Log In</button>
-          </form>
-        </div>
-      </div>
-    </body>
-    </html>
-    <?php
-    exit;
-}
+// Simple password gate (same login as ourguests.php - one admin, two
+// lists). Shared implementation in admin_guard.php as of 2026-08-20
+// (Finding 11, 2026-08-19 code review) - was previously duplicated
+// byte-for-byte here and in ourguests.php.
+merch_admin_login_gate('Admin Login – Southern Fireflies Retreats', 'ourmerch.php');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -95,6 +54,17 @@ if (!isset($_SESSION['sff_admin_ok'])) {
        plain-text "click to edit" field, so it reads as interactive next
        to the checkbox/button cells beside it. */
     .merch-color-display {
+      /* A real <button> as of 2026-08-20 (Finding 17, 2026-08-19 code
+         review) so it's keyboard-focusable and Enter/Space-activatable
+         - a bare <span> with only a click handler couldn't be reached
+         or opened at all without a mouse. Reset the button chrome back
+         to how the plain-text span used to look. */
+      background: none;
+      border: none;
+      padding: 0;
+      margin: 0;
+      font: inherit;
+      color: inherit;
       cursor: pointer;
       text-decoration: underline dotted;
       text-underline-offset: 2px;
@@ -166,9 +136,12 @@ if (!isset($_SESSION['sff_admin_ok'])) {
               if (!$rPaid || !$rShipping || $rFulfilled) {
                   continue; // not part of "what needs to ship" yet - doesn't gate the group
               }
-              $normalizedName = strtolower(trim(preg_replace('/\s+/', ' ', $data[$nameIndex] ?? '')));
-              $zip = strtolower(trim($data[$zipIndex] ?? ''));
-              $groupKey = $normalizedName . '|' . $zip;
+              // Shared with shippo_export.php/packing_slips.php as of
+              // 2026-08-20 (Finding 10, 2026-08-19 code review) - same
+              // grouping-key formula, so this page's "shipment ready"
+              // indicator can never silently disagree with what those
+              // two tools consider the same shipment.
+              $groupKey = merch_shipment_key($data[$nameIndex] ?? '', $data[$zipIndex] ?? '');
               $rCreated = $createdIndex !== false && trim($data[$createdIndex] ?? '') !== '';
               if (!isset($shipmentAllCreated[$groupKey])) {
                   $shipmentAllCreated[$groupKey] = true;
@@ -211,9 +184,10 @@ if (!isset($_SESSION['sff_admin_ok'])) {
               // defaults to "ready" (true) when Name/Zip columns are
               // missing or this row isn't part of any tracked shipment,
               // so it never blocks a row that the pre-scan didn't cover.
-              $rowNormalizedName = $nameIndex !== false ? strtolower(trim(preg_replace('/\s+/', ' ', $data[$nameIndex] ?? ''))) : '';
-              $rowZip = $zipIndex !== false ? strtolower(trim($data[$zipIndex] ?? '')) : '';
-              $rowShipmentReady = $shipmentAllCreated[$rowNormalizedName . '|' . $rowZip] ?? true;
+              $rowShipmentKey = ($nameIndex !== false && $zipIndex !== false)
+                  ? merch_shipment_key($data[$nameIndex] ?? '', $data[$zipIndex] ?? '')
+                  : '';
+              $rowShipmentReady = $shipmentAllCreated[$rowShipmentKey] ?? true;
               echo '<tr data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '">';
               foreach ($data as $i => $cell) {
                   if ($i === $createdIndex || $i === $fulfilledIndex || $i === $pymtDateIndex) {
@@ -239,7 +213,14 @@ if (!isset($_SESSION['sff_admin_ok'])) {
                       $looksLikeDate = $trimmedCell !== '' && strtotime($trimmedCell) !== false;
                       $displayValue = $looksLikeDate ? $trimmedCell : ($isChecked ? '(marked before this page existed)' : '');
                       echo '<td style="padding:6px; border-bottom:1px solid #eee; text-align:center; white-space:nowrap;">';
-                      echo '<input type="checkbox" class="merch-status-toggle" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="' . htmlspecialchars($fieldName, ENT_QUOTES) . '" ' . ($isChecked ? 'checked' : '') . ' />';
+                      // aria-label added 2026-08-20 (Finding 17,
+                      // 2026-08-19 code review) - with no <label> and
+                      // no visible text next to the checkbox itself, a
+                      // screen reader previously announced just
+                      // "checkbox, checked" with no idea which order or
+                      // field it belonged to. The values are already
+                      // available here, so no new markup/data needed.
+                      echo '<input type="checkbox" class="merch-status-toggle" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="' . htmlspecialchars($fieldName, ENT_QUOTES) . '" aria-label="' . htmlspecialchars($fieldName . ' - order ' . $orderId, ENT_QUOTES) . '" ' . ($isChecked ? 'checked' : '') . ' />';
                       echo '<br /><span class="merch-status-date" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="' . htmlspecialchars($fieldName, ENT_QUOTES) . '" style="font-size:0.8em; color:#888;">' . htmlspecialchars($displayValue) . '</span>';
                       echo '</td>';
                   } elseif ($i === $invoiceDateIndex) {
@@ -275,7 +256,7 @@ if (!isset($_SESSION['sff_admin_ok'])) {
                       $colorOptions = $itemIndex !== false ? merch_color_options_for_item($rowItem) : [];
                       echo '<td style="padding:6px; border-bottom:1px solid #eee; white-space:nowrap;">';
                       if (!empty($colorOptions)) {
-                          echo '<span class="merch-color-display" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '">' . htmlspecialchars($currentColor !== '' ? $currentColor : '(none)') . '</span>';
+                          echo '<button type="button" class="merch-color-display" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" aria-label="Color: ' . htmlspecialchars($currentColor !== '' ? $currentColor : 'none', ENT_QUOTES) . ' - click to edit">' . htmlspecialchars($currentColor !== '' ? $currentColor : '(none)') . '</button>';
                           echo '<select class="merch-color-edit" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-original-value="' . htmlspecialchars($currentColor, ENT_QUOTES) . '" hidden>';
                           // Explicit blank prompt option, same as
                           // merch.php's own request-form dropdown - matters

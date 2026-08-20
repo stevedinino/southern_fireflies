@@ -1,4 +1,4 @@
-<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; // Build: 2026-08-17-A ?>
+<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; // Build: 2026-08-19-A ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -318,19 +318,19 @@
           <select name="color" id="merch-color-gildan">
               <option value="">Select a color&hellip;</option>
               <optgroup label="Whites & Grays">
-                <option value="#1 White">#1 &ndash; White</option>
-                <option value="#2 Ice Gray">#2 &ndash; Ice Gray</option>
-                <option value="#3 Sport Gray">#3 &ndash; Sport Gray</option>
-                <option value="#6 Graphite Heather">#6 &ndash; Graphite Heather</option>
-                <option value="#7 Dark Heather">#7 &ndash; Dark Heather</option>
-                <option value="#8 Charcoal">#8 &ndash; Charcoal</option>
+                <option value="#01 White">#01 &ndash; White</option>
+                <option value="#02 Ice Gray">#02 &ndash; Ice Gray</option>
+                <option value="#03 Sport Gray">#03 &ndash; Sport Gray</option>
+                <option value="#06 Graphite Heather">#06 &ndash; Graphite Heather</option>
+                <option value="#07 Dark Heather">#07 &ndash; Dark Heather</option>
+                <option value="#08 Charcoal">#08 &ndash; Charcoal</option>
               </optgroup>
               <optgroup label="Naturals">
-                <option value="#4 Natural">#4 &ndash; Natural</option>
-                <option value="#5 Sand">#5 &ndash; Sand</option>
+                <option value="#04 Natural">#04 &ndash; Natural</option>
+                <option value="#05 Sand">#05 &ndash; Sand</option>
               </optgroup>
               <optgroup label="Yellows & Gold">
-                <option value="#9 Cornsilk">#9 &ndash; Cornsilk</option>
+                <option value="#09 Cornsilk">#09 &ndash; Cornsilk</option>
                 <option value="#10 Daisy">#10 &ndash; Daisy</option>
                 <option value="#11 Gold">#11 &ndash; Gold</option>
               </optgroup>
@@ -422,15 +422,15 @@
           <select name="color" id="merch-color-filament" disabled>
               <option value="">Select a color&hellip;</option>
               <optgroup label="Warm Colors">
-                <option value="#1 Red">#1 &ndash; Red</option>
-                <option value="#2 Coral">#2 &ndash; Coral</option>
-                <option value="#3 Maroon">#3 &ndash; Maroon</option>
-                <option value="#4 Orange">#4 &ndash; Orange</option>
-                <option value="#5 Silk Orange">#5 &ndash; Silk Orange</option>
-                <option value="#6 Yellow">#6 &ndash; Yellow</option>
-                <option value="#7 Gold">#7 &ndash; Gold</option>
-                <option value="#8 Hot Pink">#8 &ndash; Hot Pink</option>
-                <option value="#9 Magenta">#9 &ndash; Magenta</option>
+                <option value="#01 Red">#01 &ndash; Red</option>
+                <option value="#02 Coral">#02 &ndash; Coral</option>
+                <option value="#03 Maroon">#03 &ndash; Maroon</option>
+                <option value="#04 Orange">#04 &ndash; Orange</option>
+                <option value="#05 Silk Orange">#05 &ndash; Silk Orange</option>
+                <option value="#06 Yellow">#06 &ndash; Yellow</option>
+                <option value="#07 Gold">#07 &ndash; Gold</option>
+                <option value="#08 Hot Pink">#08 &ndash; Hot Pink</option>
+                <option value="#09 Magenta">#09 &ndash; Magenta</option>
               </optgroup>
               <optgroup label="Cool Colors">
                 <option value="#10 Light Pink">#10 &ndash; Light Pink</option>

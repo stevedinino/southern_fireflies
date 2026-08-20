@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-01-A
+// Build: 2026-08-20-A
 // ============================================================
 // Shared customer-notification logic for merch orders. Used by BOTH:
 //   - merch_order.php  (automatic, one order, right at submission)
@@ -115,6 +115,28 @@ function merch_mailer(): PHPMailer
         ? PHPMailer::ENCRYPTION_STARTTLS
         : PHPMailer::ENCRYPTION_SMTPS;
     $mail->Port       = SMTP_PORT;
+    // Without this, a slow/stalled SMTP host blocks whichever request is
+    // sending - for merch_order.php, that meant the CUSTOMER'S OWN
+    // browser sat on "Submitting..." for minutes (Finding 15, 2026-08-19
+    // code review).
+    //
+    // $mail->Timeout alone does NOT fix this - it only bounds the
+    // initial socket connect. The actual "wait for the server to
+    // respond" loop inside PHPMailer's SMTP class runs on
+    // stream_select() against a SEPARATE property, SMTP::$Timelimit
+    // (default 300s), which PHPMailer's public API has no setter for.
+    // Confirmed this the hard way: setting only ->Timeout = 10 still
+    // hung for 100+ seconds against a host that accepted the TCP
+    // connection but never replied. Pre-creating the SMTP instance here
+    // via getSMTPInstance() and setting Timelimit directly is the only
+    // way to actually bound that wait; smtpConnect() reuses whatever
+    // instance already exists instead of creating a fresh one, so this
+    // sticks. If you ever touch this, verify by pointing SMTP_HOST at a
+    // listener that accepts but never responds and confirming the send
+    // actually fails around 10s, not hangs.
+    $mail->Timeout = 10;
+    $smtp = $mail->getSMTPInstance();
+    $smtp->Timelimit = 10;
     $mail->setFrom(MAIL_FROM_ADDRESS, MAIL_FROM_NAME);
     return $mail;
 }

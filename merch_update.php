@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-18-A
+// Build: 2026-08-20-B
 // Marks a single order's status, called via fetch() from ourmerch.php's
 // checkboxes. Same admin session gate as the rest of the admin pages -
 // this is not a public endpoint.
@@ -38,16 +38,16 @@
 // arbitrary string, even though this endpoint is already session-
 // gated. Color never cascades into another column.
 
+require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php';
+require __DIR__ . '/merch_backup.php';
 
-session_start();
 header('Content-Type: application/json');
 
-if (empty($_SESSION['sff_admin_ok'])) {
-    http_response_code(403);
-    echo json_encode(['ok' => false, 'error' => 'Not logged in.']);
-    exit;
-}
+// Shared implementation in admin_guard.php as of 2026-08-20 (Finding
+// 11, 2026-08-19 code review) - was previously duplicated here and in
+// merch_invoice.php.
+merch_require_admin_json();
 
 $csvFile = __DIR__ . '/merchandise.csv';
 
@@ -202,18 +202,11 @@ if (!$found) {
 }
 
 // Backup before writing - cheap insurance against a bug corrupting live
-// order data. These will accumulate over time; safe to delete old ones
-// by hand periodically, they're not read by anything. Create backups/
-// if it doesn't exist yet - @copy() alone fails silently if the target
-// directory is missing, which is why this folder was found empty
-// (2026-07-26) despite this line having always been here.
-$backupDir = __DIR__ . '/backups';
-if (!is_dir($backupDir)) {
-    @mkdir($backupDir, 0755, true);
-}
-if (is_dir($backupDir)) {
-    @copy($csvFile, $backupDir . '/merchandise_' . date('Ymd_His') . '.csv');
-}
+// order data. Shared implementation in merch_backup.php as of
+// 2026-08-20 (Findings 12 and 14, 2026-08-19 code review) - failures
+// are now logged instead of silently swallowed, and old backups are
+// pruned instead of accumulating forever.
+merch_backup_csv($csvFile, __DIR__ . '/backups');
 
 rewind($handle);
 ftruncate($handle, 0);
@@ -229,5 +222,5 @@ echo json_encode([
     'value' => $newValue,
     'cascadeField' => $cascadeField,
     'cascadeValue' => $cascadeValue,
-    'build' => '2026-08-18-A',
+    'build' => '2026-08-20-A',
 ]);
