@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-20-A
+// Build: 2026-08-20-B
 // ============================================================
 // SINGLE SOURCE OF TRUTH for Southern Fireflies merch pricing.
 //
@@ -77,6 +77,16 @@ const BOX_SHIPPING_ITEMS = ['Tool Holder Stand', 'Circle Cutter Holder', 'Oval C
 // shipping-tier detection, use PRINTED_ITEMS / BOX_SHIPPING_ITEMS /
 // merch_is_printed_item() for those instead.
 const RAINBOW_ELIGIBLE_ITEMS = ['Tool Holder Stand', 'Tape Gun Holder'];
+// Stars & Stripes (Steve, 2026-08-20): a red/white/blue print, distinct
+// from Rainbow - originally aimed at the Fourth of July but finished
+// late due to order backlog. Its own eligible-items list rather than
+// reusing RAINBOW_ELIGIBLE_ITEMS - the two don't overlap (Tool Holder
+// Stand was never printed in this color; the other four small items
+// were), and keeping them separate means either one's item list can
+// change later without affecting the other, same reasoning as
+// RAINBOW_ELIGIBLE_ITEMS staying independent of PRINTED_ITEMS/
+// BOX_SHIPPING_ITEMS above.
+const STARS_STRIPES_ELIGIBLE_ITEMS = ['Circle Cutter Holder', 'Oval Cutter Holder', 'Rectangle Cutter Holder', 'Tape Gun Holder'];
 const OVERSIZE_SURCHARGE_SIZES = ['3XL', '4XL', '5XL'];
 
 // Canonical column order for merchandise.csv - the single source of
@@ -146,19 +156,26 @@ const FILAMENT_COLORS = [
     '#01 Red', '#02 Coral', '#03 Maroon', '#04 Orange', '#05 Silk Orange', '#06 Yellow', '#07 Gold', '#08 Hot Pink', '#09 Magenta',
     '#10 Light Pink', '#11 Plum', '#12 Purple', '#13 Lilac', '#14 Sky Blue', '#15 CM Blue', '#16 Navy Blue', '#17 Teal', '#18 Silk Green',
     '#19 Green', '#20 Light Green', '#21 Olive Green', '#22 Black', '#23 Gray', '#24 Ice', '#25 White', '#26 Tan', '#27 Brown',
-    // Rainbow lives only in the filament list (it's a print option, not
-    // a garment color) - merch_color_options_for_item() below strips it
-    // back out again for a filament item that isn't in
-    // RAINBOW_ELIGIBLE_ITEMS, same restriction the live form enforces.
+    // Rainbow and Stars & Stripes both live only in the filament list
+    // (they're print options, not garment colors) - merch_color_options_
+    // for_item() below strips whichever one doesn't apply for a given
+    // filament item, per RAINBOW_ELIGIBLE_ITEMS/STARS_STRIPES_ELIGIBLE_
+    // ITEMS, same restriction the live form enforces.
     'Rainbow (+$2)',
+    // Added 2026-08-20 (Steve) - red/white/blue print with a white
+    // star-accented locking knob, on the four small box-shipping items
+    // (not Tool Holder Stand). See STARS_STRIPES_ELIGIBLE_ITEMS/
+    // STARS_STRIPES_SURCHARGE above/below.
+    'Stars & Stripes (+$7)',
     'Not applicable / no color choice',
 ];
 
 /**
  * The list of valid color values for a given item: GILDAN_COLORS,
- * FILAMENT_COLORS (with Rainbow removed unless the item is actually
- * RAINBOW_ELIGIBLE_ITEMS), or an empty array if the item doesn't offer
- * a color choice at all. Used by merch_update.php to validate an
+ * FILAMENT_COLORS (with Rainbow and/or Stars & Stripes removed unless
+ * the item is actually eligible for each - RAINBOW_ELIGIBLE_ITEMS /
+ * STARS_STRIPES_ELIGIBLE_ITEMS), or an empty array if the item doesn't
+ * offer a color choice at all. Used by merch_update.php to validate an
  * admin's color edit, and by ourmerch.php to build that edit dropdown -
  * so an order's color can only ever be changed to a value that item's
  * own request-form dropdown would have allowed in the first place.
@@ -169,10 +186,14 @@ function merch_color_options_for_item(string $item): array
         return GILDAN_COLORS;
     }
     if (in_array($item, FILAMENT_COLOR_ITEMS, true)) {
-        if (in_array($item, RAINBOW_ELIGIBLE_ITEMS, true)) {
-            return FILAMENT_COLORS;
+        $exclude = [];
+        if (!in_array($item, RAINBOW_ELIGIBLE_ITEMS, true)) {
+            $exclude[] = 'Rainbow (+$2)';
         }
-        return array_values(array_diff(FILAMENT_COLORS, ['Rainbow (+$2)']));
+        if (!in_array($item, STARS_STRIPES_ELIGIBLE_ITEMS, true)) {
+            $exclude[] = 'Stars & Stripes (+$7)';
+        }
+        return array_values(array_diff(FILAMENT_COLORS, $exclude));
     }
     return [];
 }
@@ -334,6 +355,15 @@ function merch_flat_rate_exceeded_note(): string
 
 const OVERSIZE_SURCHARGE = 3;
 const RAINBOW_SURCHARGE = 2;
+// The in-process filament swaps needed for a red/white/blue print cost
+// more than Rainbow's single-spool swap (Steve, 2026-08-20) - hence the
+// higher surcharge. One flat number applied to every STARS_STRIPES_
+// ELIGIBLE_ITEMS item, same pattern as RAINBOW_SURCHARGE, even though
+// those items don't all share the same base price (Tape Gun Holder is
+// $15 vs. $18 for the cutter holders) - matches how Rainbow's single
+// $2 already applies across Tool Holder Stand ($12) and Tape Gun
+// Holder ($15) despite their different base prices too.
+const STARS_STRIPES_SURCHARGE = 7;
 const TAX_RATE = 0.07; // South Carolina - not accounting for other-state nexus rules
 const FLAT_SHIPPING_RATE = 6;
 const FLAT_SHIPPING_MAX_QTY = 2; // orders above this need a manual shipping quote instead
@@ -368,6 +398,10 @@ function merch_unit_price(string $item, string $size, string $sleeve, string $co
 
     if (in_array($item, RAINBOW_ELIGIBLE_ITEMS, true) && $color === 'Rainbow (+$2)') {
         $price += RAINBOW_SURCHARGE;
+    }
+
+    if (in_array($item, STARS_STRIPES_ELIGIBLE_ITEMS, true) && $color === 'Stars & Stripes (+$7)') {
+        $price += STARS_STRIPES_SURCHARGE;
     }
 
     return $price;
@@ -422,11 +456,13 @@ function merch_pricing_for_js(): array
         'prices' => MERCH_PRICES,
         'shirtItems' => SHIRT_ITEMS,
         'rainbowEligibleItems' => RAINBOW_ELIGIBLE_ITEMS,
+        'starsStripesEligibleItems' => STARS_STRIPES_ELIGIBLE_ITEMS,
         'printedItems' => PRINTED_ITEMS,
         'boxShippingItems' => BOX_SHIPPING_ITEMS,
         'oversizeSurchargeSizes' => OVERSIZE_SURCHARGE_SIZES,
         'oversizeSurcharge' => OVERSIZE_SURCHARGE,
         'rainbowSurcharge' => RAINBOW_SURCHARGE,
+        'starsStripesSurcharge' => STARS_STRIPES_SURCHARGE,
         'taxRate' => TAX_RATE,
         'flatShippingRate' => FLAT_SHIPPING_RATE,
         'flatShippingMaxQty' => FLAT_SHIPPING_MAX_QTY,

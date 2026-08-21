@@ -1,4 +1,4 @@
-<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; // Build: 2026-08-19-A ?>
+<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; // Build: 2026-08-20-C ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -74,6 +74,19 @@
 
       <div class="merch-grid">
 
+        <?php
+        // Stars & Stripes color-sample photo (Steve, 2026-08-20) - one
+        // photo today, uploaded under this item's own filename rather
+        // than reused across the four eligible items' cards, specifically
+        // so a future individual photo (Steve: "I need to take more")
+        // only ever means replacing/growing THIS array, never touching
+        // shared code. Same data-gallery mechanism as $tapeGunGallery
+        // below - just starting from one entry instead of several.
+        $rectangleStarsStripesGallery = [
+            ['src' => 'images/rectangle-cutter-holder-stars-stripes.jpg', 'alt' => 'Rectangle Cutter Holder - Stars & Stripes red, white, and blue print'],
+        ];
+        $rectangleStarsStripesGalleryJson = htmlspecialchars(json_encode($rectangleStarsStripesGallery), ENT_QUOTES, 'UTF-8');
+        ?>
         <div class="merch-card">
           <div class="merch-video-wrapper">
             <video class="merch-video" controls playsinline preload="metadata" poster="images/rectangle-cutter-poster.jpg">
@@ -85,6 +98,7 @@
           <h2>Rectangle Cutter Holder</h2>
           <p class="merch-desc"><?= merch_load_string('items/rectangle-cutter-holder') ?></p>
           <p class="merch-price"><?= merch_price_display('Rectangle Cutter Holder') ?></p>
+          <button type="button" class="merch-color-sample-link" data-gallery="<?= $rectangleStarsStripesGalleryJson ?>">Stars &amp; Stripes example (+$7) &rarr;</button>
           <button type="button" class="btn full-width merch-request-btn" data-item="Rectangle Cutter Holder">Request This Item</button>
         </div>
 
@@ -102,6 +116,10 @@
             ['src' => 'images/tape-gun-holder-3.jpg', 'alt' => 'Tape Gun Holder - tape gun resting in the stand from above'],
             ['src' => 'images/tape-gun-holder-4.jpg', 'alt' => 'Tape Gun Holder - side view with tape gun and cap'],
             ['src' => 'images/tape-gun-holder-5.jpg', 'alt' => 'Tape Gun Holder - empty stand showing the cap slot detail'],
+            // Stars & Stripes color sample (Steve, 2026-08-20) - own file,
+            // just appended to this item's existing gallery array, same
+            // as every other photo above.
+            ['src' => 'images/tape-gun-holder-stars-stripes.jpg', 'alt' => 'Tape Gun Holder - Stars & Stripes red, white, and blue print'],
         ];
         $tapeGunGalleryJson = htmlspecialchars(json_encode($tapeGunGallery), ENT_QUOTES, 'UTF-8');
         ?>
@@ -113,6 +131,12 @@
           <button type="button" class="btn full-width merch-request-btn" data-item="Tape Gun Holder">Request This Item</button>
         </div>
 
+        <?php
+        $circleStarsStripesGallery = [
+            ['src' => 'images/circle-cutter-holder-stars-stripes.jpg', 'alt' => 'Circle Cutter Holder - Stars & Stripes red, white, and blue print'],
+        ];
+        $circleStarsStripesGalleryJson = htmlspecialchars(json_encode($circleStarsStripesGallery), ENT_QUOTES, 'UTF-8');
+        ?>
         <div class="merch-card">
           <div class="merch-video-wrapper">
             <video class="merch-video" controls playsinline preload="metadata" poster="images/circle-cutter-poster.jpg">
@@ -124,11 +148,27 @@
           <h2>Circle Cutter Holder</h2>
           <p class="merch-desc"><?= merch_load_string('items/circle-cutter-holder') ?></p>
           <p class="merch-price"><?= merch_price_display('Circle Cutter Holder') ?></p>
+          <button type="button" class="merch-color-sample-link" data-gallery="<?= $circleStarsStripesGalleryJson ?>">Stars &amp; Stripes example (+$7) &rarr;</button>
           <button type="button" class="btn full-width merch-request-btn" data-item="Circle Cutter Holder">Request This Item</button>
         </div>
 
+        <?php
+        // Was a single fixed photo until 2026-08-20 - now a 2-photo
+        // gallery (same mechanism as $tapeGunGallery/$circleStarsStripes
+        // Gallery above) so the Stars & Stripes sample can be browsed to
+        // from the same main photo instead of a separate small thumbnail
+        // like the video-based cards get. The displayed card image stays
+        // the original photo; startIndex 0 in the click handler below
+        // means clicking it still opens on the original first, same as
+        // before this change.
+        $ovalGallery = [
+            ['src' => 'images/oval-cutter-holder.png', 'alt' => 'Oval Cutter Holder - organizer for Creative Memories oval cutting templates'],
+            ['src' => 'images/oval-cutter-holder-stars-stripes.jpg', 'alt' => 'Oval Cutter Holder - Stars & Stripes red, white, and blue print'],
+        ];
+        $ovalGalleryJson = htmlspecialchars(json_encode($ovalGallery), ENT_QUOTES, 'UTF-8');
+        ?>
         <div class="merch-card">
-          <img src="images/oval-cutter-holder.png" alt="Oval Cutter Holder - organizer for Creative Memories oval cutting templates" class="merch-photo" />
+          <img src="images/oval-cutter-holder.png" alt="Oval Cutter Holder - organizer for Creative Memories oval cutting templates" class="merch-photo" data-gallery="<?= $ovalGalleryJson ?>" />
           <h2>Oval Cutter Holder</h2>
           <p class="merch-desc"><?= merch_load_string('items/oval-cutter-holder') ?></p>
           <p class="merch-price"><?= merch_price_display('Oval Cutter Holder') ?></p>
@@ -455,6 +495,7 @@
                 <option value="#27 Brown">#27 &ndash; Brown</option>
               </optgroup>
               <option value="Rainbow (+$2)" id="color-option-rainbow" hidden>Rainbow (+$2)</option>
+              <option value="Stars &amp; Stripes (+$7)" id="color-option-stars-stripes" hidden>Stars &amp; Stripes (+$7)</option>
               <option value="Not applicable / no color choice">Not applicable</option>
           </select>
           </div>
@@ -579,6 +620,17 @@
       });
     });
 
+    // Text-link version of the same gallery trigger (2026-08-20, Stars &
+    // Stripes on the video-only cutter-holder cards) - same
+    // openPhotoGallery() call as above, just off a <button data-gallery>
+    // instead of an <img>, since there's no photo to show as the card's
+    // own thumbnail on those cards.
+    document.querySelectorAll('.merch-color-sample-link').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openPhotoGallery(JSON.parse(btn.dataset.gallery), 0);
+      });
+    });
+
     photoViewerPrev.addEventListener('click', showPrevPhoto);
     photoViewerNext.addEventListener('click', showNextPhoto);
     photoViewerClose.addEventListener('click', closePhotoViewer);
@@ -652,6 +704,9 @@
       }
       if (cfg.rainbowEligibleItems.includes(item) && color === 'Rainbow (+$2)') {
         unitPrice += cfg.rainbowSurcharge;
+      }
+      if (cfg.starsStripesEligibleItems.includes(item) && color === 'Stars & Stripes (+$7)') {
+        unitPrice += cfg.starsStripesSurcharge;
       }
 
       const subtotal = unitPrice * quantity;
@@ -766,11 +821,17 @@
 
       const rainbowOption = document.getElementById('color-option-rainbow');
       rainbowOption.hidden = !MERCH_PRICING.rainbowEligibleItems.includes(itemName);
+      const starsStripesOption = document.getElementById('color-option-stars-stripes');
+      starsStripesOption.hidden = !MERCH_PRICING.starsStripesEligibleItems.includes(itemName);
 
       if (!needsGildanColor) {
         merchColorGildan.value = '';
       }
-      if (!needsFilamentColor || (merchColorFilament.value === 'Rainbow (+$2)' && rainbowOption.hidden)) {
+      if (
+        !needsFilamentColor
+        || (merchColorFilament.value === 'Rainbow (+$2)' && rainbowOption.hidden)
+        || (merchColorFilament.value === 'Stars & Stripes (+$7)' && starsStripesOption.hidden)
+      ) {
         merchColorFilament.value = '';
       }
 

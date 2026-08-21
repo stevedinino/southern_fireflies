@@ -1,8 +1,24 @@
 <?php
-// Build: 2026-08-20-C
+// Build: 2026-08-20-D
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
+
+// 2026-08-20 (Steve): working an order means glancing back and forth
+// between these 8 fields, but they're spread across the CSV's 25
+// columns (Name is #2, Color is #7, Invoice Date/Pymt Date/Created/
+// Fulfilled are #20-23) - wide enough apart that they scroll off
+// opposite edges of the screen at once. This reorders the ADMIN
+// TABLE'S DISPLAY ONLY - it has no effect on merchandise.csv's own
+// column order (still MERCH_CSV_HEADER, pricing.php), which every
+// reader/writer keys by name, not position. Any header column not
+// listed here (a future hand-added one, say) just falls in after
+// these, in whatever order the CSV already has it - see $displayOrder
+// below - rather than silently vanishing from the table.
+const MERCH_ADMIN_COLUMN_ORDER = [
+    'OrderID', 'Name', 'Item', 'Quantity', 'Color',
+    'Invoice Date', 'Pymt Date', 'Created', 'Fulfilled',
+];
 
 // Simple password gate (same login as ourguests.php - one admin, two
 // lists). Shared implementation in admin_guard.php as of 2026-08-20
@@ -117,6 +133,20 @@ merch_admin_login_gate('Admin Login – Southern Fireflies Retreats', 'ourmerch.
       $colorIndex = array_search('Color', $header, true);
       $itemIndex = array_search('Item', $header, true);
 
+      // Table render order: MERCH_ADMIN_COLUMN_ORDER's columns first (in
+      // that order), then every other column the CSV actually has, in
+      // its existing order - so nothing defined above ever disappears,
+      // it just isn't front-and-center. $columnIndexByName lets both
+      // render loops below look up "which position is this column at in
+      // $data" by name instead of assuming display order matches file
+      // order (Finding 1, 2026-08-19 code review, is exactly why this
+      // codebase keys CSV columns by name rather than position).
+      $displayOrder = array_values(array_unique(array_merge(
+          array_intersect(MERCH_ADMIN_COLUMN_ORDER, $header),
+          $header
+      )));
+      $columnIndexByName = array_flip($header);
+
       // ---- Pre-scan: group rows into "shipments" the same way
       // shippo_export.php and packing_slips.php already do - normalized
       // Name + Zip, NOT Invoice Date. (shippo_export.php tried Invoice
@@ -163,7 +193,7 @@ merch_admin_login_gate('Admin Login – Southern Fireflies Retreats', 'ourmerch.
           echo '</div>';
           echo '<div class="merch-table-pane"><table style="width:100%; border-collapse: collapse;">';
           echo '<tr>';
-          foreach ($header as $col) {
+          foreach ($displayOrder as $col) {
               echo '<th style="padding:6px; text-align:left; white-space:nowrap;">' . htmlspecialchars($col) . '</th>';
           }
           echo '</tr>';
@@ -189,8 +219,13 @@ merch_admin_login_gate('Admin Login – Southern Fireflies Retreats', 'ourmerch.
                   : '';
               $rowShipmentReady = $shipmentAllCreated[$rowShipmentKey] ?? true;
               echo '<tr data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '">';
-              foreach ($data as $i => $cell) {
-                  if ($i === $createdIndex || $i === $fulfilledIndex || $i === $pymtDateIndex) {
+              foreach ($displayOrder as $col) {
+                  $i = $columnIndexByName[$col] ?? null;
+                  if ($i === null) {
+                      continue; // $displayOrder is derived from $header, so this shouldn't happen - skip rather than warn on a missing index
+                  }
+                  $cell = $data[$i] ?? '';
+                  if ($col === 'Created' || $col === 'Fulfilled' || $col === 'Pymt Date') {
                       // All three are the same pattern now: one column,
                       // checkbox toggles it, blank-or-date is the whole
                       // status. Fulfilled and Pymt Date also cascade
@@ -198,7 +233,7 @@ merch_admin_login_gate('Admin Login – Southern Fireflies Retreats', 'ourmerch.
                       // merch_update.php) - the shared JS handler below
                       // updates whichever second cell that touches,
                       // found via matching data-order-id + data-field.
-                      $fieldName = ($i === $createdIndex) ? 'Created' : (($i === $fulfilledIndex) ? 'Fulfilled' : 'Pymt Date');
+                      $fieldName = $col;
                       $isChecked = trim($cell) !== '';
                       // Accept ANY format PHP can parse as a real date,
                       // not just strict YYYY-MM-DD - some early rows
@@ -223,7 +258,7 @@ merch_admin_login_gate('Admin Login – Southern Fireflies Retreats', 'ourmerch.
                       echo '<input type="checkbox" class="merch-status-toggle" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="' . htmlspecialchars($fieldName, ENT_QUOTES) . '" aria-label="' . htmlspecialchars($fieldName . ' - order ' . $orderId, ENT_QUOTES) . '" ' . ($isChecked ? 'checked' : '') . ' />';
                       echo '<br /><span class="merch-status-date" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="' . htmlspecialchars($fieldName, ENT_QUOTES) . '" style="font-size:0.8em; color:#888;">' . htmlspecialchars($displayValue) . '</span>';
                       echo '</td>';
-                  } elseif ($i === $invoiceDateIndex) {
+                  } elseif ($col === 'Invoice Date') {
                       // Not a checkbox - clicking this sends a real
                       // email (and may stamp several OTHER rows too, if
                       // this customer has other un-invoiced orders), so
@@ -241,7 +276,7 @@ merch_admin_login_gate('Admin Login – Southern Fireflies Retreats', 'ourmerch.
                       }
                       echo '</span>';
                       echo '</td>';
-                  } elseif ($i === $colorIndex) {
+                  } elseif ($col === 'Color') {
                       // 2026-08-18: editable color, for customers who
                       // change their mind after ordering. Click the
                       // displayed value to reveal a <select> populated
