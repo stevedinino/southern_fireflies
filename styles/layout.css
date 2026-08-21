@@ -800,6 +800,33 @@ body.lightbox-open {
   border-radius: 6px;
 }
 
+/* Text-link trigger for a secondary "example in another color" photo on
+   a card that doesn't otherwise have a photo gallery (2026-08-20, Stars
+   & Stripes on the two video-only cutter-holder cards). Deliberately
+   plain text rather than a thumbnail image - Steve, 2026-08-20: this is
+   a temporary fix until the next pass standardizes photo/video viewing
+   across all merch cards, so it isn't worth a second visual treatment
+   here. Opens the same shared lightbox as every other product photo
+   (openPhotoGallery(), see the script below) via its data-gallery
+   attribute - just triggered by a button instead of an <img>. */
+.merch-color-sample-link {
+  display: inline-block;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 2px 0 12px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--accent);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.merch-color-sample-link:hover {
+  text-decoration-style: solid;
+}
+
 .merch-card h2 {
   margin: 0 0 6px;
   font-size: 1.15rem;
