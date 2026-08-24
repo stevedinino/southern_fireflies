@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-20-A
+// Build: 2026-08-21-A
 // ============================================================
 // Shared customer-notification logic for merch orders. Used by BOTH:
 //   - merch_order.php  (automatic, one order, right at submission)
@@ -161,6 +161,19 @@ function merch_send_invoice(array $pricing, string $name, string $email, bool $i
         $lineItemsText .= '- ' . $line['item'] . $qtyLabel . ': ' . $money($line['lineSubtotal']) . "\n";
     }
 
+    // Bundle discount line (2026-08-21, Tape Gun Add-On launch) - shown
+    // as its own line between the items and the tax, so the customer
+    // can reconcile every number: item prices add up, then the discount
+    // comes off, then tax is 7% of what's actually owed (see
+    // merch_group_calculate()). Empty strings when no bundle applies,
+    // so the templates render exactly as before.
+    $discountLineHtml = '';
+    $discountLineText = '';
+    if (!empty($pricing['bundleDiscount'])) {
+        $discountLineHtml = '<li>Bundle discount: &minus;' . $money($pricing['bundleDiscount']) . '</li>';
+        $discountLineText = '- Bundle discount: -' . $money($pricing['bundleDiscount']) . "\n";
+    }
+
     $venmoHandle = $isPrinted ? VENMO_HANDLE_PRINTED : VENMO_HANDLE_MERCH;
     $paypalEmail = $isPrinted ? PAYPAL_EMAIL_PRINTED : PAYPAL_EMAIL_MERCH;
 
@@ -210,6 +223,7 @@ function merch_send_invoice(array $pricing, string $name, string $email, bool $i
         $mail->Body = merch_load_string('emails/invoice-body.html', [
             'name' => $safeName,
             'lineItemsHtml' => $lineItemsHtml,
+            'discountLineHtml' => $discountLineHtml,
             'tax' => $money($pricing['tax']),
             'shippingLineHtml' => $shippingLineHtml,
             'total' => $money($pricing['total']),
@@ -222,6 +236,7 @@ function merch_send_invoice(array $pricing, string $name, string $email, bool $i
         $mail->AltBody = merch_load_string('emails/invoice-body.text', [
             'name' => $name,
             'lineItemsText' => $lineItemsText,
+            'discountLineText' => $discountLineText,
             'tax' => $money($pricing['tax']),
             'shippingLineText' => $shippingLineText,
             'total' => $money($pricing['total']),

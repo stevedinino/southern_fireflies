@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-20-B
+// Build: 2026-08-23-A
 // Admin-only page: a single working checklist for packing a batch of
 // mailers, opened alongside the Shippo export (same click, from
 // ourmerch.php's footer link - see the onclick there).
@@ -13,12 +13,12 @@
 //
 // Deliberately reuses the EXACT SAME eligibility filter and the EXACT
 // SAME customer-grouping logic as shippo_export.php (Pymt Date set +
-// Fulfillment = Ship + Fulfilled blank; grouped by normalized Name +
-// Zip), including the same "lowest OrderID in the group" Order Number,
-// so this checklist and the Shippo CSV always describe the identical
-// batch of shipments and can be cross-referenced by Order #. If
-// shippo_export.php's filter or grouping rule ever changes, mirror the
-// change here too.
+// Fulfillment = Ship + Fulfilled blank + not Cancelled; grouped by
+// normalized Name + Zip), including the same "lowest OrderID in the
+// group" Order Number, so this checklist and the Shippo CSV always
+// describe the identical batch of shipments and can be cross-referenced
+// by Order #. If shippo_export.php's filter or grouping rule ever
+// changes, mirror the change here too.
 //
 // 2026-08-15: added shippo_export.php's new whole-shipment Created gate
 // here too, per that same instruction - a shipment only appears once
@@ -34,6 +34,11 @@
 // actually still outstanding on it. This section is Shippo-export-only:
 // there's nothing to export for an incomplete shipment, so it only
 // exists here, not in shippo_export.php.
+//
+// 2026-08-23: a cancelled row is now excluded from the eligibility
+// filter below, same as shippo_export.php - it should never show up on
+// a packing checklist (ready OR in-progress), however it got into a
+// Paid+Ship+not-yet-Fulfilled state.
 //
 // Renders as a normal page (not a forced download) so it can sit open in
 // a tab while packing, and prints on request (Cmd/Ctrl+P) without forcing
@@ -56,7 +61,7 @@ $rows = $loaded['rows'];
 $col = merch_csv_column_map($loaded['header'], [
     'OrderID', 'Item', 'Quantity', 'Name', 'Fulfillment', 'Address', 'City',
     'State', 'Zip', 'Email', 'Phone', 'Color', 'Timestamp', 'Price', 'Fulfilled',
-    'Invoice Date', 'Pymt Date', 'Created',
+    'Invoice Date', 'Pymt Date', 'Created', 'Cancelled',
 ], ['OrderID', 'Pymt Date', 'Fulfillment', 'Fulfilled', 'Created'], 'merchandise.csv');
 
 // ---- Same safety filter as shippo_export.php ----
@@ -65,8 +70,12 @@ foreach ($rows as $row) {
     $paid = $col['Pymt Date'] !== false ? trim($row[$col['Pymt Date']] ?? '') : '';
     $fulfillment = trim($row[$col['Fulfillment']] ?? '');
     $fulfilled = trim($row[$col['Fulfilled']] ?? '');
+    // Cancelled is optional (Steve may not have added the column to the
+    // live CSV yet) - missing entirely means "nothing's cancelled,"
+    // same convention as every other optional lookup here.
+    $cancelled = $col['Cancelled'] !== false && trim($row[$col['Cancelled']] ?? '') !== '';
 
-    if ($paid !== '' && $fulfillment === 'Ship' && $fulfilled === '') {
+    if ($paid !== '' && $fulfillment === 'Ship' && $fulfilled === '' && !$cancelled) {
         $eligible[] = $row;
     }
 }

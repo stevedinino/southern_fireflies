@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-20-B
+// Build: 2026-08-23-A
 // Admin-triggered: given ONE OrderID (the row the button was clicked
 // on), finds every OTHER not-yet-invoiced order from the same email
 // address that pays to the same account (printed vs. shop items) and
@@ -29,6 +29,14 @@
 // read+compute (locked), send email (NOT locked), stamp result
 // (locked again, briefly, by OrderID rather than array index in case
 // the file changed in between).
+//
+// 2026-08-23: a Cancelled row is now excluded from the grouping sweep
+// below (Steve: "remove just this one line" and "cancel my order" both
+// go through the same Cancelled column now - see merch_update.php and
+// ourmerch.php) and can't be used as the anchor row either. Without
+// this, a customer's cancelled-but-not-yet-invoiced line would still
+// get silently swept into a combined invoice for their OTHER items,
+// which is exactly the bug this whole feature exists to prevent.
 
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 header('Content-Type: application/json');
@@ -172,7 +180,7 @@ if (isset($header[0])) {
 }
 
 $col = [];
-foreach (['OrderID', 'Item', 'Quantity', 'Name', 'Fulfillment', 'Email', 'Color', 'Size', 'Sleeve', 'Invoice Date'] as $name) {
+foreach (['OrderID', 'Item', 'Quantity', 'Name', 'Fulfillment', 'Email', 'Color', 'Size', 'Sleeve', 'Invoice Date', 'Cancelled'] as $name) {
     $col[$name] = array_search($name, $header, true);
 }
 if ($col['OrderID'] === false || $col['Invoice Date'] === false) {
@@ -180,6 +188,9 @@ if ($col['OrderID'] === false || $col['Invoice Date'] === false) {
     echo json_encode(['ok' => false, 'error' => 'Expected column not found - has the CSV header changed? (Does it have an Invoice Date column?)']);
     exit;
 }
+// Cancelled is allowed to be missing entirely (Steve hasn't added the
+// column to the live CSV yet) - same "nothing is cancelled" default as
+// everywhere else this is checked, not a fail condition here.
 
 // Find the row the button was clicked on.
 $anchor = null;
@@ -198,6 +209,15 @@ if ($anchor === null) {
 if (trim($anchor[$col['Invoice Date']] ?? '') !== '') {
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => 'This order was already invoiced.']);
+    exit;
+}
+// 2026-08-23: a cancelled row should never anchor a real invoice send -
+// ourmerch.php already hides its Send Invoice button (see the Invoice
+// Date branch there), but a stale/reloaded page or a direct POST
+// shouldn't be able to bypass that.
+if ($col['Cancelled'] !== false && trim($anchor[$col['Cancelled']] ?? '') !== '') {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'This order was cancelled.']);
     exit;
 }
 
@@ -224,9 +244,10 @@ $groupByName = ($anchorEmail === '');
 
 // Gather every not-yet-invoiced row matching: same identity (email,
 // or name as a fallback for legacy blank-email rows - see above), same
-// fulfillment method, same payment-account type. Track by OrderID
-// (not array index) since the file could change between phase 1 and
-// phase 3 now that the lock isn't held continuously.
+// fulfillment method, same payment-account type, and NOT cancelled
+// (2026-08-23). Track by OrderID (not array index) since the file
+// could change between phase 1 and phase 3 now that the lock isn't
+// held continuously.
 $groupOrderIds = [];
 $items = [];
 foreach ($rows as $i => $row) {
@@ -236,6 +257,7 @@ foreach ($rows as $i => $row) {
     $fulfillment = trim($row[$col['Fulfillment']] ?? '');
     $item = trim($row[$col['Item']] ?? '');
     $invoiced = trim($row[$col['Invoice Date']] ?? '');
+    $cancelled = $col['Cancelled'] !== false && trim($row[$col['Cancelled']] ?? '') !== '';
 
     $identityMatches = $groupByName
         ? ($name !== '' && $name === $anchorName)
@@ -244,7 +266,8 @@ foreach ($rows as $i => $row) {
     if ($identityMatches
         && $fulfillment === $anchorFulfillment
         && merch_is_printed_item($item) === $anchorIsPrinted
-        && $invoiced === '') {
+        && $invoiced === ''
+        && !$cancelled) {
         $groupOrderIds[] = $row[$col['OrderID']];
         $items[] = [
             'item' => $item,
@@ -274,7 +297,10 @@ if ($pricing === null) {
 if ($manualShipping !== null) {
     $pricing['shipping'] = $manualShipping;
     $pricing['shippingNote'] = '';
-    $pricing['total'] = $pricing['subtotal'] + $pricing['tax'] + $pricing['shipping'];
+    // bundleDiscount (2026-08-21) is part of the total the same way it
+    // is inside merch_group_calculate() - subtotal stays the plain sum
+    // of the lines, so it must come off here too.
+    $pricing['total'] = $pricing['subtotal'] - $pricing['bundleDiscount'] + $pricing['tax'] + $pricing['shipping'];
 }
 
 $name = trim($anchor[$col['Name']] ?? '');
@@ -314,6 +340,12 @@ if (!$isShipping) {
         'orderIds' => implode(', ', $groupOrderIds),
         'lineItemsText' => rtrim($lineItemsText),
         'subtotal' => $money($pricing['subtotal']),
+        // Own line incl. trailing newline when a bundle applies, empty
+        // otherwise - same convention as the invoice email's
+        // discount/shipping line tokens (merch_notify.php).
+        'discountLineText' => !empty($pricing['bundleDiscount'])
+            ? 'Bundle discount: -' . $money($pricing['bundleDiscount']) . "\n"
+            : '',
         'tax' => $money($pricing['tax']),
         'total' => $money($pricing['total']),
     ]);
@@ -379,6 +411,7 @@ if ($pricing['shipping'] === null && $isShipping) {
         'customerName' => $name,
         'customerEmail' => $email,
         'subtotal' => $pricing['subtotal'],
+        'bundleDiscount' => $pricing['bundleDiscount'],
         'tax' => $pricing['tax'],
     ]);
     exit;

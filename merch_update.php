@@ -23,10 +23,6 @@
 // being checked matches that. Unchecking a field only clears its own
 // column - it never un-invoices or un-creates anything.
 //
-// Invoice Date itself is NOT editable from here - it's only ever set
-// by merch_invoice.php when an invoice email actually sends (which can
-// affect several rows at once, for a combined invoice).
-//
 // 2026-08-18: Color joined as a second kind of editable field, for
 // customers who change their mind after ordering. It doesn't fit the
 // checked/unchecked date pattern above - it takes a free-text VALUE
@@ -37,6 +33,32 @@
 // merch.php's request form itself would have offered) - never an
 // arbitrary string, even though this endpoint is already session-
 // gated. Color never cascades into another column.
+//
+// 2026-08-23: Cancelled joined as a third boolean field, same shape as
+// Created/Fulfilled/Pymt Date, no cascade, no gating either direction -
+// it can be set/cleared at any point in an order's life. This is now
+// the one mechanism for both "customer cancelled the whole order" and
+// "remove just this one line before invoicing" (Steve, 2026-08-23:
+// same net effect as a hard delete of the row, minus the risk of one -
+// nothing is destroyed, a mistaken check is just a click to undo). See
+// ourmerch.php for how a cancelled row is hidden from view, and
+// merch_invoice.php for how it's kept out of a future combined
+// invoice.
+//
+// 2026-08-23: Invoice Date is now a FOURTH kind of field - a one-way
+// "clear only" action, distinct from both the booleanFields and
+// valueFields shapes above. It still can't be freely toggled on/off
+// like Created/Fulfilled/Pymt Date (checking it here would fabricate
+// an "invoiced" date without anything having actually been sent - see
+// merch_invoice.php, the only legitimate place Invoice Date gets SET).
+// But it can now be CLEARED, for Steve's "jumped the gun and hit Send
+// Invoice before the customer's last item came in" case: clearing it
+// lets a later real Send Invoice click combine this row with the rest
+// of that customer's order instead of leaving it stranded with its own
+// premature date. Guarded on Pymt Date being blank - see
+// $clearOnlyFields below - since a row that's already been paid
+// against might not match whatever the corrected total turns out to
+// be, and that mismatch needs Steve's own judgment, not a button.
 
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php';
@@ -63,18 +85,35 @@ $booleanFields = [
     'Created' => null,
     'Fulfilled' => 'Created',
     'Pymt Date' => 'Invoice Date',
+    'Cancelled' => null,
 ];
 // Color is the only value-based (non-checkbox) field right now - kept
 // as its own small allowlist rather than folded into $booleanFields
 // above, since it doesn't have a $checked/cascade shape at all.
 $valueFields = ['Color'];
+// One-way "clear" fields: never settable from here (checked=1 is
+// refused below), only clearable (checked=0). Value is the name of a
+// guard column that must be BLANK for the clear to proceed.
+$clearOnlyFields = [
+    'Invoice Date' => 'Pymt Date',
+];
 
 $isBooleanField = array_key_exists($field, $booleanFields);
 $isValueField = in_array($field, $valueFields, true);
+$isClearOnlyField = array_key_exists($field, $clearOnlyFields);
 
-if ((!$isBooleanField && !$isValueField) || $orderId === '' || !ctype_digit($orderId)) {
+if ((!$isBooleanField && !$isValueField && !$isClearOnlyField) || $orderId === '' || !ctype_digit($orderId)) {
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => 'Invalid request.']);
+    exit;
+}
+// A clear-only field can only ever be unchecked from here - refuse a
+// checked=1 outright rather than silently fabricating a value (see the
+// file-level comment above for why Invoice Date can't just be set like
+// a normal checkbox).
+if ($isClearOnlyField && $checked) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'This field can only be cleared, not set, from here.']);
     exit;
 }
 $cascadeField = $isBooleanField ? $booleanFields[$field] : null;
@@ -123,8 +162,11 @@ $cascadeIndex = $cascadeField !== null ? array_search($cascadeField, $header, tr
 // Only needed for Color - that's the one field whose valid values
 // depend on ANOTHER column in the same row (what item was ordered).
 $itemIndex = $isValueField ? array_search('Item', $header, true) : null;
+// Only needed for a clear-only field - the column that must be blank
+// before the clear is allowed to proceed (see $clearOnlyFields above).
+$clearGuardIndex = $isClearOnlyField ? array_search($clearOnlyFields[$field], $header, true) : null;
 
-if ($fieldIndex === false || $orderIdIndex === false || ($cascadeField !== null && $cascadeIndex === false) || ($isValueField && $itemIndex === false)) {
+if ($fieldIndex === false || $orderIdIndex === false || ($cascadeField !== null && $cascadeIndex === false) || ($isValueField && $itemIndex === false) || ($isClearOnlyField && $clearGuardIndex === false)) {
     flock($handle, LOCK_UN);
     fclose($handle);
     http_response_code(500);
@@ -140,6 +182,13 @@ foreach ($rows as $i => &$row) {
         continue; // header
     }
     if (isset($row[$orderIdIndex]) && $row[$orderIdIndex] === $orderId) {
+        if ($isClearOnlyField && $clearGuardIndex !== null && trim($row[$clearGuardIndex] ?? '') !== '') {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => "Can't un-invoice - this order already shows a " . $clearOnlyFields[$field] . '. Sort out the payment by hand first.']);
+            exit;
+        }
         if ($isValueField) {
             // Color: only accept a value that's actually in the color
             // list THIS row's own item offers - e.g. a Circle Cutter
@@ -182,8 +231,9 @@ foreach ($rows as $i => &$row) {
                 $newValue = date('Y-m-d');
             }
         } else {
-            // Unchecking only clears this field's own column - never
-            // touches the cascade target.
+            // Unchecking (or clearing, for a clear-only field) only
+            // touches this field's own column - never the cascade
+            // target, never any other row.
             $newValue = '';
         }
         $row[$fieldIndex] = $newValue;
@@ -222,5 +272,5 @@ echo json_encode([
     'value' => $newValue,
     'cascadeField' => $cascadeField,
     'cascadeValue' => $cascadeValue,
-    'build' => '2026-08-20-A',
+    'build' => '2026-08-23-B',
 ]);

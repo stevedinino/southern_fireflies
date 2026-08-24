@@ -1,4 +1,4 @@
-<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; // Build: 2026-08-20-C ?>
+<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; // Build: 2026-08-21-B ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -75,152 +75,85 @@
       <div class="merch-grid">
 
         <?php
-        // Stars & Stripes color-sample photo (Steve, 2026-08-20) - one
-        // photo today, uploaded under this item's own filename rather
-        // than reused across the four eligible items' cards, specifically
-        // so a future individual photo (Steve: "I need to take more")
-        // only ever means replacing/growing THIS array, never touching
-        // shared code. Same data-gallery mechanism as $tapeGunGallery
-        // below - just starting from one entry instead of several.
-        $rectangleStarsStripesGallery = [
-            ['src' => 'images/rectangle-cutter-holder-stars-stripes.jpg', 'alt' => 'Rectangle Cutter Holder - Stars & Stripes red, white, and blue print'],
-        ];
-        $rectangleStarsStripesGalleryJson = htmlspecialchars(json_encode($rectangleStarsStripesGallery), ENT_QUOTES, 'UTF-8');
+        // ============================================================
+        // ONE renderer for every card (2026-08-21 redesign) - the cards
+        // are driven entirely by the /items/ folders via merch_catalog()
+        // (merch_items.php). Folder order = page order (the 10/20/.../99
+        // numeric prefixes); each folder's media files, in filename
+        // order, are the card's gallery, and the FIRST media entry is
+        // the card's face. Adding an item, a photo, or a video is a
+        // file drop, not a code change - see merch_items.php's header
+        // for the folder format.
+        //
+        // Every card follows the same pattern (this replaced five
+        // hand-copied variants - video-only, single photo, wide photo,
+        // multi-photo gallery, gallery-plus-text-link - task #11/#12,
+        // 2026-08-20):
+        //   - fixed-aspect media slot (uniform card heights: task #12).
+        //     A video plays inline right in the slot - the demo videos
+        //     are the sales pitch for the cutter holders, so they are
+        //     deliberately NOT demoted to a click-to-open poster.
+        //   - a "See all ..." gallery link whenever there's more than
+        //     one media file - opens the shared lightbox, which now
+        //     handles video slides too. This replaced the temporary
+        //     "Stars & Stripes example" text link (2026-08-20): the
+        //     sample photos are just gallery slides now.
+        //   - display-only folders (class "none" in item.txt, e.g.
+        //     More Coming Soon) render with no price and no Request
+        //     button; everything else gets both.
+        //
+        // The data-gallery JSON is built with json_encode()+
+        // htmlspecialchars() rather than typed out by hand, so a stray
+        // quote in a filename or caption can never break the attribute.
+        // ============================================================
+        foreach (merch_catalog() as $merchItem):
+            $itemName = $merchItem['name'];
+            $media = $merchItem['media'];
+            $first = $media[0] ?? null;
+            $orderable = $merchItem['attrs'] !== null;
+            $galleryJson = htmlspecialchars(json_encode($media), ENT_QUOTES, 'UTF-8');
+
+            $imageCount = 0;
+            $videoCount = 0;
+            foreach ($media as $m) {
+                if ($m['type'] === 'video') { $videoCount++; } else { $imageCount++; }
+            }
+            if ($videoCount > 0 && $imageCount > 0) {
+                $galleryLabel = 'See all photos &amp; video (' . count($media) . ')';
+            } elseif ($imageCount > 1) {
+                $galleryLabel = 'See all ' . $imageCount . ' photos';
+            } else {
+                // All-video folder (no photos yet) - generic label so it
+                // never reads "See all 0 photos".
+                $galleryLabel = 'See gallery (' . count($media) . ')';
+            }
         ?>
         <div class="merch-card">
-          <div class="merch-video-wrapper">
-            <video class="merch-video" controls playsinline preload="metadata" poster="images/rectangle-cutter-poster.jpg">
-              <source src="images/rectangle-cutter-demo.mp4" type="video/mp4" />
-              Your browser doesn't support embedded video.
-              <a href="images/rectangle-cutter-demo.mp4">Download the video</a> instead.
-            </video>
+          <div class="merch-media-slot">
+            <?php if ($first === null): ?>
+              <!-- No media in this item's folder (yet) - the empty slot
+                   keeps the card's shape so the grid stays uniform. -->
+            <?php elseif ($first['type'] === 'video'): ?>
+              <video class="merch-video" controls playsinline preload="metadata"<?= $first['poster'] !== null ? ' poster="' . htmlspecialchars($first['poster'], ENT_QUOTES, 'UTF-8') . '"' : '' ?>>
+                <source src="<?= htmlspecialchars($first['src'], ENT_QUOTES, 'UTF-8') ?>" type="video/mp4" />
+                Your browser doesn't support embedded video.
+                <a href="<?= htmlspecialchars($first['src'], ENT_QUOTES, 'UTF-8') ?>">Download the video</a> instead.
+              </video>
+            <?php else: ?>
+              <img src="<?= htmlspecialchars($first['src'], ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($first['alt'], ENT_QUOTES, 'UTF-8') ?>" class="merch-photo" data-gallery="<?= $galleryJson ?>" />
+            <?php endif; ?>
           </div>
-          <h2>Rectangle Cutter Holder</h2>
-          <p class="merch-desc"><?= merch_load_string('items/rectangle-cutter-holder') ?></p>
-          <p class="merch-price"><?= merch_price_display('Rectangle Cutter Holder') ?></p>
-          <button type="button" class="merch-color-sample-link" data-gallery="<?= $rectangleStarsStripesGalleryJson ?>">Stars &amp; Stripes example (+$7) &rarr;</button>
-          <button type="button" class="btn full-width merch-request-btn" data-item="Rectangle Cutter Holder">Request This Item</button>
+          <h2><?= htmlspecialchars($itemName, ENT_QUOTES, 'UTF-8') ?></h2>
+          <p class="merch-desc"><?= $merchItem['description'] ?></p>
+          <p class="merch-price"><?= $orderable ? merch_price_display($itemName) : '&nbsp;' ?></p>
+          <?php if (count($media) > 1): ?>
+            <button type="button" class="merch-gallery-link" data-gallery="<?= $galleryJson ?>"><?= $galleryLabel ?> &rarr;</button>
+          <?php endif; ?>
+          <?php if ($orderable): ?>
+            <button type="button" class="btn full-width merch-request-btn" data-item="<?= htmlspecialchars($itemName, ENT_QUOTES, 'UTF-8') ?>">Request This Item</button>
+          <?php endif; ?>
         </div>
-
-        <?php
-        // Tape Gun Holder has several product photos instead of one, so its
-        // card image opens as a scrollable gallery (see openPhotoGallery()
-        // in the script below) rather than a single fixed zoom image. The
-        // data-gallery attribute carries the full photo list as JSON, built
-        // here with json_encode()+htmlspecialchars() rather than typed out
-        // by hand in the HTML, so a stray quote in a filename or alt text
-        // can never break the attribute.
-        $tapeGunGallery = [
-            ['src' => 'images/tape-gun-holder-1.jpg', 'alt' => 'Tape Gun Holder - front view with tape gun in place'],
-            ['src' => 'images/tape-gun-holder-2.jpg', 'alt' => 'Tape Gun Holder - angled view showing the cap slot'],
-            ['src' => 'images/tape-gun-holder-3.jpg', 'alt' => 'Tape Gun Holder - tape gun resting in the stand from above'],
-            ['src' => 'images/tape-gun-holder-4.jpg', 'alt' => 'Tape Gun Holder - side view with tape gun and cap'],
-            ['src' => 'images/tape-gun-holder-5.jpg', 'alt' => 'Tape Gun Holder - empty stand showing the cap slot detail'],
-            // Stars & Stripes color sample (Steve, 2026-08-20) - own file,
-            // just appended to this item's existing gallery array, same
-            // as every other photo above.
-            ['src' => 'images/tape-gun-holder-stars-stripes.jpg', 'alt' => 'Tape Gun Holder - Stars & Stripes red, white, and blue print'],
-        ];
-        $tapeGunGalleryJson = htmlspecialchars(json_encode($tapeGunGallery), ENT_QUOTES, 'UTF-8');
-        ?>
-        <div class="merch-card">
-          <img src="images/tape-gun-holder-1.jpg" alt="Tape Gun Holder - canoe-shaped stand for a Creative Memories tape gun" class="merch-photo" data-gallery="<?= $tapeGunGalleryJson ?>" />
-          <h2>Tape Gun Holder</h2>
-          <p class="merch-desc"><?= merch_load_string('items/tape-gun-holder') ?></p>
-          <p class="merch-price"><?= merch_price_display('Tape Gun Holder') ?></p>
-          <button type="button" class="btn full-width merch-request-btn" data-item="Tape Gun Holder">Request This Item</button>
-        </div>
-
-        <?php
-        $circleStarsStripesGallery = [
-            ['src' => 'images/circle-cutter-holder-stars-stripes.jpg', 'alt' => 'Circle Cutter Holder - Stars & Stripes red, white, and blue print'],
-        ];
-        $circleStarsStripesGalleryJson = htmlspecialchars(json_encode($circleStarsStripesGallery), ENT_QUOTES, 'UTF-8');
-        ?>
-        <div class="merch-card">
-          <div class="merch-video-wrapper">
-            <video class="merch-video" controls playsinline preload="metadata" poster="images/circle-cutter-poster.jpg">
-              <source src="images/circle-cutter-demo.mp4" type="video/mp4" />
-              Your browser doesn't support embedded video.
-              <a href="images/circle-cutter-demo.mp4">Download the video</a> instead.
-            </video>
-          </div>
-          <h2>Circle Cutter Holder</h2>
-          <p class="merch-desc"><?= merch_load_string('items/circle-cutter-holder') ?></p>
-          <p class="merch-price"><?= merch_price_display('Circle Cutter Holder') ?></p>
-          <button type="button" class="merch-color-sample-link" data-gallery="<?= $circleStarsStripesGalleryJson ?>">Stars &amp; Stripes example (+$7) &rarr;</button>
-          <button type="button" class="btn full-width merch-request-btn" data-item="Circle Cutter Holder">Request This Item</button>
-        </div>
-
-        <?php
-        // Was a single fixed photo until 2026-08-20 - now a 2-photo
-        // gallery (same mechanism as $tapeGunGallery/$circleStarsStripes
-        // Gallery above) so the Stars & Stripes sample can be browsed to
-        // from the same main photo instead of a separate small thumbnail
-        // like the video-based cards get. The displayed card image stays
-        // the original photo; startIndex 0 in the click handler below
-        // means clicking it still opens on the original first, same as
-        // before this change.
-        $ovalGallery = [
-            ['src' => 'images/oval-cutter-holder.png', 'alt' => 'Oval Cutter Holder - organizer for Creative Memories oval cutting templates'],
-            ['src' => 'images/oval-cutter-holder-stars-stripes.jpg', 'alt' => 'Oval Cutter Holder - Stars & Stripes red, white, and blue print'],
-        ];
-        $ovalGalleryJson = htmlspecialchars(json_encode($ovalGallery), ENT_QUOTES, 'UTF-8');
-        ?>
-        <div class="merch-card">
-          <img src="images/oval-cutter-holder.png" alt="Oval Cutter Holder - organizer for Creative Memories oval cutting templates" class="merch-photo" data-gallery="<?= $ovalGalleryJson ?>" />
-          <h2>Oval Cutter Holder</h2>
-          <p class="merch-desc"><?= merch_load_string('items/oval-cutter-holder') ?></p>
-          <p class="merch-price"><?= merch_price_display('Oval Cutter Holder') ?></p>
-          <button type="button" class="btn full-width merch-request-btn" data-item="Oval Cutter Holder">Request This Item</button>
-        </div>
-
-        <div class="merch-card">
-          <img src="images/tool-holder.png" alt="Tool Holder Stand - organizer for scrapbooking tools, shown in pink and blue" class="merch-photo" />
-          <h2>Tool Holder Stand</h2>
-          <p class="merch-desc"><?= merch_load_string('items/tool-holder-stand') ?></p>
-          <p class="merch-price"><?= merch_price_display('Tool Holder Stand') ?></p>
-          <button type="button" class="btn full-width merch-request-btn" data-item="Tool Holder Stand">Request This Item</button>
-        </div>
-
-        <div class="merch-card">
-          <img src="images/logo-shirt.jpg" alt="Logo Shirt - short sleeve front, long sleeve front, and long sleeve back with Southern Fireflies logo" class="merch-photo merch-photo-wide" />
-          <h2>Logo Shirt</h2>
-          <p class="merch-desc"><?= merch_load_string('items/logo-shirt') ?></p>
-          <p class="merch-price"><?= merch_price_display('Logo Shirt') ?></p>
-          <button type="button" class="btn full-width merch-request-btn" data-item="Logo Shirt">Request This Item</button>
-        </div>
-
-        <div class="merch-card">
-          <img src="images/compass-shirt.jpg" alt="Finding Your Way Shirt - navy long sleeve with small front logo and compass design on back" class="merch-photo merch-photo-wide" />
-          <h2>Finding Your Way Shirt</h2>
-          <p class="merch-desc"><?= merch_load_string('items/finding-your-way-shirt') ?></p>
-          <p class="merch-price"><?= merch_price_display('Finding Your Way Shirt') ?></p>
-          <button type="button" class="btn full-width merch-request-btn" data-item="Finding Your Way Shirt">Request This Item</button>
-        </div>
-
-        <div class="merch-card">
-          <img src="images/mr-firefly-shirt.jpg" alt="Mr. Firefly Shirt - heather tan shirt with 3D Printed Gadgets workshop scene on the back and small front pocket logo" class="merch-photo merch-photo-wide" />
-          <h2>Mr. Firefly Shirt</h2>
-          <p class="merch-desc"><?= merch_load_string('items/mr-firefly-shirt') ?></p>
-          <p class="merch-price"><?= merch_price_display('Mr. Firefly Shirt') ?></p>
-          <button type="button" class="btn full-width merch-request-btn" data-item="Mr. Firefly Shirt">Request This Item</button>
-        </div>
-
-        <div class="merch-card">
-          <img src="images/hat.png" alt="Logo Hat - gray adjustable strap hat with Southern Fireflies logo" class="merch-photo" />
-          <h2>Logo Hat</h2>
-          <p class="merch-desc"><?= merch_load_string('items/logo-hat') ?></p>
-          <p class="merch-price"><?= merch_price_display('Logo Hat') ?></p>
-          <button type="button" class="btn full-width merch-request-btn" data-item="Logo Hat">Request This Item</button>
-        </div>
-
-        <div class="merch-card">
-          <img src="images/merch-placeholder.jpg" alt="More items still baking - photos coming soon" class="merch-photo" />
-          <h2>More Coming Soon</h2>
-          <p class="merch-desc"><?= merch_load_string('items/more-coming-soon') ?></p>
-          <p class="merch-price">&nbsp;</p>
-        </div>
+        <?php endforeach; ?>
 
       </div>
 
@@ -229,14 +162,23 @@
 
   <!-- Photo viewer - shared by the color chart and product photos, informational only, not tied to ordering.
        Prev/next/counter are hidden by default and only shown when opened as a
-       gallery (an image with a data-gallery attribute) - a plain single photo
-       or the color chart still opens exactly as before, no arrows shown. -->
+       gallery (an image or gallery link with a data-gallery attribute) - a
+       plain single photo or the color chart still opens exactly as before, no
+       arrows shown. 2026-08-21: a gallery slide can now be a video too
+       ({type: "video"} in the data-gallery JSON) - the viewer swaps the <img>
+       for the <video> below on those slides, pausing playback whenever the
+       slide changes or the viewer closes. The caption line under the counter
+       surfaces each slide's caption text (from the item folder's
+       captions.txt) visibly - e.g. the Stars & Stripes sample slides name
+       the option and its surcharge. -->
   <div id="photo-viewer-modal" class="lightbox" hidden>
     <button id="photo-viewer-close" class="lightbox-close" type="button" aria-label="Close photo viewer">&times;</button>
     <button id="photo-viewer-prev" class="lightbox-nav lightbox-nav-prev" type="button" aria-label="Previous photo" hidden>&#10094;</button>
     <img id="photo-viewer-image" src="" alt="" class="lightbox-image" />
+    <video id="photo-viewer-video" class="lightbox-image" controls playsinline preload="metadata" hidden></video>
     <button id="photo-viewer-next" class="lightbox-nav lightbox-nav-next" type="button" aria-label="Next photo" hidden>&#10095;</button>
     <div id="photo-viewer-counter" class="photo-viewer-counter" hidden></div>
+    <div id="photo-viewer-caption" class="photo-viewer-caption" hidden></div>
   </div>
 
   <!-- Request modal: captures full shipping info since most requests now ship rather than get picked up at a retreat -->
@@ -531,45 +473,77 @@
     // Photo viewer - shared by color chart button + every product photo (informational, no request tied to it)
     const photoViewerModal = document.getElementById('photo-viewer-modal');
     const photoViewerImage = document.getElementById('photo-viewer-image');
+    const photoViewerVideo = document.getElementById('photo-viewer-video');
     const photoViewerClose = document.getElementById('photo-viewer-close');
     const photoViewerPrev = document.getElementById('photo-viewer-prev');
     const photoViewerNext = document.getElementById('photo-viewer-next');
     const photoViewerCounter = document.getElementById('photo-viewer-counter');
+    const photoViewerCaption = document.getElementById('photo-viewer-caption');
     const gildanColorChartOpen = document.getElementById('gildan-color-chart-open');
     const filamentColorChartOpen = document.getElementById('filament-color-chart-open');
 
     // Gallery state - empty array means "single image, no nav arrows."
     // A single openPhotoViewer(src, alt) call (no gallery array) behaves
     // exactly as it always has; passing a gallery array is what turns on
-    // the prev/next/counter UI. Nothing about existing single-photo
-    // cards changes unless they're given a data-gallery attribute.
-    let galleryImages = [];
+    // the prev/next/counter UI. Since 2026-08-21 a slide can be a video
+    // ({type: 'video', src, poster, alt} - the shape merch_items.php
+    // emits into data-gallery) - the <img> and <video> swap places per
+    // slide, and whichever video was playing is paused the moment the
+    // slide changes or the viewer closes.
+    let gallerySlides = [];
     let galleryIndex = 0;
 
-    function renderGalleryImage() {
-      const src = galleryImages[galleryIndex];
-      photoViewerImage.src = src.src;
-      photoViewerImage.alt = src.alt || '';
-      photoViewerCounter.textContent = `${galleryIndex + 1} / ${galleryImages.length}`;
+    function stopViewerVideo() {
+      if (!photoViewerVideo.hidden) {
+        photoViewerVideo.pause();
+      }
+    }
+
+    function renderGallerySlide() {
+      const slide = gallerySlides[galleryIndex];
+      stopViewerVideo();
+      const isVideo = slide.type === 'video';
+      photoViewerImage.hidden = isVideo;
+      photoViewerVideo.hidden = !isVideo;
+      if (isVideo) {
+        photoViewerImage.src = '';
+        if (photoViewerVideo.src !== slide.src) {
+          photoViewerVideo.src = slide.src;
+        }
+        if (slide.poster) photoViewerVideo.poster = slide.poster;
+        photoViewerVideo.setAttribute('aria-label', slide.alt || '');
+      } else {
+        photoViewerVideo.removeAttribute('src');
+        photoViewerImage.src = slide.src;
+        photoViewerImage.alt = slide.alt || '';
+      }
+      photoViewerCounter.textContent = `${galleryIndex + 1} / ${gallerySlides.length}`;
+      photoViewerCaption.textContent = slide.alt || '';
+      photoViewerCaption.hidden = !slide.alt;
     }
 
     function openPhotoViewer(src, alt) {
-      galleryImages = [];
+      gallerySlides = [];
+      stopViewerVideo();
+      photoViewerVideo.hidden = true;
+      photoViewerVideo.removeAttribute('src');
+      photoViewerImage.hidden = false;
       photoViewerImage.src = src;
       photoViewerImage.alt = alt || '';
       photoViewerPrev.hidden = true;
       photoViewerNext.hidden = true;
       photoViewerCounter.hidden = true;
+      photoViewerCaption.hidden = true;
       photoViewerModal.hidden = false;
       document.body.classList.add('lightbox-open');
     }
 
-    // images: array of {src, alt}. startIndex: which one to open on.
-    function openPhotoGallery(images, startIndex) {
-      galleryImages = images;
+    // slides: array of {type?, src, poster?, alt}. startIndex: which one to open on.
+    function openPhotoGallery(slides, startIndex) {
+      gallerySlides = slides;
       galleryIndex = startIndex || 0;
-      renderGalleryImage();
-      const hasMultiple = galleryImages.length > 1;
+      renderGallerySlide();
+      const hasMultiple = gallerySlides.length > 1;
       photoViewerPrev.hidden = !hasMultiple;
       photoViewerNext.hidden = !hasMultiple;
       photoViewerCounter.hidden = !hasMultiple;
@@ -578,21 +552,26 @@
     }
 
     function showPrevPhoto() {
-      if (!galleryImages.length) return;
-      galleryIndex = (galleryIndex - 1 + galleryImages.length) % galleryImages.length;
-      renderGalleryImage();
+      if (!gallerySlides.length) return;
+      galleryIndex = (galleryIndex - 1 + gallerySlides.length) % gallerySlides.length;
+      renderGallerySlide();
     }
 
     function showNextPhoto() {
-      if (!galleryImages.length) return;
-      galleryIndex = (galleryIndex + 1) % galleryImages.length;
-      renderGalleryImage();
+      if (!gallerySlides.length) return;
+      galleryIndex = (galleryIndex + 1) % gallerySlides.length;
+      renderGallerySlide();
     }
 
     function closePhotoViewer() {
+      stopViewerVideo();
       photoViewerModal.hidden = true;
       photoViewerImage.src = '';
-      galleryImages = [];
+      photoViewerVideo.removeAttribute('src');
+      photoViewerVideo.hidden = true;
+      photoViewerImage.hidden = false;
+      photoViewerCaption.hidden = true;
+      gallerySlides = [];
       document.body.classList.remove('lightbox-open');
     }
 
@@ -605,27 +584,26 @@
     });
 
     // Every product photo on the page opens the zoom viewer when clicked.
-    // A photo with a data-gallery attribute (JSON array of {src, alt})
-    // opens as a scrollable gallery instead of a single fixed image -
-    // used for items with several product shots, like the Tape Gun Holder.
+    // A photo with a data-gallery attribute (JSON array of {type, src,
+    // poster, alt} - built by merch_items.php from the item's folder)
+    // opens as a scrollable gallery instead of a single fixed image.
     document.querySelectorAll('.merch-photo').forEach((img) => {
       img.classList.add('zoomable');
       img.addEventListener('click', () => {
         if (img.dataset.gallery) {
-          const images = JSON.parse(img.dataset.gallery);
-          openPhotoGallery(images, 0);
+          openPhotoGallery(JSON.parse(img.dataset.gallery), 0);
         } else {
           openPhotoViewer(img.src, img.alt);
         }
       });
     });
 
-    // Text-link version of the same gallery trigger (2026-08-20, Stars &
-    // Stripes on the video-only cutter-holder cards) - same
-    // openPhotoGallery() call as above, just off a <button data-gallery>
-    // instead of an <img>, since there's no photo to show as the card's
-    // own thumbnail on those cards.
-    document.querySelectorAll('.merch-color-sample-link').forEach((btn) => {
+    // "See all N photos" link under any card whose folder has more than
+    // one media file - same gallery, same JSON, just a text trigger.
+    // On video-first cards this is the ONLY gallery trigger, since the
+    // inline player owns clicks on the media slot itself. (Replaced the
+    // temporary per-card "Stars & Stripes example" links, 2026-08-21.)
+    document.querySelectorAll('.merch-gallery-link').forEach((btn) => {
       btn.addEventListener('click', () => {
         openPhotoGallery(JSON.parse(btn.dataset.gallery), 0);
       });
@@ -670,11 +648,14 @@
     // Items that come in a choice of colors - two different color lists,
     // since garment colors (Gildan) and 3D-print filament colors are
     // completely different palettes with their own charts. A given item is
-    // in exactly one of these two lists, never both.
-    const GILDAN_COLOR_ITEMS = ['Logo Shirt', 'Finding Your Way Shirt', 'Mr. Firefly Shirt', 'Logo Hat'];
-    const FILAMENT_COLOR_ITEMS = ['Tool Holder Stand', 'Circle Cutter Holder', 'Oval Cutter Holder', 'Rectangle Cutter Holder', 'Tape Gun Holder'];
+    // in exactly one of these two lists, never both. Since 2026-08-21
+    // these come out of MERCH_PRICING (derived from each item's class in
+    // pricing.php/merch_items.php) instead of being hand-mirrored here -
+    // the old keep-in-sync-with-pricing.php hazard is gone.
+    const GILDAN_COLOR_ITEMS = MERCH_PRICING.gildanColorItems;
+    const FILAMENT_COLOR_ITEMS = MERCH_PRICING.filamentColorItems;
     // Shirts need a size and a sleeve-length choice; nothing else does
-    const SIZE_AND_SLEEVE_ITEMS = ['Logo Shirt', 'Finding Your Way Shirt', 'Mr. Firefly Shirt'];
+    const SIZE_AND_SLEEVE_ITEMS = MERCH_PRICING.shirtItems;
 
     function updateShippingFieldsRequired() {
       const shipping = merchFulfillment.value === 'Ship';
@@ -720,28 +701,28 @@
           // rule below - mirrors merch_printed_shipping() in pricing.php.
           // A single order line only ever has ONE item type, so this
           // only ever has to look at whichever count is non-zero.
-          const isToolStand = item === cfg.toolStandItem;
-          const toolStandQty = isToolStand ? quantity : 0;
+          const boxBaseQty = cfg.boxBaseItems.includes(item) ? quantity : 0;
           const mailerTierQty = cfg.mailerTierItems.includes(item) ? quantity : 0;
-          const tapeGunQty = item === cfg.tapeGunItem ? quantity : 0;
+          const cap = cfg.shipmentQtyCaps[item];
 
-          if (tapeGunQty > cfg.tapeGunMaxQty) {
-            // Bulky-item rule checked first, same as server-side -
-            // more than one Tape Gun Holder always needs hand-packing.
-            shippingNote = cfg.shippingNotes.multipleTapeGuns;
-          } else if (toolStandQty >= 2) {
-            shippingNote = cfg.shippingNotes.multipleToolStands;
-          } else if (toolStandQty === 1) {
-            if (mailerTierQty <= cfg.circleOvalWithToolStandMax) {
+          if (cap && quantity > cap.max) {
+            // Per-class bulky-item cap checked first, same as
+            // server-side (merch_shipment_cap_note()) - more than one
+            // Tape Gun Holder or Tool Stand always needs hand-packing.
+            // (A box-base item over its cap lands here too, so the
+            // boxBaseQty === 1 branch below never sees 2+.)
+            shippingNote = cap.note;
+          } else if (boxBaseQty === 1) {
+            if (mailerTierQty <= cfg.mailerTierWithBoxBaseMax) {
               shipping = cfg.printedShipRateBox;
-            } else if (mailerTierQty <= cfg.circleOvalWithToolStandExpandedMax) {
+            } else if (mailerTierQty <= cfg.mailerTierWithBoxBaseExpandedMax) {
               shipping = cfg.printedShipRateBoxExpanded;
             } else {
               shippingNote = cfg.shippingNotes.toolStandPlusExtra;
             }
-          } else if (mailerTierQty <= cfg.circleOvalMailerMax) {
+          } else if (mailerTierQty <= cfg.mailerTierMailerMax) {
             shipping = cfg.printedShipRateMailer;
-          } else if (mailerTierQty <= cfg.circleOvalAloneMax) {
+          } else if (mailerTierQty <= cfg.mailerTierAloneMax) {
             shipping = cfg.printedShipRateBox;
           } else {
             shippingNote = cfg.shippingNotes.tooManyCircleOvalAlone;
@@ -787,6 +768,17 @@
         html += `<div class="merch-estimate-total">Estimated Total (excl. shipping): ${formatMoney(est.total)}</div>`;
       } else {
         html += `<div class="merch-estimate-total">Estimated Total: ${formatMoney(est.total)}</div>`;
+      }
+      // Bundle nudge (2026-08-21): if this item is part of a
+      // MERCH_BUNDLES pair, advertise the buy-both discount. The
+      // discount itself is applied server-side when the requests are
+      // combined at invoice time - this estimate is single-item by
+      // design, so it never shows the discounted math directly. Text
+      // comes pre-resolved from strings/pages/merch-bundle-nudge.txt
+      // via merch_pricing_for_js().
+      const bundleNudge = MERCH_PRICING.bundleNudges[item];
+      if (bundleNudge) {
+        html += `<div class="merch-estimate-note merch-bundle-nudge" style="margin-top:6px;"><strong>${bundleNudge}</strong></div>`;
       }
       html += `<div class="merch-estimate-note" style="margin-top:6px;">Estimated total for this item only &mdash; if you're planning more than one request, we'll combine everything into a single total and shipping cost when we follow up.</div>`;
       merchEstimate.innerHTML = html;

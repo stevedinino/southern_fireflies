@@ -1,17 +1,21 @@
 <?php
-// Build: 2026-08-10-A
+// Build: 2026-08-21-A
 // ============================================================
 // Loads customer-facing text from /strings/*.txt files instead of
 // having it embedded in PHP. Scope is deliberately narrow (per Steve,
-// 2026-08-01): CUSTOMER-FACING copy only - page text, item
-// descriptions, customer emails, customer-visible error messages.
+// 2026-08-01): CUSTOMER-FACING copy only - page text, customer
+// emails, customer-visible error messages. (Item DESCRIPTIONS moved
+// out 2026-08-21: they live in each item's own folder as
+// /items/<folder>/description.txt now, read by merch_items.php, so
+// dropping in an item folder brings its text along with it. The old
+// strings/items/*.txt files are gone.)
 // Admin dashboard text (ourmerch.php, JSON error strings, the
 // internal manual-quote alert email) stays hardcoded on purpose -
 // Steve's the only one who ever sees it, so there's no real payoff to
 // externalizing it, and it would just be more files to maintain.
 //
 // Usage:
-//   echo merch_load_string('items/tool-holder-stand');
+//   echo merch_load_string('pages/merch-intro');
 //   echo merch_load_string('emails/submission-ack.html', ['name' => $name, 'itemLabel' => $item]);
 //   echo merch_load_string('shipping/pickup-invoice-template.md', [...]); // explicit extension
 //

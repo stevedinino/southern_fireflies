@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-20-C
+// Build: 2026-08-23-A
 require __DIR__ . '/config.php';
 require __DIR__ . '/pricing.php';
 require __DIR__ . '/merch_notify.php';
@@ -232,6 +232,7 @@ $values = [
     'Pymt Date' => '',    // set later from the admin page
     'Created' => '',      // set later from the admin page
     'Fulfilled' => '',    // set later from the admin page
+    'Cancelled' => '',    // set later from the admin page (2026-08-23)
     'Timestamp' => $timestamp,
     'IP' => $ip,
 ];

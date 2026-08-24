@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-20-B
+// Build: 2026-08-23-A
 // Admin-only download: reads merchandise.csv, filters to orders that
 // are actually SAFE to buy a label for, and writes out a CSV in
 // Shippo's bulk-import column format (per shippo_sample_csv_v3.csv).
@@ -15,6 +15,13 @@
 //                            Fulfilled checkbox you already check by
 //                            hand after a label ships - no new column
 //                            needed for that part.
+//   - Not Cancelled (2026-08-23) -> a cancelled row should never reach
+//                            a shipping label, however it got here -
+//                            Paid+Ship+not-yet-Fulfilled is rare for a
+//                            cancelled order, but not impossible (e.g.
+//                            cancelling after an accidental duplicate
+//                            payment). See ourmerch.php/merch_update.php
+//                            for where Cancelled itself is set.
 //   - Created for EVERY item in the shipment (2026-08-15, per Steve) ->
 //                            a shipment only ships once the whole box is
 //                            ready. One un-printed item now holds back
@@ -32,26 +39,31 @@
 // different days came out as two separate shipments even though both
 // were unshipped and going to the same address - fixed 2026-07-26.)
 //
-// Item Weight / dimensions: shipments with NO Tool Stand, at most one
-// Tape Gun Holder, and up to CIRCLE_OVAL_ALONE_MAX small items total
+// Item Weight / dimensions: shipments with NO box-base item (Tool
+// Stand), no bulky-item cap exceeded (at most one Tape Gun Holder),
+// and up to MAILER_TIER_ALONE_MAX small items total
 // now get real poly-mailer weight and dimensions filled in
 // automatically - computed from ITEM_WEIGHT_OZ (real per-item-type
-// weights, pricing.php) plus MAILER_TARE_OZ for packaging, not a
-// per-count guess table. Same tier boundaries as invoicing, so this
-// can't drift out of sync with what customers were actually charged
-// for shipping. Anything with a Tool Stand, or more than one Tape Gun
-// Holder, still ships in a scavenged one-off box or needs a hand-pack
-// look, so those rows are deliberately left blank for Steve to
-// weigh/measure by hand directly in Shippo.
+// weights, derived from the class definitions in pricing.php) plus
+// MAILER_TARE_OZ for packaging, not a per-count guess table. Same
+// tier boundaries as invoicing, so this can't drift out of sync with
+// what customers were actually charged for shipping. Anything with a
+// box-base item or an exceeded cap still ships in a scavenged one-off
+// box or needs a hand-pack look, so those rows are deliberately left
+// blank for Steve to weigh/measure by hand directly in Shippo.
 //
 // 2026-08-19: the per-row Item Weight column (previously always left
 // blank, since Order Weight above was the only total that mattered for
 // the automatic mailer tier) now also gets filled in per-unit from that
 // same ITEM_WEIGHT_OZ table, whenever a real number exists for that
-// item - blank for Tool Holder Stand and any shirt/hat, same as
-// before, since those don't have one. Per Steve: seeing each line
-// item's own weight in Shippo (not just the mailer-tier group total)
-// makes it easier to hand-group items into a box together.
+// item - including Tool Holder Stand (its weight was added to the
+// table for exactly this column; it still never feeds the mailer-tier
+// Order Weight math above), blank for any shirt/hat since those have
+// no per-unit weight on file. Per Steve: seeing each line item's own
+// weight in Shippo (not just the mailer-tier group total) makes it
+// easier to hand-group items into a box together. (Comment corrected
+// 2026-08-21 - it previously claimed Tool Stand stayed blank here,
+// which the code never did once its weight entered the table.)
 
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php';
@@ -69,14 +81,14 @@ $rows = $loaded['rows'];
 $col = merch_csv_column_map($loaded['header'], [
     'OrderID', 'Item', 'Quantity', 'Name', 'Fulfillment', 'Address', 'City',
     'State', 'Zip', 'Email', 'Phone', 'Color', 'Timestamp', 'Price', 'Fulfilled',
-    'Invoice Date', 'Pymt Date', 'Created',
+    'Invoice Date', 'Pymt Date', 'Created', 'Cancelled',
 ], ['OrderID', 'Pymt Date', 'Fulfillment', 'Fulfilled', 'Created'], 'merchandise.csv');
 
 // ---- Filter to rows that are actually safe to make a label for ----
 // This is just the raw per-row membership (paid, Ship, not yet
-// Fulfilled) - the Created check happens AFTER grouping below, because
-// it needs to be checked across the whole shipment, not one row at a
-// time.
+// Fulfilled, not Cancelled) - the Created check happens AFTER grouping
+// below, because it needs to be checked across the whole shipment, not
+// one row at a time.
 $eligible = [];
 foreach ($rows as $row) {
     // Pymt Date is the single source of truth for "actually paid" now
@@ -85,8 +97,13 @@ foreach ($rows as $row) {
     $paid = $col['Pymt Date'] !== false ? trim($row[$col['Pymt Date']] ?? '') : '';
     $fulfillment = trim($row[$col['Fulfillment']] ?? '');
     $fulfilled = trim($row[$col['Fulfilled']] ?? '');
+    // Cancelled is optional (Steve may not have added the column to the
+    // live CSV yet) - missing entirely means "nothing's cancelled,"
+    // same convention as every other optional lookup in this file
+    // (Price, below, follows the same $col['X'] !== false pattern).
+    $cancelled = $col['Cancelled'] !== false && trim($row[$col['Cancelled']] ?? '') !== '';
 
-    if ($paid !== '' && $fulfillment === 'Ship' && $fulfilled === '') {
+    if ($paid !== '' && $fulfillment === 'Ship' && $fulfilled === '' && !$cancelled) {
         $eligible[] = $row;
     }
 }
@@ -148,38 +165,37 @@ foreach ($groups as $groupRows) {
     $orderNumber = '#' . min($orderIds);
 
     $orderAmount = 0.0;
-    $toolStandQty = 0;
+    $boxBaseQty = 0;
     $mailerTierQty = 0;
-    $tapeGunQty = 0;
+    $qtyByItem = []; // per-item totals for the bulky-item caps (2026-08-21)
     $mailerWeightOz = 0;
     foreach ($groupRows as $r) {
         $orderAmount += (float)($col['Price'] !== false ? ($r[$col['Price']] ?? 0) : 0);
         $rowItem = trim($r[$col['Item']] ?? '');
         $rowQty = (int)($r[$col['Quantity']] ?? 1);
-        if ($rowItem === TOOL_STAND_ITEM) {
-            $toolStandQty += $rowQty;
+        if (in_array($rowItem, BOX_BASE_ITEMS, true)) {
+            $boxBaseQty += $rowQty;
         } elseif (in_array($rowItem, MAILER_TIER_ITEMS, true)) {
             $mailerTierQty += $rowQty;
             if (isset(ITEM_WEIGHT_OZ[$rowItem])) {
                 $mailerWeightOz += ITEM_WEIGHT_OZ[$rowItem] * $rowQty;
             }
-            if ($rowItem === TAPE_GUN_ITEM) {
-                $tapeGunQty += $rowQty;
-            }
         }
+        $qtyByItem[$rowItem] = ($qtyByItem[$rowItem] ?? 0) + $rowQty;
     }
 
     // Same tiers as invoicing (merch_printed_shipping() in pricing.php):
-    // a shipment with NO Tool Stand, at most one Tape Gun Holder (more
-    // needs hand-packing, same bulky-item rule as multiple Tool Stands),
-    // and up to CIRCLE_OVAL_ALONE_MAX small items total ships in one
-    // poly mailer with a real computed weight (real per-item-type
-    // weights as of 2026-08-10, not a per-count guess). Anything with a
-    // Tool Stand, more than one Tape Gun Holder, or more small items
-    // than a mailer holds, uses a scavenged one-off box or needs its
-    // own look - Steve weighs/measures those by hand directly in
-    // Shippo, so this export deliberately leaves those blank rather
-    // than guessing.
+    // a shipment with NO box-base item (Tool Stand), no bulky-item cap
+    // exceeded (merch_shipment_cap_note() - the same per-class
+    // max_qty_per_shipment rule invoicing uses, today meaning at most
+    // one Tape Gun Holder), and up to MAILER_TIER_ALONE_MAX small
+    // items total ships in one poly mailer with a real computed weight
+    // (real per-item-type weights as of 2026-08-10, not a per-count
+    // guess). Anything with a box-base item, an exceeded cap, or more
+    // small items than a mailer holds, uses a scavenged one-off box or
+    // needs its own look - Steve weighs/measures those by hand
+    // directly in Shippo, so this export deliberately leaves those
+    // blank rather than guessing.
     //
     // Package Height is filled in here too now (2026-08-15) - it used
     // to stay blank along with Width/Length whenever this whole block
@@ -194,8 +210,8 @@ foreach ($groups as $groupRows) {
     $packageWidth = '';
     $packageHeight = '';
     $packageLength = '';
-    if ($toolStandQty === 0 && $tapeGunQty <= TAPE_GUN_MAX_QTY
-        && $mailerTierQty >= 1 && $mailerTierQty <= CIRCLE_OVAL_ALONE_MAX) {
+    if ($boxBaseQty === 0 && merch_shipment_cap_note($qtyByItem) === null
+        && $mailerTierQty >= 1 && $mailerTierQty <= MAILER_TIER_ALONE_MAX) {
         $orderWeight = $mailerWeightOz + MAILER_TARE_OZ;
         $packageWidth = POLY_MAILER_WIDTH_IN;
         $packageHeight = POLY_MAILER_HEIGHT_IN;
@@ -225,7 +241,7 @@ foreach ($groups as $groupRows) {
         // file, so this stays blank rather than guessing, same principle
         // as Order Weight/Package dimensions above. Filling this in lets
         // Steve see each item's individual weight in Shippo when hand-
-        // grouping items into a box, not just the mailer-tier total.
+        // grouping items into a box together.
         $itemWeight = ITEM_WEIGHT_OZ[$item] ?? '';
 
         fputcsv($out, [
