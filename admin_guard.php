@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-20-A
+// Build: 2026-08-29-A
 // ============================================================
 // Shared "is this admin authenticated" plumbing for every admin-only
 // page/endpoint. Centralizing this after Finding 11 (2026-08-19 code
@@ -14,9 +14,16 @@
 //
 // Also folds in the session-hardening half of Finding 9 (same review):
 // the cookie flags below and session_regenerate_id() in
-// merch_admin_login_gate() didn't exist anywhere before. CSRF
-// protection and login throttling (the rest of Finding 9) are a
-// bigger, separate change - not done here yet.
+// merch_admin_login_gate() didn't exist anywhere before.
+//
+// 2026-08-29: the rest of Finding 9 is done now too - CSRF token
+// checking (csrf.php) and login throttling (login_throttle.php) are
+// both required below and wired into merch_admin_login_gate(). Kept as
+// their own small files rather than folded directly into this one,
+// same reasoning as id_sequence.php/csv_safety.php this same session:
+// each is a focused, independently-testable piece of plumbing, and
+// admin_guard.php stays the one file every admin page already requires
+// regardless of how many concerns live behind it.
 //
 // Every admin file should require this INSTEAD OF calling
 // session_start() itself - the cookie params below only take effect
@@ -24,6 +31,8 @@
 // ============================================================
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/csrf.php';
+require_once __DIR__ . '/login_throttle.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     // HttpOnly: JS can't read the session cookie (nothing here needs
@@ -99,7 +108,16 @@ function merch_admin_login_gate(string $pageTitle, string $selfUrl): void
 
     $loginError = '';
     if (!isset($_SESSION['sff_admin_ok'])) {
-        if (isset($_POST['admin_password'])) {
+        // 2026-08-29 (Finding 9): checked BEFORE looking at whether a
+        // password was even submitted, so an attempt made during an
+        // active lockout is rejected outright - it's never evaluated
+        // against ADMIN_PASSWORD at all, so it can't extend its own
+        // lockout or leak anything about whether it would've been right.
+        $lockoutRemaining = merch_login_throttle_seconds_remaining();
+        if ($lockoutRemaining > 0) {
+            $loginError = 'Too many incorrect attempts. Try again in '
+                . max(1, (int) ceil($lockoutRemaining / 60)) . ' minute(s).';
+        } elseif (isset($_POST['admin_password'])) {
             if (hash_equals(ADMIN_PASSWORD, $_POST['admin_password'])) {
                 $_SESSION['sff_admin_ok'] = true;
                 // Session fixation protection: rotate the session ID on
@@ -107,8 +125,17 @@ function merch_admin_login_gate(string $pageTitle, string $selfUrl): void
                 // too) so a pre-login session ID an attacker planted
                 // can't ride along into the authenticated session.
                 session_regenerate_id(true);
+                // A correct password clears any earlier failures for
+                // this IP, so a legitimate admin who fat-fingered it a
+                // couple of times isn't left one typo away from a
+                // lockout on their next visit.
+                merch_login_throttle_record_success();
             } else {
-                $loginError = 'Incorrect password.';
+                merch_login_throttle_record_failure();
+                $remainingNow = merch_login_throttle_seconds_remaining();
+                $loginError = $remainingNow > 0
+                    ? 'Too many incorrect attempts. Try again in ' . max(1, (int) ceil($remainingNow / 60)) . ' minute(s).'
+                    : 'Incorrect password.';
             }
         }
     }

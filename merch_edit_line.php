@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-23-A
+// Build: 2026-08-29-A
 // Edits a single not-yet-invoiced line's Item/Quantity/Color/Size/
 // Sleeve in place, called via fetch() from ourmerch.php's Item-column
 // "Edit" button.
@@ -43,6 +43,9 @@ require __DIR__ . '/merch_backup.php';
 header('Content-Type: application/json');
 
 merch_require_admin_json();
+// 2026-08-29 (Finding 9): ourmerch.php's Item-edit "Save" button
+// carries MERCH_CSRF_TOKEN now - see csrf.php.
+merch_require_csrf_json();
 
 $csvFile = __DIR__ . '/merchandise.csv';
 

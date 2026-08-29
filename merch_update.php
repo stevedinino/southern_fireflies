@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-20-B
+// Build: 2026-08-29-A
 // Marks a single order's status, called via fetch() from ourmerch.php's
 // checkboxes. Same admin session gate as the rest of the admin pages -
 // this is not a public endpoint.
@@ -70,6 +70,10 @@ header('Content-Type: application/json');
 // 11, 2026-08-19 code review) - was previously duplicated here and in
 // merch_invoice.php.
 merch_require_admin_json();
+// 2026-08-29 (Finding 9): ourmerch.php's/packing_slips.php's fetch()
+// calls to this endpoint all carry MERCH_CSRF_TOKEN now - see
+// csrf.php for why SameSite=Lax alone wasn't considered sufficient.
+merch_require_csrf_json();
 
 $csvFile = __DIR__ . '/merchandise.csv';
 
@@ -272,5 +276,5 @@ echo json_encode([
     'value' => $newValue,
     'cascadeField' => $cascadeField,
     'cascadeValue' => $cascadeValue,
-    'build' => '2026-08-23-B',
+    'build' => '2026-08-29-A',
 ]);

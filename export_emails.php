@@ -1,5 +1,8 @@
 <?php
-// Build: 2026-08-20-A
+// Build: 2026-08-29-A
+// 2026-08-29 (code review Finding 8): Email/Name below now go through
+// csv_safety.php's merch_csv_safe_cell() before fputcsv - see that
+// file's header comment for the CSV-formula-injection risk this closes.
 // Admin-only download: reads merchandise.csv AND archive/merchandise-
 // archive.csv, pulls Email + Name from every row in both files, and
 // writes out a deduped CSV ready to import into Brevo (or anywhere
@@ -23,6 +26,7 @@
 // same as every other admin tool here.
 
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
+require __DIR__ . '/csv_safety.php';
 
 // Shared implementation in admin_guard.php as of 2026-08-20 (Finding
 // 11, 2026-08-19 code review) - was previously duplicated across 8 files.
@@ -110,6 +114,6 @@ header('Content-Disposition: attachment; filename="customer_emails_' . date('Y-m
 $out = fopen('php://output', 'w');
 fputcsv($out, ['Email', 'Name']);
 foreach ($deduped as $row) {
-    fputcsv($out, [$row['email'], $row['name']]);
+    fputcsv($out, [merch_csv_safe_cell($row['email']), merch_csv_safe_cell($row['name'])]);
 }
 fclose($out);

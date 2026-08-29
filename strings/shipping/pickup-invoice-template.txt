@@ -11,7 +11,7 @@
 ---
 
 Subtotal: {{subtotal}}
-Tax (7%): {{tax}}
+{{discountLineText}}Tax (7%): {{tax}}
 **Total Due: {{total}}**
 
 ---

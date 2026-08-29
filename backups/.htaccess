@@ -1,0 +1,17 @@
+# Deny all direct web access to this entire directory. It only ever
+# holds timestamped full copies of merchandise.csv/registrations.csv
+# (see merch_update.php, merch_invoice.php), so it carries the exact
+# same sensitivity as those files - see the matching .csv block in the
+# site root's .htaccess (Finding 6, 2026-08-19 code review) for the
+# full explanation. This file is committed on purpose so the directory
+# is locked down from before merch_update.php's mkdir() ever creates
+# it live - that mkdir() call already skips creation when the
+# directory exists, so committing this ahead of time doesn't change
+# any runtime behavior.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

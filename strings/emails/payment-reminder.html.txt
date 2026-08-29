@@ -1,0 +1,10 @@
+<div style='font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif; color:#333; max-width:500px; margin:0 auto;'>
+  <p>Hi {{name}}!</p>
+  <p>This is just a reminder that you requested items from our merchandise page:</p>
+  <ul>
+    {{lineItemsHtml}}
+  </ul>
+  <p>I'd love to start working on those, but I can't until they're paid for. If you'd like a reminder of the total, just reply to this email and I'll send it right over.</p>
+  <p>Thanks so much!</p>
+  <p>Mr. Firefly (aka Steve)<br/>Southern Fireflies Retreats</p>
+</div>

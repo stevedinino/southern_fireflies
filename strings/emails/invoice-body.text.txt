@@ -4,7 +4,7 @@ The response to Mr. Firefly's merchandise has been overwhelming, and we're so gr
 
 A quick update since you placed your order: we've gotten our pricing squared away, so instead of leaving you guessing, here's exactly what you owe:
 
-{{lineItemsText}}- Tax (7%): {{tax}}
+{{lineItemsText}}{{discountLineText}}- Tax (7%): {{tax}}
 {{shippingLineText}}Total: {{total}}
 
 {{last4Text}}You can send that whenever it's convenient via Venmo (@{{venmoHandle}}) or PayPal ({{paypalEmail}}){{accountNote}}

@@ -3,6 +3,19 @@ merchandise_archive.csv
 registrations.csv
 config.php
 
+# Persistent ID-sequence counters (id_sequence.php, Finding 3 fix) -
+# live server state paired 1:1 with the data files above, not code.
+# Never committed for the same reason the CSVs above aren't: a deploy
+# overwriting the live counter with an old/absent one would be exactly
+# the ID-reuse bug this file exists to prevent.
+merchandise_orderid_counter.txt
+registrations_regid_counter.txt
+
+# Login-throttle state (login_throttle.php, Finding 9 fix) - live,
+# constantly-changing server state, not code. Never committed for the
+# same reason as the counters above.
+login_throttle.json
+
 # Timestamped backups of the customer-data CSVs above - same
 # sensitivity as the files they're copies of, so never committed.
 # The .htaccess is the one exception - it's what locks the directory

@@ -8,7 +8,9 @@
 // exact "read CSV -> build $col name->index map -> normalize name/zip
 // -> group into shipments -> gate on whole-shipment Created" pipeline
 // was copy-pasted near-identically across shippo_export.php and
-// packing_slips.php, including a byte-identical 18-name column list,
+// packing_slips.php, including a byte-identical column list (18 names
+// at the time; both callers' lists have grown since, most recently
+// with Cancelled on 2026-08-23, but still identical to each other),
 // with only a comment ("mirror it here") standing between the two ever
 // silently drifting apart - change the grouping rule in one and miss
 // the other, and the packing checklist quietly describes a different
@@ -20,6 +22,14 @@
 // doesn't (it just writes shipments in the order they were grouped),
 // and unifying that would be a real behavior change neither file asked
 // for. Everything in this file is else-equal between the two callers.
+//
+// 2026-08-29: merch_load_csv()/merch_csv_column_map() (only - not the
+// shipment-grouping functions below, which are specific to the
+// name+zip shipping concept) are now ALSO required by
+// merch_reminders.php/merch_send_reminders.php, purely as general-
+// purpose "read a CSV, map its header" utilities - unrelated to
+// shipments, but not worth a second copy of either function just to
+// avoid requiring a file with "shipments" in its name.
 // ============================================================
 
 /**

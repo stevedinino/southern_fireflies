@@ -1,9 +1,14 @@
 <?php
-// Build: 2026-08-23-A
+// Build: 2026-08-29-A
+// 2026-08-29 (code review Finding 3): OrderID assignment below now goes
+// through id_sequence.php's persistent counter instead of a bare
+// max(existing rows)+1 - see that file's header comment for why a
+// hand-deleted row could otherwise cause two orders to share an ID.
 require __DIR__ . '/config.php';
 require __DIR__ . '/pricing.php';
 require __DIR__ . '/merch_notify.php';
 require_once __DIR__ . '/strings.php';
+require_once __DIR__ . '/id_sequence.php';
 
 /**
  * Wraps an error string in the same page shell the success response
@@ -42,6 +47,7 @@ $item = isset($_POST['item']) ? trim($_POST['item']) : '';
 $quantityRaw = isset($_POST['quantity']) ? trim($_POST['quantity']) : '1';
 $name = isset($_POST['name']) ? trim($_POST['name']) : '';
 $fulfillment = isset($_POST['fulfillment']) ? trim($_POST['fulfillment']) : '';
+$retreat = isset($_POST['retreat']) ? trim($_POST['retreat']) : '';
 $address = isset($_POST['address']) ? trim($_POST['address']) : '';
 $city = isset($_POST['city']) ? trim($_POST['city']) : '';
 $state = isset($_POST['state']) ? trim($_POST['state']) : '';
@@ -82,10 +88,42 @@ if ($fulfillment !== 'Ship' && $fulfillment !== 'Pickup at retreat') {
 }
 $isShipping = ($fulfillment === 'Ship');
 
-// Required fields: item, name, email always; full address only if shipping
+// 2026-08-25 (Steve): "I don't really know who will be expecting their
+// items, and who can be deferred to another event" - Fulfillment alone
+// only ever said Ship vs Pickup at retreat, with no way to tell WHICH
+// retreat once more than one has pending pickup orders at the same
+// time. Validated against the SAME manifest index.php's Save-the-Date
+// grid reads (events/events-data.php) - one list, not a second
+// hand-typed copy that could drift out of sync with it. A normal
+// browser can only submit one of these labels (a real <select>), but
+// nothing stops a direct/tampered POST, so this closes that the same
+// way Finding 2 (2026-08-19 code review) already closed it for
+// Color/Size/Sleeve.
+if ($isShipping) {
+    // Ship orders don't have a retreat - ignore anything submitted here
+    // (e.g. left over from switching Fulfillment back to Ship after
+    // picking one) rather than trusting it, same as this file already
+    // does for Size/Sleeve on a non-shirt item below.
+    $retreat = '';
+} elseif ($retreat !== '') {
+    $pickupEvents = require __DIR__ . '/events/events-data.php';
+    $validRetreatLabels = array_map(
+        fn($event) => trim($event['dateRange']) . ' – ' . trim($event['title']),
+        $pickupEvents
+    );
+    if (!in_array($retreat, $validRetreatLabels, true)) {
+        merch_render_error_page(merch_load_string('errors/order-invalid-selection'));
+        exit;
+    }
+}
+
+// Required fields: item, name, email always; full address only if
+// shipping, which retreat only if picking up (2026-08-25).
 $requiredOk = $item && $name && $email;
 if ($isShipping) {
     $requiredOk = $requiredOk && $address && $city && $state && $zip;
+} else {
+    $requiredOk = $requiredOk && $retreat;
 }
 
 if (!$requiredOk) {
@@ -166,7 +204,7 @@ if (!flock($handle, LOCK_EX)) {
     exit;
 }
 
-$nextOrderId = 1;
+$csvMaxOrderId = 0;
 $header = null;
 while (($existingRow = fgetcsv($handle)) !== false) {
     if ($header === null) {
@@ -180,9 +218,15 @@ while (($existingRow = fgetcsv($handle)) !== false) {
         continue; // this row is the header, not data
     }
     if (isset($existingRow[0]) && is_numeric($existingRow[0])) {
-        $nextOrderId = max($nextOrderId, (int)$existingRow[0] + 1);
+        $csvMaxOrderId = max($csvMaxOrderId, (int)$existingRow[0]);
     }
 }
+
+// 2026-08-29 (Finding 3): the counter file, not $csvMaxOrderId alone,
+// is the real source of truth here - see id_sequence.php. $csvMaxOrderId
+// only matters the very first time this runs (bootstrapping the counter
+// file) or if the counter file is ever missing/behind.
+$nextOrderId = merch_next_persistent_id(__DIR__ . '/merchandise_orderid_counter.txt', $csvMaxOrderId);
 
 fseek($handle, 0, SEEK_END);
 
@@ -221,6 +265,14 @@ $values = [
     'Sleeve' => $sleeve,
     'Notes' => $message,
     'Fulfillment' => $fulfillment,
+    // 2026-08-25: blank for Ship orders, one of events-data.php's
+    // labels for Pickup - see the validation above. Harmless no-op
+    // until Steve adds a "Retreat" header column to merchandise.csv
+    // (same one-column-at-a-time pattern as Cancelled): the write loop
+    // below only pulls values for columns the file's own header
+    // actually has, so this key is simply unused until then, not an
+    // error.
+    'Retreat' => $retreat,
     'Address' => $address,
     'City' => $city,
     'State' => $state,

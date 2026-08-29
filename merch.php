@@ -1,4 +1,16 @@
-<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; // Build: 2026-08-21-B ?>
+<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; $merchPickupEvents = require __DIR__ . '/events/events-data.php'; // Build: 2026-08-29-A ?>
+<?php
+// 2026-08-25 (Steve): the pickup dropdown below used to just say "I'll
+// pick it up at a retreat" with no way to say WHICH one - fine when
+// there was only ever one retreat's worth of pending pickup orders at a
+// time, but with several retreats' orders now sitting in the CSV at
+// once, Steve had no way to tell who's expecting items at tomorrow's
+// event vs. a later one. $merchPickupEvents (required above) is the
+// SAME manifest index.php's Save-the-Date grid reads - one list, no
+// second copy of retreat names/dates to keep in sync by hand. Not
+// filtered by soldOut: registration being full doesn't mean someone who
+// already registered can't still pick up merch there.
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -182,15 +194,32 @@
   </div>
 
   <!-- Request modal: captures full shipping info since most requests now ship rather than get picked up at a retreat -->
-  <div id="merch-modal" class="lightbox merch-modal" hidden>
+  <!-- 2026-08-29 (Finding 19, a11y): role="dialog"/aria-modal/
+       aria-labelledby so assistive tech actually treats this as a
+       dialog (previously just a styled <div>, indistinguishable from
+       page content to a screen reader) - see openMerchModal()/
+       closeMerchModal() below for the focus trap that goes with it
+       (moving focus in on open, cycling Tab within the modal while
+       it's open, and returning focus to whichever "Request This Item"
+       button opened it on close). -->
+  <div id="merch-modal" class="lightbox merch-modal" role="dialog" aria-modal="true" aria-labelledby="merch-modal-heading" hidden>
     <button id="merch-modal-close" class="lightbox-close" type="button" aria-label="Close request form">&times;</button>
     <div class="merch-modal-content">
-      <h2>Request: <span id="merch-modal-item"></span></h2>
+      <h2 id="merch-modal-heading">Request: <span id="merch-modal-item"></span></h2>
 
       <form action="merch_order.php" method="POST" id="merch-form">
         <input type="hidden" name="item" id="merch-item-field" value="" />
 
-        <input type="text" name="name" placeholder="Full Name" required />
+        <!-- 2026-08-29 (Finding 19, a11y): every field below that used to
+             rely on its placeholder alone now has a real <label>,
+             visually hidden (styles/layout.css's .visually-hidden - the
+             same utility already used elsewhere on this site) so the
+             look of the form is unchanged but a screen reader announces
+             a real name for the field instead of nothing at all - a
+             placeholder isn't a label and most screen readers don't
+             treat it as one. -->
+        <label for="merch-name" class="visually-hidden">Full Name</label>
+        <input type="text" name="name" id="merch-name" placeholder="Full Name" required />
 
         <label for="merch-fulfillment" class="four-day-label">How would you like to receive this?</label>
         <select name="fulfillment" id="merch-fulfillment" required>
@@ -199,9 +228,12 @@
         </select>
 
         <div id="shipping-fields">
+          <label for="merch-address" class="visually-hidden">Street Address</label>
           <input type="text" name="address" id="merch-address" placeholder="Street Address" required />
           <div class="address-row">
+            <label for="merch-city" class="visually-hidden">City</label>
             <input type="text" name="city" id="merch-city" placeholder="City" required />
+            <label for="merch-state" class="visually-hidden">State</label>
             <select name="state" id="merch-state" required>
               <option value="" selected disabled>Select a state&hellip;</option>
               <option value="AL">Alabama</option>
@@ -254,12 +286,26 @@
               <option value="WI">Wisconsin</option>
               <option value="WY">Wyoming</option>
             </select>
+            <label for="merch-zip" class="visually-hidden">ZIP Code</label>
             <input type="text" name="zip" id="merch-zip" placeholder="ZIP" required />
           </div>
         </div>
 
-        <input type="email" name="email" placeholder="Email Address" required />
-        <input type="tel" name="phone" placeholder="Phone Number (optional)" />
+        <div id="retreat-fields" hidden>
+          <label for="merch-retreat" class="four-day-label">Which retreat will you pick this up at?</label>
+          <select name="retreat" id="merch-retreat">
+            <option value="" selected disabled>Select a retreat&hellip;</option>
+<?php foreach ($merchPickupEvents as $merchPickupEvent): ?>
+<?php $merchPickupEventLabel = trim($merchPickupEvent['dateRange']) . ' – ' . trim($merchPickupEvent['title']); ?>
+            <option value="<?= htmlspecialchars($merchPickupEventLabel, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($merchPickupEventLabel, ENT_QUOTES, 'UTF-8') ?></option>
+<?php endforeach; ?>
+          </select>
+        </div>
+
+        <label for="merch-email" class="visually-hidden">Email Address</label>
+        <input type="email" name="email" id="merch-email" placeholder="Email Address" required />
+        <label for="merch-phone" class="visually-hidden">Phone Number (optional)</label>
+        <input type="tel" name="phone" id="merch-phone" placeholder="Phone Number (optional)" />
 
         <div id="size-field-wrapper" hidden>
           <label for="merch-size" class="four-day-label">Size</label>
@@ -446,9 +492,16 @@
         <label for="merch-quantity" class="four-day-label">Quantity</label>
         <input type="number" name="quantity" id="merch-quantity" min="1" max="<?= MAX_QUANTITY ?>" value="1" required />
 
-        <textarea name="message" placeholder="Notes - anything else we should know?" rows="3" maxlength="<?= NOTES_MAX_LENGTH ?>"></textarea>
+        <label for="merch-message" class="visually-hidden">Notes - anything else we should know?</label>
+        <textarea name="message" id="merch-message" placeholder="Notes - anything else we should know?" rows="3" maxlength="<?= NOTES_MAX_LENGTH ?>"></textarea>
 
-        <div id="merch-estimate" class="merch-estimate"></div>
+        <!-- 2026-08-29 (Finding 19, a11y): aria-live so a screen reader
+             announces the running estimate as quantity/color/size/
+             fulfillment change, instead of the total silently updating
+             with nothing read aloud. "polite" (not "assertive") so it
+             waits for a pause rather than interrupting whatever field
+             the customer is still typing into. -->
+        <div id="merch-estimate" class="merch-estimate" aria-live="polite"></div>
 
         <button type="submit" class="btn full-width">Submit Request</button>
       </form>
@@ -624,6 +677,12 @@
     // Item request modal
     const merchModal = document.getElementById('merch-modal');
     const merchModalItem = document.getElementById('merch-modal-item');
+    const merchNameInput = document.getElementById('merch-name');
+    // 2026-08-29 (Finding 19, a11y): remembers whatever had focus right
+    // before the modal opened (always one of the "Request This Item"
+    // buttons in practice), so closeMerchModal() can put focus back
+    // there - see openMerchModal()/closeMerchModal() below.
+    let merchModalReturnFocusEl = null;
     const merchItemField = document.getElementById('merch-item-field');
     const merchModalClose = document.getElementById('merch-modal-close');
     const colorFieldWrapper = document.getElementById('color-field-wrapper');
@@ -641,6 +700,8 @@
     const merchCity = document.getElementById('merch-city');
     const merchState = document.getElementById('merch-state');
     const merchZip = document.getElementById('merch-zip');
+    const retreatFields = document.getElementById('retreat-fields');
+    const merchRetreat = document.getElementById('merch-retreat');
     const merchFulfillment = document.getElementById('merch-fulfillment');
     const merchQuantity = document.getElementById('merch-quantity');
     const merchEstimate = document.getElementById('merch-estimate');
@@ -663,6 +724,19 @@
       [merchAddress, merchCity, merchState, merchZip].forEach((el) => {
         el.required = shipping;
       });
+      // 2026-08-25: same show/require toggle, mirrored for "which
+      // retreat" - Ship and Pickup at retreat are the only two
+      // Fulfillment values, so it's just the inverse of `shipping`,
+      // no separate condition needed.
+      retreatFields.hidden = shipping;
+      merchRetreat.required = !shipping;
+      if (shipping) {
+        // Switched back to Ship after picking a retreat - clear the
+        // stale selection so it can't ride along in the submission
+        // (mirrors merch_order.php's own server-side blanking of this
+        // field whenever Fulfillment isn't Pickup).
+        merchRetreat.value = '';
+      }
     }
 
     merchFulfillment.addEventListener('change', () => {
@@ -848,11 +922,54 @@
 
       merchModal.hidden = false;
       document.body.classList.add('lightbox-open');
+
+      // 2026-08-29 (Finding 19, a11y): move focus INTO the dialog the
+      // moment it opens - without this, focus stayed on the "Request
+      // This Item" button underneath the now-visible modal, so a
+      // keyboard/screen-reader user tabbing "forward" would walk
+      // through the rest of the page behind an open dialog before ever
+      // reaching the form they just opened. Name is the form's first
+      // fillable field, so landing there skips straight to typing.
+      merchModalReturnFocusEl = document.activeElement;
+      merchNameInput.focus();
     }
 
     function closeMerchModal() {
       merchModal.hidden = true;
       document.body.classList.remove('lightbox-open');
+      // Return focus to whichever "Request This Item" button opened
+      // this, so a keyboard user ends up back where they started
+      // instead of at the top of the page (the browser's default when
+      // the previously-focused element is hidden out from under it).
+      if (merchModalReturnFocusEl) {
+        merchModalReturnFocusEl.focus();
+        merchModalReturnFocusEl = null;
+      }
+    }
+
+    // 2026-08-29 (Finding 19, a11y): a real dialog has to trap Tab
+    // inside itself while open - otherwise Tab/Shift+Tab eventually
+    // walks focus out into the (visually covered, but still in the DOM)
+    // page behind it. Recomputed on every Tab press rather than cached
+    // once, since which fields are hidden/disabled changes per item
+    // (color/size/sleeve/shipping-vs-pickup fields all toggle visibility
+    // - see openMerchModal()/updateShippingFieldsRequired() above).
+    function trapMerchModalTab(event) {
+      if (event.key !== 'Tab' || merchModal.hidden) return;
+      const focusable = merchModal.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      const visible = Array.from(focusable).filter((el) => el.offsetParent !== null);
+      if (visible.length === 0) return;
+      const first = visible[0];
+      const last = visible[visible.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
 
     document.querySelectorAll('.merch-request-btn').forEach((btn) => {
@@ -868,6 +985,7 @@
         if (!merchModal.hidden) closeMerchModal();
         if (!photoViewerModal.hidden) closePhotoViewer();
       }
+      trapMerchModalTab(event);
     });
 
     // Disable the submit button the instant the form is submitted, so a

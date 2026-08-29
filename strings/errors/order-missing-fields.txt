@@ -1,1 +1,1 @@
-<h2>Error: Please go back, choose an item, and fill in all required fields (a full shipping address is required unless you're picking up at a retreat).</h2>
+<h2>Error: Please go back, choose an item, and fill in all required fields (a full shipping address is required if shipping, or a chosen retreat if you're picking up at one instead).</h2>

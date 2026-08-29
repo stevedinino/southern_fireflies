@@ -1,0 +1,2 @@
+name: Tape Gun Holder
+class: tape-gun-holder

@@ -1,0 +1,2 @@
+name: Rectangle Cutter Holder
+class: cutter-holder

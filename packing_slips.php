@@ -1,5 +1,31 @@
 <?php
-// Build: 2026-08-23-A
+// Build: 2026-08-29-A
+//
+// 2026-08-28 (Steve): the "ready to pack" checkboxes below now write
+// back to Fulfilled on merchandise.csv when checked, instead of being a
+// print-only/no-persistence UI aid. Reuses merch_update.php exactly as
+// ourmerch.php's own Fulfilled checkbox already does - no new backend
+// endpoint - since one checkbox here can represent SEVERAL CSV rows (a
+// shipment is every item bound for one address, which can be more than
+// one OrderID), the JS below just fires one merch_update.php call per
+// OrderID in the shipment instead of one call per checkbox. See the
+// data-order-ids attribute on each .shipment-check below and the
+// setFulfilledForOrder() function near the bottom of this file.
+//
+// This is safe to add without any new gating: by the time a shipment
+// reaches the READY list at all, every item on it is already paid,
+// Ship, not yet Fulfilled, and Created (see the eligibility filter and
+// whole-shipment Created gate below) - so checking Fulfilled here can
+// never surprise-backfill Created (merch_update.php's cascade), since
+// Created is already guaranteed set for every row involved.
+//
+// One real tradeoff worth knowing: the OrderIDs baked into a checkbox
+// are fixed at page load. If a new item for the same customer/address
+// arrives after this page is opened but before it's refreshed, checking
+// the box marks only the items this page already knew about - the new
+// one is left un-Fulfilled and needs a refresh + another pass (or a
+// manual fix on ourmerch.php) to catch. Same snapshot tradeoff this
+// whole shipment-grouping concept already carries; not new here.
 // Admin-only page: a single working checklist for packing a batch of
 // mailers, opened alongside the Shippo export (same click, from
 // ourmerch.php's footer link - see the onclick there).
@@ -39,6 +65,15 @@
 // filter below, same as shippo_export.php - it should never show up on
 // a packing checklist (ready OR in-progress), however it got into a
 // Paid+Ship+not-yet-Fulfilled state.
+//
+// 2026-08-25: added a "By Color" regrouping of the Still In Progress
+// section's not-yet-created items (Steve: he was printing this page and
+// hand-highlighting same-color items so he could batch them and cut
+// down on filament swaps). Pulls from the exact same $inProgressShipments
+// data the customer-grouped list above already has - not a new query,
+// just a second view of the same not-yet-Created rows, grouped by Color
+// instead of by shipment. See merch_split_groups_by_created()'s
+// $inProgressShipments population above and $colorGroups below.
 //
 // Renders as a normal page (not a forced download) so it can sit open in
 // a tab while packing, and prints on request (Cmd/Ctrl+P) without forcing
@@ -117,6 +152,40 @@ $inProgressShipments = $buildShipments($inProgressGroups);
 
 $shipmentCount = count($shipments);
 $inProgressCount = count($inProgressShipments);
+
+// ---- By-color regrouping of the Still In Progress section (2026-08-25,
+// per Steve) ----
+// The customer-grouped list above answers "what's left on THIS
+// shipment"; this answers "what color should I load/print next," so
+// items needing the same color can be batched together instead of
+// swapping back and forth. Only pulls items that AREN'T Created yet -
+// an already-printed item (the "printed" rows mixed into an otherwise
+// incomplete shipment) has nothing left to batch, so it's left out here
+// even though its shipment still shows up in the section above.
+$colorGroups = [];
+foreach ($inProgressShipments as $shipment) {
+    $shipmentCustomerName = trim($shipment['rows'][0][$col['Name']] ?? '');
+    foreach ($shipment['rows'] as $row) {
+        if (trim($row[$col['Created']] ?? '') !== '') {
+            continue; // already printed - nothing to batch
+        }
+        $color = trim($row[$col['Color']] ?? '');
+        $colorKey = $color !== '' ? $color : '(No color specified)';
+        $colorGroups[$colorKey][] = [
+            'item' => trim($row[$col['Item']] ?? ''),
+            'quantity' => (int)($row[$col['Quantity']] ?? 1),
+            'customerName' => $shipmentCustomerName,
+            'orderNumber' => $shipment['orderNumber'],
+        ];
+    }
+}
+// Alphabetical by color (case-insensitive), with the no-color bucket
+// always last regardless of where it'd otherwise sort.
+uksort($colorGroups, function ($a, $b) {
+    if ($a === '(No color specified)') return 1;
+    if ($b === '(No color specified)') return -1;
+    return strcasecmp($a, $b);
+});
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -194,6 +263,37 @@ $inProgressCount = count($inProgressShipments);
 
   .item-status-pending { color: #b00020; font-size: 0.85em; font-weight: bold; margin-left: 4px; }
 
+  .color-section { margin-top: 40px; }
+
+  .color-section h2 {
+    font-size: 16px;
+    margin: 0 0 4px;
+    color: #555;
+    border-top: 2px solid #ddd;
+    padding-top: 20px;
+  }
+
+  .color-group {
+    margin: 16px 0;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    page-break-inside: avoid;
+  }
+
+  .color-group h3 {
+    font-size: 15px;
+    margin: 0 0 6px;
+  }
+
+  .color-group-count { font-weight: normal; color: #666; font-size: 0.85em; }
+
+  .color-items { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+
+  .color-items li { margin: 3px 0; }
+
+  .color-item-customer { color: #666; font-size: 0.9em; }
+
   /* Once a row is checked off, gray it out so the eye jumps straight to
      what's left - the point of a checklist is scanning for what's NOT
      done yet. Works on-screen immediately; also holds when printed,
@@ -240,7 +340,7 @@ $inProgressCount = count($inProgressShipments);
           $zip = trim($first[$col['Zip']] ?? '');
         ?>
         <li class="shipment-row">
-          <input type="checkbox" class="shipment-check" />
+          <input type="checkbox" class="shipment-check" data-order-ids="<?= htmlspecialchars(implode(',', array_map(fn($r) => trim($r[$col['OrderID']] ?? ''), $shipment['rows'])), ENT_QUOTES) ?>" />
           <div class="shipment-body">
             <div class="shipment-summary">
               <span class="shipment-order-number">#<?= (int)$shipment['orderNumber'] ?></span>
@@ -328,5 +428,97 @@ $inProgressCount = count($inProgressShipments);
       </ul>
     </div>
   <?php endif; ?>
+
+  <?php if (!empty($colorGroups)): ?>
+    <div class="color-section">
+      <h2>Still In Progress &mdash; By Color</h2>
+      <p class="inprogress-note">
+        Same not-yet-created items from the section above, regrouped by color
+        so same-color items can be printed together &mdash; work straight down
+        one group at a time instead of highlighting colors by hand.
+      </p>
+      <?php foreach ($colorGroups as $colorName => $colorItems): ?>
+        <?php $colorTotalQty = array_sum(array_column($colorItems, 'quantity')); ?>
+        <div class="color-group">
+          <h3>
+            <?= htmlspecialchars($colorName) ?>
+            <span class="color-group-count">(<?= $colorTotalQty ?> item<?= $colorTotalQty === 1 ? '' : 's' ?> total)</span>
+          </h3>
+          <ul class="color-items">
+            <?php foreach ($colorItems as $colorItem): ?>
+              <li>
+                &bull; <?= htmlspecialchars($colorItem['item']) ?> &times;<?= $colorItem['quantity'] ?>
+                <span class="color-item-customer">&mdash; #<?= (int)$colorItem['orderNumber'] ?> <?= htmlspecialchars($colorItem['customerName']) ?></span>
+              </li>
+            <?php endforeach; ?>
+          </ul>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+
+  <script>
+    // 2026-08-29 (Finding 9): merch_update.php now refuses a request
+    // without a matching CSRF token - see csrf.php and ourmerch.php's
+    // own MERCH_CSRF_TOKEN for the same wiring there.
+    const MERCH_CSRF_TOKEN = <?= json_encode(merch_csrf_token()) ?>;
+
+    // 2026-08-28 (Steve): make the "ready to pack" checkboxes actually
+    // write back to Fulfilled on merchandise.csv - see the header
+    // comment at the top of this file for why this is safe (every row
+    // on this list is already paid/Ship/Created by the time it's here).
+    //
+    // Reuses merch_update.php exactly as ourmerch.php's own Fulfilled
+    // checkbox does. The one wrinkle: a single checkbox here can stand
+    // for MULTIPLE OrderIDs (a shipment = every item bound for one
+    // address), where ourmerch.php's checkbox is always exactly one
+    // row. So instead of one fetch() per checkbox, this fires one
+    // fetch() per OrderID baked into data-order-ids (set server-side
+    // above from the same rows this checklist already grouped), and
+    // waits for all of them before treating the row as settled.
+    //
+    // Symmetric toggle, same as ourmerch.php: checking sets Fulfilled
+    // for every OrderID in the shipment, unchecking clears it for all
+    // of them again. No confirm() dialog - matches the rest of this
+    // codebase's reversible-checkbox behavior.
+    function setFulfilledForOrder(orderId, checked) {
+      return fetch('merch_update.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `orderId=${encodeURIComponent(orderId)}&field=Fulfilled&checked=${checked ? '1' : '0'}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
+      })
+        .then((r) => r.json())
+        .then((data) => ({ orderId, ok: !!data.ok, error: data.error }));
+    }
+
+    document.querySelectorAll('.shipment-check[data-order-ids]').forEach((box) => {
+      const orderIds = box.dataset.orderIds.split(',').map((id) => id.trim()).filter((id) => id !== '');
+      box.addEventListener('change', () => {
+        const checked = box.checked;
+        const previousChecked = !checked;
+
+        if (orderIds.length === 0) return;
+
+        box.disabled = true;
+        Promise.all(orderIds.map((orderId) => setFulfilledForOrder(orderId, checked)))
+          .then((results) => {
+            box.disabled = false;
+            const failed = results.filter((r) => !r.ok);
+            if (failed.length > 0) {
+              // Don't leave it half-applied: revert the checkbox and
+              // say plainly this shipment needs a manual look (some
+              // OrderIDs in it may have saved before one of them
+              // failed - same as any partial-batch failure would).
+              box.checked = previousChecked;
+              alert(
+                'Could not save Fulfilled for order' + (failed.length === 1 ? '' : 's') + ' '
+                + failed.map((r) => '#' + r.orderId).join(', ')
+                + ' - please check this shipment on ourmerch.php.'
+              );
+            }
+          });
+      });
+    });
+  </script>
 </body>
 </html>

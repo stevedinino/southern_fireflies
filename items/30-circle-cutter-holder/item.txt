@@ -1,0 +1,2 @@
+name: Circle Cutter Holder
+class: cutter-holder

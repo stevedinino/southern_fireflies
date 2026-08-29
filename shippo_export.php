@@ -68,6 +68,7 @@
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php';
 require __DIR__ . '/merch_shipments.php';
+require __DIR__ . '/csv_safety.php';
 
 // Shared implementation in admin_guard.php as of 2026-08-20 (Finding
 // 11, 2026-08-19 code review) - was previously duplicated across 8 files.
@@ -109,7 +110,7 @@ foreach ($rows as $row) {
 }
 
 if (empty($eligible)) {
-    die('No paid, unshipped orders found to export. (Nothing shows up here until a row has Paid = x, Fulfillment = Ship, and Fulfilled is still blank.)');
+    die('No paid, unshipped orders found to export. (Nothing shows up here until a row has a Pymt Date, Fulfillment = Ship, and Fulfilled is still blank.)');
 }
 
 // ---- Group into shipments: same customer (by name + zip), not email ----
@@ -244,22 +245,30 @@ foreach ($groups as $groupRows) {
         // grouping items into a box together.
         $itemWeight = ITEM_WEIGHT_OZ[$item] ?? '';
 
+        // 2026-08-29 (code review Finding 8): every customer-supplied
+        // free-text field below goes through merch_csv_safe_cell()
+        // (csv_safety.php) before fputcsv - see that file's header
+        // comment for the CSV-formula-injection risk this closes.
+        // Deliberately NOT applied to the numeric/computed columns
+        // further down (Quantity, weights, prices, dimensions) - those
+        // are never free text, and forcing a negative number to render
+        // as text would break Shippo's bulk import.
         fputcsv($out, [
             $orderNumber,
             $orderDate,
-            $name,
+            merch_csv_safe_cell($name),
             '', // Company
-            $email,
-            $phone,
-            $address,
+            merch_csv_safe_cell($email),
+            merch_csv_safe_cell($phone),
+            merch_csv_safe_cell($address),
             '', // Street Number - included in Street Line 1 above
             '', // Street Line 2
-            $city,
-            $state,
+            merch_csv_safe_cell($city),
+            merch_csv_safe_cell($state),
             $zip,
             'US',
-            $item,
-            $color, // Repurposing SKU (not otherwise used) to carry Color, so it's visible for the inventory cross-check
+            merch_csv_safe_cell($item),
+            merch_csv_safe_cell($color), // Repurposing SKU (not otherwise used) to carry Color, so it's visible for the inventory cross-check
             $quantity,
             $itemWeight, // blank unless ITEM_WEIGHT_OZ has a real number for this item (see comment above)
             'oz',

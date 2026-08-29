@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-23-A
+// Build: 2026-08-29-A
 // Admin-triggered: given ONE OrderID (the row the button was clicked
 // on), finds every OTHER not-yet-invoiced order from the same email
 // address that pays to the same account (printed vs. shop items) and
@@ -117,6 +117,9 @@ function merch_invoice_stamp_invoice_date(string $csvFile, array $groupOrderIds)
 // 11, 2026-08-19 code review) - was previously duplicated here and in
 // merch_update.php.
 merch_require_admin_json();
+// 2026-08-29 (Finding 9): ourmerch.php's sendInvoice() carries
+// MERCH_CSRF_TOKEN now - see csrf.php.
+merch_require_csrf_json();
 
 $csvFile = __DIR__ . '/merchandise.csv';
 

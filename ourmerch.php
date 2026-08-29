@@ -1,11 +1,11 @@
 <?php
-// Build: 2026-08-23-C
+// Build: 2026-08-29-B
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
 
 // 2026-08-20 (Steve): working an order means glancing back and forth
-// between these 8 fields, but they're spread across the CSV's 25
+// between a handful of fields, but they're spread across the CSV's 25
 // columns (Name is #2, Color is #7, Invoice Date/Pymt Date/Created/
 // Fulfilled are #20-23) - wide enough apart that they scroll off
 // opposite edges of the screen at once. This reorders the ADMIN
@@ -15,6 +15,10 @@ require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key(
 // listed here (a future hand-added one, say) just falls in after
 // these, in whatever order the CSV already has it - see $displayOrder
 // below - rather than silently vanishing from the table.
+// (2026-08-23: Item, Quantity, and Cancelled joined this list after it
+// was first written - the list below is the current, accurate one;
+// the "8 fields"/position callouts above describe the original
+// 2026-08-20 shape, not a live count worth re-verifying on every edit.)
 const MERCH_ADMIN_COLUMN_ORDER = [
     'OrderID', 'Name', 'Item', 'Quantity', 'Color',
     'Invoice Date', 'Pymt Date', 'Created', 'Fulfilled', 'Cancelled',
@@ -131,7 +135,8 @@ $merchEditCatalog = [
       }
 
       // Read column names from the CSV's own header row rather than
-      // hardcoding them here - with 22 columns now, hand-matching a
+      // hardcoding them here - with 25+ columns now (MERCH_CSV_HEADER,
+      // pricing.php, plus Steve's hand-added Cancelled), hand-matching a
       // hardcoded list to the file is exactly the kind of thing that
       // silently drifts out of sync after the next manual column add.
       $header = !empty($rows) ? array_shift($rows) : [];
@@ -237,6 +242,14 @@ $merchEditCatalog = [
           // and I don't want to scroll past abandoned orders" (Steve,
           // 2026-08-23).
           echo '<label style="margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-show-cancelled" /> Show cancelled</label>';
+          // 2026-08-25 (Steve): same independent-of-the-named-views
+          // pattern as "Show cancelled" right above - there was no way to
+          // isolate just the Pickup at Retreat orders on this page, which
+          // matters this week specifically because pickup fulfillment
+          // happens all at once at the retreat rather than trickling out
+          // like shipments do. Off by default so the page's default view
+          // is unchanged for everyone else.
+          echo '<label style="margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-pickup-only" /> Pickup at Retreat only</label>';
           echo '</div>';
           echo '<div class="merch-table-pane"><table style="width:100%; border-collapse: collapse;">';
           echo '<tr>';
@@ -349,6 +362,21 @@ $merchEditCatalog = [
                           // confirm text below.
                           if (!$rowIsPaid) {
                               echo ' <button type="button" class="btn merch-uninvoice-btn" style="padding:2px 6px; font-size:0.7em; background:#888;" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '">Un-invoice</button>';
+                          } elseif (!$rowIsShipping && !$rowIsCancelled) {
+                              // 2026-08-25 (Steve): several pickup customers
+                              // pay ahead of the real invoice (see
+                              // merch_paid_receipt.php's header comment) -
+                              // this lets Steve print a "paid in full"
+                              // receipt to hand over with the merchandise at
+                              // the retreat. Unlike Send Invoice, this can
+                              // be clicked repeatedly (extra copy, lost the
+                              // first printout) since it never touches
+                              // merchandise.csv - pure read-and-render.
+                              // Ship orders don't get this button - they
+                              // already got a real emailed invoice, and
+                              // there's no in-person hand-off moment for a
+                              // shipment.
+                              echo ' <button type="button" class="btn merch-paid-receipt-btn" style="padding:2px 6px; font-size:0.7em; background:#2a7a2a;" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '">Paid Receipt</button>';
                           }
                       } elseif ($rowIsCancelled) {
                           // No Send Invoice button on a cancelled,
@@ -395,7 +423,18 @@ $merchEditCatalog = [
                           // it; it stays put until the admin actually
                           // picks something else.
                           if ($currentColor !== '' && !in_array($currentColor, $colorOptions, true)) {
-                              echo '<option value="' . htmlspecialchars($currentColor, ENT_QUOTES) . '" selected>' . htmlspecialchars($currentColor) . ' (current \xe2\x80\x93 no longer a valid choice)</option>';
+                              // 2026-08-29 (Finding 5, code review): this was
+                              // '\xe2\x80\x93' inside a SINGLE-quoted PHP
+                              // string, which doesn't interpret \x escapes at
+                              // all - it was rendering as the literal 11
+                              // characters "\xe2\x80\x93" in the dropdown
+                              // instead of an en dash. &ndash; is the same
+                              // fix already used elsewhere in this codebase
+                              // (e.g. "Fri&ndash;Sun") - an HTML entity,
+                              // not a raw byte sequence, so it can't come
+                              // apart the same way again regardless of
+                              // quoting.
+                              echo '<option value="' . htmlspecialchars($currentColor, ENT_QUOTES) . '" selected>' . htmlspecialchars($currentColor) . ' (current &ndash; no longer a valid choice)</option>';
                           }
                           foreach ($colorOptions as $opt) {
                               $selected = ($opt === $currentColor) ? ' selected' : '';
@@ -477,9 +516,20 @@ $merchEditCatalog = [
                yet-Fulfilled batch - open in a new tab alongside it. -->
           <a href="shippo_export.php" onclick="window.open('packing_slips.php', '_blank'); return true;" style="color: var(--accent);">Download Shippo Export (paid, unshipped orders) &rarr;</a>
           &nbsp;&mdash;&nbsp;
+          <!-- 2026-08-25: companion to the link above, for the Pickup at
+               retreat side - see pickup_slips.php's header comment for why
+               it needed its own checklist instead of reusing packing_slips.php. -->
+          <a href="pickup_slips.php" target="_blank" style="color: var(--accent);">Pickup Checklist (Pickup at Retreat orders) &rarr;</a>
+          &nbsp;&mdash;&nbsp;
           <a href="export_emails.php" style="color: var(--accent);">Download Customer Emails &rarr;</a>
           &nbsp;&mdash;&nbsp;
-          <span style="color:#bbb; font-size:0.75em;">Build 2026-08-23-C</span>
+          <!-- 2026-08-29: bulk payment-reminder feature - preview-then-
+               confirm list of invoiced-but-unpaid Ship customers (see
+               merch_reminders.php's header comment). Opens in its own
+               tab, same as the Pickup Checklist link above. -->
+          <a href="merch_reminders.php" target="_blank" style="color: var(--accent);">Send Payment Reminders &rarr;</a>
+          &nbsp;&mdash;&nbsp;
+          <span style="color:#bbb; font-size:0.75em;">Build 2026-08-29-B</span>
         </p>
       </div>
     </div>
@@ -489,6 +539,12 @@ $merchEditCatalog = [
     // 2026-08-23 (#2): catalog data for the Item-edit form below - see
     // the PHP that builds $merchEditCatalog near the top of this file.
     const MERCH_EDIT_CATALOG = <?= json_encode($merchEditCatalog) ?>;
+
+    // 2026-08-29 (Finding 9): every fetch() below that POSTs to
+    // merch_update.php/merch_invoice.php/merch_edit_line.php now
+    // appends this - those endpoints reject the request otherwise. See
+    // csrf.php for what this actually protects against and why.
+    const MERCH_CSRF_TOKEN = <?= json_encode(merch_csrf_token()) ?>;
 
     // Created, Fulfilled, and Pymt Date all use the exact same pattern
     // now: one checkbox, one date column. Fulfilled and Pymt Date also
@@ -523,7 +579,7 @@ $merchEditCatalog = [
         fetch('merch_update.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `orderId=${encodeURIComponent(orderId)}&field=${encodeURIComponent(field)}&checked=${checked ? '1' : '0'}`
+          body: `orderId=${encodeURIComponent(orderId)}&field=${encodeURIComponent(field)}&checked=${checked ? '1' : '0'}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
         })
           .then((r) => r.json())
           .then((data) => {
@@ -585,7 +641,7 @@ $merchEditCatalog = [
         fetch('merch_update.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `orderId=${encodeURIComponent(orderId)}&field=Color&value=${encodeURIComponent(newValue)}`
+          body: `orderId=${encodeURIComponent(orderId)}&field=Color&value=${encodeURIComponent(newValue)}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
         })
           .then((r) => r.json())
           .then((data) => {
@@ -783,7 +839,7 @@ $merchEditCatalog = [
         cancelBtn.disabled = true;
         saveBtn.textContent = 'Saving…';
 
-        const body = `orderId=${encodeURIComponent(orderId)}&item=${encodeURIComponent(newItem)}&quantity=${encodeURIComponent(newQty)}&color=${encodeURIComponent(newColor)}&size=${encodeURIComponent(newSize)}&sleeve=${encodeURIComponent(newSleeve)}`;
+        const body = `orderId=${encodeURIComponent(orderId)}&item=${encodeURIComponent(newItem)}&quantity=${encodeURIComponent(newQty)}&color=${encodeURIComponent(newColor)}&size=${encodeURIComponent(newSize)}&sleeve=${encodeURIComponent(newSleeve)}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`;
 
         fetch('merch_edit_line.php', {
           method: 'POST',
@@ -854,9 +910,9 @@ $merchEditCatalog = [
     }
 
     function sendInvoice(btn, orderId, manualShipping) {
-      const body = manualShipping !== undefined
+      const body = (manualShipping !== undefined
         ? `orderId=${encodeURIComponent(orderId)}&manualShipping=${encodeURIComponent(manualShipping)}`
-        : `orderId=${encodeURIComponent(orderId)}`;
+        : `orderId=${encodeURIComponent(orderId)}`) + `&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`;
 
       return fetch('merch_invoice.php', {
         method: 'POST',
@@ -973,6 +1029,42 @@ $merchEditCatalog = [
 
     document.querySelectorAll('.merch-invoice-btn').forEach(wireInvoiceButton);
 
+    // 2026-08-25: "Paid Receipt" button next to an Invoice Date that's
+    // both invoiced and paid on a pickup order (see the Invoice Date
+    // branch above and merch_paid_receipt.php's header comment). Pure
+    // read-and-render - never touches merchandise.csv - so unlike
+    // sendInvoice() above there's nothing to reload on success, just the
+    // download.
+    document.querySelectorAll('.merch-paid-receipt-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const orderId = btn.dataset.orderId;
+        btn.disabled = true;
+        const originalLabel = btn.textContent;
+        btn.textContent = 'Generating…';
+
+        fetch('merch_paid_receipt.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `orderId=${encodeURIComponent(orderId)}`,
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.ok) {
+              triggerMarkdownDownload(data.downloadFilename, data.downloadDocument);
+            } else {
+              alert('Could not generate paid receipt: ' + (data.error || 'unknown error'));
+            }
+            btn.disabled = false;
+            btn.textContent = originalLabel;
+          })
+          .catch(() => {
+            alert('Could not generate paid receipt - check your connection and try again.');
+            btn.disabled = false;
+            btn.textContent = originalLabel;
+          });
+      });
+    });
+
     // 2026-08-23: "Un-invoice" button next to an Invoice Date that
     // isn't paid yet (see the Invoice Date branch above) - clears the
     // column via merch_update.php's new one-way clear-only handling for
@@ -993,7 +1085,7 @@ $merchEditCatalog = [
         fetch('merch_update.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `orderId=${encodeURIComponent(orderId)}&field=${encodeURIComponent('Invoice Date')}&checked=0`
+          body: `orderId=${encodeURIComponent(orderId)}&field=${encodeURIComponent('Invoice Date')}&checked=0&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
         })
           .then((r) => r.json())
           .then((data) => {
@@ -1045,6 +1137,18 @@ $merchEditCatalog = [
       applyView(currentView);
     });
 
+    // 2026-08-25: "Pickup at Retreat only" - same independent-of-the-
+    // named-views, persisted-per-tab pattern as "Show cancelled" above.
+    // Layered on top of whatever named view is active, same as cancelled.
+    const pickupOnlyBox = document.getElementById('merch-pickup-only');
+    let pickupOnly = sessionStorage.getItem('merchAdminPickupOnly') === '1';
+    pickupOnlyBox.checked = pickupOnly;
+    pickupOnlyBox.addEventListener('change', () => {
+      pickupOnly = pickupOnlyBox.checked;
+      sessionStorage.setItem('merchAdminPickupOnly', pickupOnly ? '1' : '0');
+      applyView(currentView);
+    });
+
     function applyView(view) {
       currentView = view;
       sessionStorage.setItem('merchAdminView', view);
@@ -1079,7 +1183,16 @@ $merchEditCatalog = [
             show = invoiced && !paid && isShipping;
             break;
           case 'needs-creating':
-            show = paid && !created;
+            // 2026-08-25 (Steve): this used to require `paid` for every
+            // row, which made sense for the normal Ship flow (paid then
+            // created) but silently hid every not-yet-created Pickup row
+            // that simply hadn't been paid yet - per the needs-payment
+            // case just above, pickup orders go invoiced -> created ->
+            // PAID (settled in person at the retreat), so an unpaid
+            // pickup item can still very much need creating. Ship orders
+            // keep the paid requirement; pickup orders just need to not
+            // be created yet.
+            show = !created && (isShipping ? paid : true);
             break;
           case 'needs-shipping':
             // Matches shippo_export.php's own "safe to buy a label"
@@ -1103,6 +1216,12 @@ $merchEditCatalog = [
         // unless the override is on, in which case cancelled status
         // doesn't affect visibility at all.
         if (cancelled && !showCancelled) {
+          show = false;
+        }
+        // Layered the same way as the cancelled override above - a
+        // Ship row is hidden whenever "Pickup at Retreat only" is on,
+        // regardless of which named view (or "All") is active.
+        if (pickupOnly && isShipping) {
           show = false;
         }
         tr.style.display = show ? '' : 'none';

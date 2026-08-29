@@ -1,4 +1,4 @@
-<?php require __DIR__ . '/strings.php'; // Build: 2026-08-01-A ?>
+<?php require __DIR__ . '/strings.php'; // Build: 2026-08-29-B ?>
 <!DOCTYPE html>
 <!--
   Renamed from register.html to retreat-register.php on 2026-08-01 so
@@ -58,10 +58,19 @@
 
         <form action="register.php" method="POST">
           <input type="hidden" name="event" id="event-field" value="" />
-          <input type="text" name="name" placeholder="Full Name" required />
-          <input type="text" name="address" placeholder="Home Address" required />
-          <input type="tel" name="phone" placeholder="Phone Number" required />
-          <input type="email" name="email" placeholder="Email Address" required />
+          <!-- 2026-08-29 (Finding 19, a11y): real <label>s, visually
+               hidden (styles/layout.css's .visually-hidden), for every
+               field that used to rely on its placeholder alone - same
+               fix as merch.php's Request form; see that file's comment
+               on the first one for why a placeholder isn't a label. -->
+          <label for="register-name" class="visually-hidden">Full Name</label>
+          <input type="text" name="name" id="register-name" placeholder="Full Name" required />
+          <label for="register-address" class="visually-hidden">Home Address</label>
+          <input type="text" name="address" id="register-address" placeholder="Home Address" required />
+          <label for="register-phone" class="visually-hidden">Phone Number</label>
+          <input type="tel" name="phone" id="register-phone" placeholder="Phone Number" required />
+          <label for="register-email" class="visually-hidden">Email Address</label>
+          <input type="email" name="email" id="register-email" placeholder="Email Address" required />
 
           <label for="four_day" class="four-day-label">How many days will you be attending?</label>
           <select name="four_day" id="four_day">
@@ -69,7 +78,8 @@
             <option value="4">4 days (Thu&ndash;Sun)</option>
           </select>
 
-          <textarea name="message" placeholder="Special Requests or Notes" rows="3"></textarea>
+          <label for="register-message" class="visually-hidden">Special Requests or Notes</label>
+          <textarea name="message" id="register-message" placeholder="Special Requests or Notes" rows="3"></textarea>
           <button type="submit" class="btn full-width">Submit Registration</button>
         </form>
       </div>
@@ -95,6 +105,21 @@
       document.getElementById('registration-fields').hidden = true;
       document.getElementById('no-event-notice').hidden = false;
     }
+
+    // 2026-08-29 (code review Finding 18 follow-up): merch.php's Request
+    // form already disables its submit button the instant it's clicked,
+    // so a slow connection can't be mistaken for "nothing happened" and
+    // invite a second click (which, there, would create a duplicate
+    // order row). This registration form had the identical shape of
+    // form-plus-submit-button with none of that feedback - same fix
+    // here. The form still submits normally; this only affects the
+    // button while the browser is en route to register.php.
+    const registerForm = document.querySelector('#registration-fields form');
+    const registerSubmitBtn = registerForm.querySelector('button[type="submit"]');
+    registerForm.addEventListener('submit', () => {
+      registerSubmitBtn.disabled = true;
+      registerSubmitBtn.textContent = 'Submitting...';
+    });
   </script>
 </body>
 </html>

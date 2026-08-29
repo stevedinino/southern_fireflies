@@ -4,6 +4,7 @@
   <p>A quick update since you placed your order: we've gotten our pricing squared away, so instead of leaving you guessing, here's exactly what you owe:</p>
   <ul>
     {{lineItemsHtml}}
+    {{discountLineHtml}}
     <li>Tax (7%): {{tax}}</li>
     {{shippingLineHtml}}
     <li><strong>Total: {{total}}</strong></li>

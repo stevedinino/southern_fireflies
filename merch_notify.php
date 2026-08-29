@@ -1,12 +1,15 @@
 <?php
-// Build: 2026-08-21-A
+// Build: 2026-08-29-A
 // ============================================================
-// Shared customer-notification logic for merch orders. Used by BOTH:
+// Shared customer-notification logic for merch orders. Used by:
 //   - merch_order.php  (automatic, one order, right at submission)
 //   - merch_invoice.php (manual admin button, possibly several
 //     combined orders, mainly for catching up backlog rows)
-// so the email copy can never drift between the two paths - there is
-// exactly one place that builds this email.
+//   - merch_send_reminders.php (2026-08-29: bulk payment-reminder
+//     nudge for already-invoiced-but-unpaid Ship orders - see
+//     merch_send_payment_reminder() below and merch_reminder_groups.php)
+// so the email copy can never drift between these paths - there is
+// exactly one place that builds each kind of email.
 //
 // Two possible outcomes per notification:
 //   1. Shipping resolved to a real number -> send the full itemized
@@ -45,9 +48,9 @@ use PHPMailer\PHPMailer\Exception;
  * submission now that auto-invoicing is off (2026-07-26): "thanks, 
  * we'll follow up with your total." No pricing shown, no payment
  * info - those only ever appear later in the real invoice email sent
- * via the "Send Invoice" button (merch_invoice.php -> 
+ * via the "Send Invoice" button (merch_invoice.php ->
  * merch_send_notification() -> merch_send_invoice()/
- * merch_send_manual_followup() above, unchanged).
+ * merch_send_manual_followup() below, unchanged).
  *
  * BCC'd to Steve (his own request: a quiet notification he doesn't
  * need to act on, not the visible CC used on real invoices) so he
@@ -314,4 +317,69 @@ function merch_send_manual_followup(array $pricing, string $name, string $email)
     }
 
     return ['sentInvoice' => false, 'error' => $alertError];
+}
+
+/**
+ * The payment-reminder email (2026-08-29, per Steve: "a bulk reminder
+ * email that gently nudges the people who placed requests but never
+ * paid"). NOT a repeat of the real invoice - deliberately shows no
+ * dollar amount at all. merchandise.csv never stores a combined
+ * invoice's final total anywhere (merch_invoice_stamp_invoice_date()
+ * only ever writes Invoice Date, never Price/Tax/Shipping), so any
+ * total shown here would have to be recomputed from scratch and could
+ * drift from what the original invoice actually said if pricing.php's
+ * rules changed in between the two emails. Steve's own call
+ * (2026-08-29, via AskUserQuestion): no total, just a friendly nudge
+ * naming the items, offering to send the real total on request.
+ *
+ * $itemLines is a list of ready-to-display strings (e.g. "Logo Shirt
+ * (x2)") - already built by the caller via
+ * merch_reminder_groups.php's merch_reminder_format_item_lines(), so
+ * this function has no pricing.php dependency at all and doesn't need
+ * one just to send a reminder.
+ *
+ * Read-only with respect to merchandise.csv - unlike
+ * merch_send_invoice()/merch_send_manual_followup(), nothing about
+ * this email causes any column to get stamped; merch_send_reminders.php
+ * calls this directly with no follow-up write of any kind.
+ *
+ * Returns ['sent' => bool, 'error' => string].
+ */
+function merch_send_payment_reminder(array $itemLines, string $name, string $email): array
+{
+    $itemLabel = implode(' & ', $itemLines);
+    $safeName = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
+
+    $lineItemsHtml = '';
+    $lineItemsText = '';
+    foreach ($itemLines as $line) {
+        $lineItemsHtml .= '<li>' . htmlspecialchars($line, ENT_QUOTES, 'UTF-8') . '</li>';
+        $lineItemsText .= '- ' . $line . "\n";
+    }
+
+    try {
+        $mail = merch_mailer();
+        $mail->addAddress($email, $name);
+        // CC'd to Steve, same as the real invoice email - so he sees
+        // every reminder that actually went out.
+        if (defined('NOTIFY_MRFIREFLY_EMAIL') && NOTIFY_MRFIREFLY_EMAIL) {
+            $mail->addCC(NOTIFY_MRFIREFLY_EMAIL);
+        }
+        $mail->isHTML(true);
+        $mail->Subject = merch_load_string('emails/payment-reminder.subject', ['itemLabel' => $itemLabel]);
+        $mail->Body = merch_load_string('emails/payment-reminder.html', [
+            'name' => $safeName,
+            'lineItemsHtml' => $lineItemsHtml,
+        ]);
+        $mail->AltBody = merch_load_string('emails/payment-reminder.text', [
+            'name' => $name,
+            'lineItemsText' => $lineItemsText,
+        ]);
+        $mail->send();
+        return ['sent' => true, 'error' => ''];
+    } catch (Exception $e) {
+        $err = isset($mail) ? $mail->ErrorInfo : $e->getMessage();
+        error_log('Southern Fireflies payment-reminder email failed: ' . $err);
+        return ['sent' => false, 'error' => $err];
+    }
 }

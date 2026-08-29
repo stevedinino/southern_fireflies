@@ -325,7 +325,11 @@ img {
   margin: 8px 0;
   border: 1px solid #ccc;
   border-radius: 5px;
-  font-size: 15px;
+  /* 2026-08-29 (Finding 19, a11y/UX): was 15px, same iOS Safari
+     auto-zoom issue fixed on .merch-modal-content's inputs below - this
+     is the registration form and the admin login form, both of which
+     share this same class. */
+  font-size: 16px;
   font-family: inherit;
   background: #fff;
 }
@@ -984,7 +988,12 @@ body.lightbox-open {
   margin: 8px 0;
   border: 1px solid #ccc;
   border-radius: 5px;
-  font-size: 15px;
+  /* 2026-08-29 (Finding 19, a11y/UX): was 15px - iOS Safari auto-zooms
+     the whole page in when a tapped input's computed font-size is under
+     16px, which then has to be manually pinched back out. 16px is the
+     one value that reliably avoids that; this modal is where it's most
+     disruptive since it's the highest-traffic form on the site. */
+  font-size: 16px;
   font-family: inherit;
   background: #fff;
 }

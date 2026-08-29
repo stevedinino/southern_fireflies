@@ -1,0 +1,21 @@
+# Southern Fireflies Retreats — Paid Receipt
+
+**Customer:** {{name}}
+**Generated:** {{date}}
+**Order #:** {{orderIds}}
+
+## Items
+
+{{lineItemsText}}
+
+---
+
+Subtotal: {{subtotal}}
+{{discountLineText}}Tax (7%): {{tax}}
+Total: {{total}}
+
+**PAID IN FULL — Balance Due: $0.00**
+
+---
+
+Picked up: [ ]
