@@ -141,7 +141,7 @@
             }
         ?>
         <div class="merch-card">
-          <div class="merch-media-slot">
+          <div class="merch-media-slot<?= ($first !== null && $first['type'] === 'video') ? ' merch-video-wrapper' : '' ?>">
             <?php if ($first === null): ?>
               <!-- No media in this item's folder (yet) - the empty slot
                    keeps the card's shape so the grid stays uniform. -->
