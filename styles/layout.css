@@ -1095,7 +1095,7 @@ body.lightbox-open {
   }
 }
 
-/* ============================ Notes on changes ============================ */
+/* ============================ Notes on changes ============================= */
 /* - Added --nav-height and used it to lock header height across viewports.
    - Kept hamburger right-aligned via flex order and ensured its height/line-height match the header.
    - Added accessible current-link underline using aria-current or .active.
