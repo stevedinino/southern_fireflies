@@ -75,9 +75,29 @@ merch_require_admin_json();
 // csrf.php for why SameSite=Lax alone wasn't considered sufficient.
 merch_require_csrf_json();
 
+// 2026-08-31 (Steve, packing_slips.php slowness): PHP's default session
+// handler holds an exclusive lock on the session FILE for as long as a
+// script keeps $_SESSION open - normally released at script end. Two
+// requests sharing one admin session (e.g. several fetch() calls fired
+// at once from one browser tab) queue behind that lock and run one at a
+// time no matter how fast each one actually is, on top of - not instead
+// of - the flock() on merchandise.csv below. Nothing past this point
+// reads or writes $_SESSION, so it's safe to release it here instead of
+// holding it for the rest of this script.
+session_write_close();
+
 $csvFile = __DIR__ . '/merchandise.csv';
 
-$orderId = isset($_POST['orderId']) ? trim($_POST['orderId']) : '';
+// 2026-08-31: orderId now accepts a comma-separated list, not just one
+// ID - see the batched path near the bottom of this file for why
+// (packing_slips.php's shipment checkboxes). A single ID (the only
+// shape ourmerch.php ever sends) takes the exact same path/response
+// shape as before this change - nothing about that behavior moves.
+$orderIdsRaw = isset($_POST['orderId']) ? trim($_POST['orderId']) : '';
+$orderIds = array_values(array_filter(
+    array_map('trim', explode(',', $orderIdsRaw)),
+    fn($id) => $id !== ''
+));
 $field = isset($_POST['field']) ? trim($_POST['field']) : '';
 $checked = isset($_POST['checked']) && $_POST['checked'] === '1';
 
@@ -106,7 +126,14 @@ $isBooleanField = array_key_exists($field, $booleanFields);
 $isValueField = in_array($field, $valueFields, true);
 $isClearOnlyField = array_key_exists($field, $clearOnlyFields);
 
-if ((!$isBooleanField && !$isValueField && !$isClearOnlyField) || $orderId === '' || !ctype_digit($orderId)) {
+$orderIdsAllDigits = true;
+foreach ($orderIds as $oneOrderId) {
+    if (!ctype_digit($oneOrderId)) {
+        $orderIdsAllDigits = false;
+        break;
+    }
+}
+if ((!$isBooleanField && !$isValueField && !$isClearOnlyField) || empty($orderIds) || !$orderIdsAllDigits) {
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => 'Invalid request.']);
     exit;
@@ -178,103 +205,207 @@ if ($fieldIndex === false || $orderIdIndex === false || ($cascadeField !== null 
     exit;
 }
 
-$found = false;
-$newValue = '';
-$cascadeValue = null; // null = no cascade column involved; otherwise its resulting value
-foreach ($rows as $i => &$row) {
-    if ($i === 0) {
-        continue; // header
+// 2026-08-31: the per-row update logic (cascade/color/clear-only) is
+// unchanged from before this change - just factored out so the
+// single-order path and the new batched path below can both use it
+// without a second hand-maintained copy. Takes the matched row BY
+// REFERENCE and mutates it in place (same as the old inline code did);
+// returns what the caller needs to report back or bail out on.
+$applyToRow = function (array &$row) use (
+    $isClearOnlyField,
+    $clearGuardIndex,
+    $clearOnlyFields,
+    $field,
+    $isValueField,
+    $itemIndex,
+    $submittedValue,
+    $checked,
+    $cascadeIndex,
+    $fieldIndex
+): array {
+    if ($isClearOnlyField && $clearGuardIndex !== null && trim($row[$clearGuardIndex] ?? '') !== '') {
+        return ['ok' => false, 'error' => "Can't un-invoice - this order already shows a " . $clearOnlyFields[$field] . '. Sort out the payment by hand first.'];
     }
-    if (isset($row[$orderIdIndex]) && $row[$orderIdIndex] === $orderId) {
-        if ($isClearOnlyField && $clearGuardIndex !== null && trim($row[$clearGuardIndex] ?? '') !== '') {
-            flock($handle, LOCK_UN);
-            fclose($handle);
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => "Can't un-invoice - this order already shows a " . $clearOnlyFields[$field] . '. Sort out the payment by hand first.']);
-            exit;
+
+    $newValue = '';
+    $cascadeValue = null; // null = no cascade column involved; otherwise its resulting value
+    if ($isValueField) {
+        // Color: only accept a value that's actually in the color list
+        // THIS row's own item offers - e.g. a Circle Cutter Holder can
+        // only be changed to a filament color (and not Rainbow, since
+        // it's not RAINBOW_ELIGIBLE_ITEMS), a Logo Shirt only to a
+        // Gildan color. Same allowlist principle as $booleanFields
+        // above, just resolved per-row instead of being fixed ahead of
+        // time.
+        $rowItem = trim($row[$itemIndex] ?? '');
+        $allowedColors = merch_color_options_for_item($rowItem);
+        // An empty value is always accepted for a colorable item -
+        // that's "clear the color choice," the same as how it never got
+        // picked in the first place. It's deliberately NOT in
+        // $allowedColors itself (that list is real chart colors only) -
+        // checked here as its own explicit case instead.
+        if (empty($allowedColors) || ($submittedValue !== '' && !in_array($submittedValue, $allowedColors, true))) {
+            return ['ok' => false, 'error' => 'Not a valid color choice for this item.'];
         }
-        if ($isValueField) {
-            // Color: only accept a value that's actually in the color
-            // list THIS row's own item offers - e.g. a Circle Cutter
-            // Holder can only be changed to a filament color (and not
-            // Rainbow, since it's not RAINBOW_ELIGIBLE_ITEMS), a Logo
-            // Shirt only to a Gildan color. Same allowlist principle as
-            // $booleanFields above, just resolved per-row instead of
-            // being fixed ahead of time.
-            $rowItem = trim($row[$itemIndex] ?? '');
-            $allowedColors = merch_color_options_for_item($rowItem);
-            // An empty value is always accepted for a colorable item -
-            // that's "clear the color choice," the same as how it never
-            // got picked in the first place. It's deliberately NOT in
-            // $allowedColors itself (that list is real chart colors
-            // only) - checked here as its own explicit case instead.
-            if (empty($allowedColors) || ($submittedValue !== '' && !in_array($submittedValue, $allowedColors, true))) {
+        $newValue = $submittedValue;
+    } elseif ($checked) {
+        if ($cascadeIndex !== false && $cascadeIndex !== null) {
+            $existingCascadeDate = trim($row[$cascadeIndex] ?? '');
+            if ($existingCascadeDate === '') {
+                // Cascade target not set yet - backfill it with today,
+                // and match this field to the same date.
+                $today = date('Y-m-d');
+                $row[$cascadeIndex] = $today;
+                $newValue = $today;
+            } else {
+                // Cascade target already has a date - match it exactly
+                // rather than using today's date.
+                $newValue = $existingCascadeDate;
+            }
+            $cascadeValue = $row[$cascadeIndex];
+        } else {
+            $newValue = date('Y-m-d');
+        }
+    } else {
+        // Unchecking (or clearing, for a clear-only field) only touches
+        // this field's own column - never the cascade target, never any
+        // other row.
+        $newValue = '';
+    }
+    $row[$fieldIndex] = $newValue;
+    return ['ok' => true, 'value' => $newValue, 'cascadeValue' => $cascadeValue];
+};
+
+if (count($orderIds) === 1) {
+    // Single order - EXACT same behavior and response shape as before
+    // this change. ourmerch.php only ever sends one OrderID, so nothing
+    // here changes for it.
+    $orderId = $orderIds[0];
+    $found = false;
+    $newValue = '';
+    $cascadeValue = null;
+    foreach ($rows as $i => &$row) {
+        if ($i === 0) {
+            continue; // header
+        }
+        if (isset($row[$orderIdIndex]) && $row[$orderIdIndex] === $orderId) {
+            $result = $applyToRow($row);
+            if (!$result['ok']) {
                 flock($handle, LOCK_UN);
                 fclose($handle);
                 http_response_code(400);
-                echo json_encode(['ok' => false, 'error' => 'Not a valid color choice for this item.']);
+                echo json_encode(['ok' => false, 'error' => $result['error']]);
                 exit;
             }
-            $newValue = $submittedValue;
-        } elseif ($checked) {
-            if ($cascadeIndex !== false && $cascadeIndex !== null) {
-                $existingCascadeDate = trim($row[$cascadeIndex] ?? '');
-                if ($existingCascadeDate === '') {
-                    // Cascade target not set yet - backfill it with
-                    // today, and match this field to the same date.
-                    $today = date('Y-m-d');
-                    $row[$cascadeIndex] = $today;
-                    $newValue = $today;
-                } else {
-                    // Cascade target already has a date - match it
-                    // exactly rather than using today's date.
-                    $newValue = $existingCascadeDate;
-                }
-                $cascadeValue = $row[$cascadeIndex];
-            } else {
-                $newValue = date('Y-m-d');
-            }
-        } else {
-            // Unchecking (or clearing, for a clear-only field) only
-            // touches this field's own column - never the cascade
-            // target, never any other row.
-            $newValue = '';
+            $newValue = $result['value'];
+            $cascadeValue = $result['cascadeValue'];
+            $found = true;
+            break;
         }
-        $row[$fieldIndex] = $newValue;
-        $found = true;
-        break;
     }
-}
-unset($row);
+    unset($row);
 
-if (!$found) {
+    if (!$found) {
+        flock($handle, LOCK_UN);
+        fclose($handle);
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => 'Order not found - the page may be out of date, try refreshing.']);
+        exit;
+    }
+
+    // Backup before writing - cheap insurance against a bug corrupting
+    // live order data. Shared implementation in merch_backup.php as of
+    // 2026-08-20 (Findings 12 and 14, 2026-08-19 code review) - failures
+    // are now logged instead of silently swallowed, and old backups are
+    // pruned instead of accumulating forever.
+    merch_backup_csv($csvFile, __DIR__ . '/backups');
+
+    rewind($handle);
+    ftruncate($handle, 0);
+    foreach ($rows as $row) {
+        fputcsv($handle, $row, ",", '"', "\\");
+    }
+    fflush($handle);
     flock($handle, LOCK_UN);
     fclose($handle);
-    http_response_code(404);
-    echo json_encode(['ok' => false, 'error' => 'Order not found - the page may be out of date, try refreshing.']);
+
+    echo json_encode([
+        'ok' => true,
+        'value' => $newValue,
+        'cascadeField' => $cascadeField,
+        'cascadeValue' => $cascadeValue,
+        'build' => '2026-08-31-A',
+    ]);
     exit;
 }
 
-// Backup before writing - cheap insurance against a bug corrupting live
-// order data. Shared implementation in merch_backup.php as of
-// 2026-08-20 (Findings 12 and 14, 2026-08-19 code review) - failures
-// are now logged instead of silently swallowed, and old backups are
-// pruned instead of accumulating forever.
-merch_backup_csv($csvFile, __DIR__ . '/backups');
+// 2026-08-31: batched path - packing_slips.php's "ready to pack"
+// shipment checkboxes land here (2+ OrderIDs, one shipment = every item
+// bound for one address). This used to be N separate requests, each
+// doing its own full open/lock/backup/rewrite of merchandise.csv - on
+// an 8-item shipment that's 8 full read-modify-write cycles back to
+// back (serialized twice over: once by PHP's own session lock - see the
+// session_write_close() note near the top of this file - and again by
+// the flock() below). Looking every ID up against the SAME in-memory
+// $rows and writing/backing-up ONCE for the whole batch, instead of
+// once per ID, is the actual fix for that slowness.
+//
+// Every ID is attempted independently - one bad or not-found ID doesn't
+// stop the others in the same shipment from being applied - and the
+// response reports per-ID results so the caller can tell exactly which
+// ones (if any) need a manual look, same as the old one-fetch-per-ID
+// approach let it do.
+$results = [];
+$anyChanged = false;
+foreach ($orderIds as $oneOrderId) {
+    $found = false;
+    $result = null;
+    foreach ($rows as $i => &$row) {
+        if ($i === 0) {
+            continue; // header
+        }
+        if (isset($row[$orderIdIndex]) && $row[$orderIdIndex] === $oneOrderId) {
+            $result = $applyToRow($row);
+            $found = true;
+            break;
+        }
+    }
+    unset($row);
 
-rewind($handle);
-ftruncate($handle, 0);
-foreach ($rows as $row) {
-    fputcsv($handle, $row, ",", '"', "\\");
+    if (!$found) {
+        $results[$oneOrderId] = ['ok' => false, 'error' => 'Order not found - the page may be out of date, try refreshing.'];
+        continue;
+    }
+    if (!$result['ok']) {
+        $results[$oneOrderId] = ['ok' => false, 'error' => $result['error']];
+        continue;
+    }
+    $anyChanged = true;
+    $results[$oneOrderId] = [
+        'ok' => true,
+        'value' => $result['value'],
+        'cascadeField' => $cascadeField,
+        'cascadeValue' => $result['cascadeValue'],
+    ];
 }
-fflush($handle);
+
+if ($anyChanged) {
+    // Same backup-then-rewrite shared implementation as the single-order
+    // path above - just called once for the whole batch instead of once
+    // per ID.
+    merch_backup_csv($csvFile, __DIR__ . '/backups');
+    rewind($handle);
+    ftruncate($handle, 0);
+    foreach ($rows as $row) {
+        fputcsv($handle, $row, ",", '"', "\\");
+    }
+    fflush($handle);
+}
 flock($handle, LOCK_UN);
 fclose($handle);
 
 echo json_encode([
     'ok' => true,
-    'value' => $newValue,
-    'cascadeField' => $cascadeField,
-    'cascadeValue' => $cascadeValue,
-    'build' => '2026-08-29-A',
+    'results' => $results,
+    'build' => '2026-08-31-A',
 ]);
