@@ -23,7 +23,7 @@ jobs:
           username: ${{ secrets.SFTP_USERNAME }}
           password: ${{ secrets.SFTP_PASSWORD }}
           port: ${{ secrets.SFTP_PORT }}
-          protocol: sftp # change to "ftps" or "sftp" - see note below
+          protocol: ftps # change to "ftps" or "sftp" - see note below
 
           # Where in the repo the site lives (root of this repo) and
           # where it lands on the server. Adjust server-dir after you've
