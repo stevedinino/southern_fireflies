@@ -484,12 +484,12 @@ $merchEditCatalog = [
                       // this just surfaces it inline next to Name, since
                       // Fulfillment itself isn't in
                       // MERCH_ADMIN_COLUMN_ORDER and can scroll
-                      // off-screen. Needs Payment's filter below now
-                      // also hides these by default - Steve already
-                      // knows they're outstanding and settles them in
-                      // person at the retreat, so this tag is just "so
-                      // I can still spot them" when scanning other
-                      // views, not a call to action.
+                      // off-screen. Originally added so an unpaid pickup
+                      // order could still be spotted while Needs Payment
+                      // excluded pickup rows outright; that exclusion is
+                      // gone as of 2026-08-30 (see the needs-payment case
+                      // below), but the tag stays - useful in every other
+                      // view too, not just that one.
                       echo '<td style="padding:6px; border-bottom:1px solid #eee;">' . htmlspecialchars($cell);
                       if (!$rowIsShipping) {
                           echo ' <span style="display:inline-block; padding:1px 6px; font-size:0.7em; background:#eef; color:#448; border-radius:3px; vertical-align:middle;">Pickup</span>';
@@ -1175,12 +1175,22 @@ $merchEditCatalog = [
           case 'needs-payment':
             // 2026-08-23 (Steve): pickup orders go invoiced -> created ->
             // PAID (paid last, settled in person), not the normal
-            // paid-before-created flow - an invoiced-but-unpaid pickup
-            // order isn't something to act on here, it's expected and
-            // gets handled at the retreat. Excluded from this view;
-            // still tagged inline (see the Name cell above) and still
-            // visible in All/Active.
-            show = invoiced && !paid && isShipping;
+            // paid-before-created flow, so an invoiced-but-unpaid pickup
+            // order used to be excluded here outright - "expected,
+            // handled at the retreat, not a call to action."
+            //
+            // 2026-08-30 (Steve): that exclusion was absolute, though -
+            // combined with "Pickup at Retreat only" (which hides every
+            // Ship row below) it meant that checkbox could never show
+            // anything under Needs Payment, even though Steve does need
+            // to see unpaid pickup orders sometimes (chasing prepayment
+            // before a retreat, or following up on ones that didn't get
+            // settled in person). Dropping the isShipping requirement
+            // here does that: Needs Payment with the box unchecked now
+            // shows both unpaid Ship and unpaid Pickup orders together;
+            // checking "Pickup at Retreat only" narrows it to just the
+            // pickup ones, same as it narrows every other view.
+            show = invoiced && !paid;
             break;
           case 'needs-creating':
             // 2026-08-25 (Steve): this used to require `paid` for every

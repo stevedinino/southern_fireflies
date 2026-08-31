@@ -1,6 +1,6 @@
 Hi {{name}}!
 
-The response to Mr. Firefly's merchandise has been overwhelming, and we're so grateful you're one of the folks who jumped in early!
+Thank you so much for your order - we really appreciate your support.
 
 A quick update since you placed your order: we've gotten our pricing squared away, so instead of leaving you guessing, here's exactly what you owe:
 
@@ -9,7 +9,7 @@ A quick update since you placed your order: we've gotten our pricing squared awa
 
 {{last4Text}}You can send that whenever it's convenient via Venmo (@{{venmoHandle}}) or PayPal ({{paypalEmail}}){{accountNote}}
 
-As I said on the website: these are handmade to order, so please allow a couple of weeks as we (ok, I) work through the queue. That said - I'll ship as soon as I match a payment to a request, so it's first-pay, first-ship. We'll follow up by email as soon as it ships. Thanks so much for your patience and your enthusiasm - rest assured, more good things are coming soon!
+As noted on the website, these are handmade to order, so please allow a couple of weeks for us to get to yours. We'll process and ship orders as soon as we can, and follow up by email once yours is on its way. Thank you again for your order and your patience!
 
 Mr. Firefly (aka Steve)
 Southern Fireflies Retreats
