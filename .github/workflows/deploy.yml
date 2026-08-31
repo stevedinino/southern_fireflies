@@ -16,38 +16,39 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # 2026-08-31: replaces SamKirkland/FTP-Deploy-Action, which turned
+      # out to only speak ftp/ftps - it can't talk to Network Solutions'
+      # real SSH-based SFTP at all (that mismatch is what caused the
+      # first run's "Timeout (control socket)" failure). This action
+      # speaks actual SFTP over username/password, no SSH key or shell/
+      # rsync access on the server required - just the plain SFTP file
+      # access the mister_firefly_ftp account already has.
       - name: Deploy via SFTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        uses: milanmk/actions-file-deployer@master
         with:
-          server: ${{ secrets.SFTP_SERVER }}
-          username: ${{ secrets.SFTP_USERNAME }}
-          password: ${{ secrets.SFTP_PASSWORD }}
-          port: ${{ secrets.SFTP_PORT }}
-          protocol: ftps # change to "ftps" or "sftp" - see note below
+          remote-protocol: sftp
+          remote-host: ${{ secrets.SFTP_SERVER }}
+          remote-port: ${{ secrets.SFTP_PORT }}
+          remote-user: ${{ secrets.SFTP_USERNAME }}
+          remote-password: ${{ secrets.SFTP_PASSWORD }}
 
-          # Where in the repo the site lives (root of this repo) and
-          # where it lands on the server. Adjust server-dir after you've
-          # confirmed the real folder name by connecting with FileZilla
-          # first (see the setup guide) - it's often the account root,
-          # sometimes "public_html/" or "httpdocs/".
-          local-dir: ./
-          server-dir: ./
+          # mister_firefly_ftp is set up on the Network Solutions side to
+          # be jailed to /southernfireflies as its own root (confirmed by
+          # Steve's manual RealFTP test) - so both sides are just "the
+          # site root" and need no subfolder path.
+          local-path: './'
+          remote-path: './'
 
-          # NEVER remove server files that aren't in this repo. config.php,
-          # the *.csv data files, the *_counter.txt files, login_throttle.json
-          # and everything under backups/ live ONLY on the server (they're
-          # gitignored on purpose) and must survive every deploy.
-          dangerous-clean-slate: false
-
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/.github/**
-            **/config.php
-            **/merchandise.csv
-            **/merchandise_archive.csv
-            **/registrations.csv
-            **/merchandise_orderid_counter.txt
-            **/registrations_regid_counter.txt
-            **/login_throttle.json
-            **/backups/**
+          # "full" is the ONLY sync mode that never deletes anything on
+          # the server - "delta" mode can. That matters here because
+          # config.php, the *.csv data files, the *_counter.txt files,
+          # login_throttle.json, and everything else under backups/ all
+          # live ONLY on the server (deliberately gitignored - see
+          # .gitignore) and must survive every deploy. In practice "full"
+          # can't touch them even by accident: they were never part of
+          # this git checkout to begin with, so they're simply not among
+          # the files this step ever looks at.
+          #
+          # .git/ and .github/ are excluded from the upload by this
+          # action's own default behavior - nothing extra needed here.
+          sync: full
