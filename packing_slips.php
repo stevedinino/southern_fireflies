@@ -471,24 +471,44 @@ uksort($colorGroups, function ($a, $b) {
     // Reuses merch_update.php exactly as ourmerch.php's own Fulfilled
     // checkbox does. The one wrinkle: a single checkbox here can stand
     // for MULTIPLE OrderIDs (a shipment = every item bound for one
-    // address), where ourmerch.php's checkbox is always exactly one
-    // row. So instead of one fetch() per checkbox, this fires one
-    // fetch() per OrderID baked into data-order-ids (set server-side
-    // above from the same rows this checklist already grouped), and
-    // waits for all of them before treating the row as settled.
+    // address), where ourmerch.php's checkbox is always exactly one row.
+    //
+    // 2026-08-31 (Steve, "several minutes per order" on a big shipment):
+    // this used to fire one fetch() per OrderID via Promise.all - on a
+    // large shipment that meant several full read-modify-write cycles
+    // against merchandise.csv, each also serialized behind PHP's own
+    // session lock (see merch_update.php's session_write_close() note),
+    // so a multi-item shipment could queue up several full CSV rewrites
+    // back to back. merch_update.php now accepts a comma-separated list
+    // of OrderIDs and applies/backs-up/writes them all in ONE pass, so
+    // this sends ONE request per checkbox regardless of shipment size,
+    // and reads per-OrderID results back out of it.
     //
     // Symmetric toggle, same as ourmerch.php: checking sets Fulfilled
-    // for every OrderID in the shipment, unchecking clears it for all
-    // of them again. No confirm() dialog - matches the rest of this
+    // for every OrderID in the shipment, unchecking clears it for all of
+    // them again. No confirm() dialog - matches the rest of this
     // codebase's reversible-checkbox behavior.
-    function setFulfilledForOrder(orderId, checked) {
+    function setFulfilledForOrders(orderIds, checked) {
       return fetch('merch_update.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `orderId=${encodeURIComponent(orderId)}&field=Fulfilled&checked=${checked ? '1' : '0'}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
+        body: `orderId=${encodeURIComponent(orderIds.join(','))}&field=Fulfilled&checked=${checked ? '1' : '0'}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
       })
         .then((r) => r.json())
-        .then((data) => ({ orderId, ok: !!data.ok, error: data.error }));
+        .then((data) => {
+          if (!data.ok) {
+            // Whole request was refused (bad CSRF token, not logged in,
+            // etc., not a per-order problem) - every OrderID in this
+            // shipment counts as failed with the same shared reason.
+            return orderIds.map((orderId) => ({ orderId, ok: false, error: data.error }));
+          }
+          const results = data.results || {};
+          return orderIds.map((orderId) => ({
+            orderId,
+            ok: !!(results[orderId] && results[orderId].ok),
+            error: results[orderId] ? results[orderId].error : 'No result returned for this order.',
+          }));
+        });
     }
 
     document.querySelectorAll('.shipment-check[data-order-ids]').forEach((box) => {
@@ -500,7 +520,7 @@ uksort($colorGroups, function ($a, $b) {
         if (orderIds.length === 0) return;
 
         box.disabled = true;
-        Promise.all(orderIds.map((orderId) => setFulfilledForOrder(orderId, checked)))
+        setFulfilledForOrders(orderIds, checked)
           .then((results) => {
             box.disabled = false;
             const failed = results.filter((r) => !r.ok);
