@@ -13,6 +13,16 @@
 //   merch_invoice.php:  Invoice Date === ''   (not yet invoiced at all)
 //   here:                Invoice Date !== ''   (already invoiced)
 //                        AND Pymt Date === ''   (but still unpaid)
+//                        AND Invoice Date is at least
+//                        MERCH_REMINDER_MIN_AGE_DAYS old (see
+//                        merch_reminder_min_age_days() below) - added
+//                        2026-08-31 per Steve, after order-analytics
+//                        review showed most Ship customers pay within a
+//                        few days of being invoiced: reminding someone
+//                        who was just invoiced yesterday just irritates
+//                        people who were always going to pay on their
+//                        own timeline. Only genuinely overdue/abandoned
+//                        invoices should surface here.
 //                        AND Fulfillment === 'Ship' only - Pickup at
 //                        Retreat customers pay cash/check in person at
 //                        the retreat, so an emailed payment reminder
@@ -65,11 +75,59 @@ function merch_reminder_required_columns(): array
 }
 
 /**
+ * Minimum number of days since Invoice Date before an unpaid Ship
+ * order is considered "overdue" enough to nudge by email. Added
+ * 2026-08-31 per Steve: order-analytics on the live CSV showed Ship
+ * customers pay in a median of 1 day and 75% pay within 4 days, so
+ * anything still unpaid inside this window is very likely just a
+ * customer who hasn't gotten to it yet, not someone who needs a
+ * reminder. One place to tune if that behavior changes.
+ */
+function merch_reminder_min_age_days(): int
+{
+    return 14;
+}
+
+/**
+ * Parses an Invoice Date cell into a whole number of days since then
+ * (as of right now), or null if the value is blank or can't be parsed
+ * at all. Tries the app's own native format first (Y-m-d, written by
+ * merch_invoice_stamp_invoice_date() in merch_invoice.php) and falls
+ * back to a loose strtotime() parse for any row saved in a different
+ * shape - e.g. from the CSV having been opened/saved in Excel at some
+ * point, which is known to reformat dates on this file (M/D/YYYY and
+ * M/D/YYYY H:MM have both been observed). A row whose date genuinely
+ * can't be parsed is treated as NOT old enough (fails closed) rather
+ * than guessed at, since this only gates an email send.
+ */
+function merch_reminder_invoice_age_days(string $invoiceDate): ?int
+{
+    $invoiceDate = trim($invoiceDate);
+    if ($invoiceDate === '') {
+        return null;
+    }
+
+    $parsed = DateTime::createFromFormat('Y-m-d', $invoiceDate);
+    if ($parsed === false || $parsed->format('Y-m-d') !== $invoiceDate) {
+        $timestamp = strtotime($invoiceDate);
+        if ($timestamp === false) {
+            return null;
+        }
+        $parsed = (new DateTime())->setTimestamp($timestamp);
+    }
+
+    $parsed->setTime(0, 0, 0);
+    $today = new DateTime('today');
+    $diff = $today->diff($parsed);
+    return $diff->invert === 1 ? $diff->days : 0;
+}
+
+/**
  * True if $row is a candidate for a payment reminder on its own -
- * Ship, invoiced, not yet paid, has an email on file, and not
- * cancelled. Says nothing about identity/grouping; see
- * merch_reminder_build_groups() and merch_reminder_group_for_anchor()
- * for that.
+ * Ship, invoiced at least merch_reminder_min_age_days() days ago, not
+ * yet paid, has an email on file, and not cancelled. Says nothing
+ * about identity/grouping; see merch_reminder_build_groups() and
+ * merch_reminder_group_for_anchor() for that.
  */
 function merch_reminder_row_eligible(array $row, array $col): bool
 {
@@ -78,7 +136,11 @@ function merch_reminder_row_eligible(array $row, array $col): bool
     $paid = trim($row[$col['Pymt Date']] ?? '');
     $email = trim($row[$col['Email']] ?? '');
     $cancelled = $col['Cancelled'] !== false && trim($row[$col['Cancelled']] ?? '') !== '';
-    return $fulfillment === 'Ship' && $invoiced !== '' && $paid === '' && $email !== '' && !$cancelled;
+    if ($fulfillment !== 'Ship' || $invoiced === '' || $paid !== '' || $email === '' || $cancelled) {
+        return false;
+    }
+    $ageDays = merch_reminder_invoice_age_days($invoiced);
+    return $ageDays !== null && $ageDays >= merch_reminder_min_age_days();
 }
 
 /**
@@ -143,6 +205,7 @@ function merch_reminder_format_item_lines(array $items): array
  *     'isPrinted'  => bool,
  *     'items'      => merch_reminder_aggregate_items() output,
  *     'invoiceDate'=> the earliest Invoice Date in the group (display only),
+ *     'invoiceAgeDays' => days since that earliest Invoice Date (display only),
  *   ]
  * Ordered by anchorOrderId ascending, for a stable/readable preview list.
  */
@@ -171,6 +234,7 @@ function merch_reminder_build_groups(array $rows, array $col): array
 
         $invoiceDates = array_values(array_filter(array_map(fn($r) => trim($r[$col['Invoice Date']] ?? ''), $groupRows)));
         sort($invoiceDates);
+        $earliestInvoiceDate = $invoiceDates[0] ?? '';
 
         $result[] = [
             'anchorOrderId' => (string) min($numericIds),
@@ -179,7 +243,8 @@ function merch_reminder_build_groups(array $rows, array $col): array
             'email' => trim($anchor[$col['Email']] ?? ''),
             'isPrinted' => merch_is_printed_item(trim($anchor[$col['Item']] ?? '')),
             'items' => merch_reminder_aggregate_items($groupRows, $col),
-            'invoiceDate' => $invoiceDates[0] ?? '',
+            'invoiceDate' => $earliestInvoiceDate,
+            'invoiceAgeDays' => $earliestInvoiceDate !== '' ? merch_reminder_invoice_age_days($earliestInvoiceDate) : null,
         ];
     }
 
