@@ -3,11 +3,18 @@
 // Admin-only page: preview-then-confirm list for the payment-reminder
 // feature (2026-08-29, per Steve: "a bulk reminder email that gently
 // nudges the people who placed requests but never paid"). Lists every
-// customer group that's been invoiced but hasn't paid yet, for Ship
-// orders only (Pickup customers pay in person - see
+// customer group that's overdue - invoiced at least
+// merch_reminder_min_age_days() days ago and still hasn't paid - for
+// Ship orders only (Pickup customers pay in person - see
 // merch_reminder_groups.php's header comment), with a checkbox per
 // group (default checked) and a single "Send Reminders" button that
 // sends only to the ones still checked when clicked.
+//
+// The minimum-age gate was added 2026-08-31 per Steve, after
+// order-analytics on the live CSV showed most Ship customers pay
+// within a few days of being invoiced - reminding someone who was
+// just invoiced isn't a nudge, it's an irritation. See
+// merch_reminder_groups.php's merch_reminder_min_age_days().
 //
 // Deliberately two-step, not a one-click "email everyone" button - per
 // Steve's own answer when asked (AskUserQuestion, 2026-08-29): "Preview
@@ -41,6 +48,7 @@ $col = merch_csv_column_map(
 
 $groups = merch_reminder_build_groups($loaded['rows'], $col);
 $groupCount = count($groups);
+$minAgeDays = merch_reminder_min_age_days();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -125,14 +133,14 @@ $groupCount = count($groups);
 <body>
   <h1>Payment Reminders</h1>
   <p class="generated-note">
-    Generated <?= date('F j, Y g:ia') ?> &mdash; every Ship customer who's been invoiced but hasn't
-    paid yet, one row per invoice (printed items and shop items from the same customer are kept
+    Generated <?= date('F j, Y g:ia') ?> &mdash; every Ship customer invoiced <?= $minAgeDays ?>+ days ago who
+    still hasn't paid, one row per invoice (printed items and shop items from the same customer are kept
     separate, same as how they were invoiced). <?= $groupCount ?> group<?= $groupCount === 1 ? '' : 's' ?> shown.
     Uncheck anyone you don't want reminded, then click Send.
   </p>
 
   <?php if ($groupCount === 0): ?>
-    <p class="empty-note">Nobody's waiting on a payment right now &mdash; nothing here until a Ship order is invoiced but its Pymt Date is still blank.</p>
+    <p class="empty-note">Nobody's overdue on a payment right now &mdash; nothing here until a Ship order has been invoiced for at least <?= $minAgeDays ?> days with its Pymt Date still blank.</p>
   <?php else: ?>
     <div class="action-bar">
       <button type="button" id="send-reminders-btn">Send Reminders</button>
@@ -161,7 +169,9 @@ $groupCount = count($groups);
               <?php endforeach; ?>
             </div>
             <?php if ($group['invoiceDate'] !== ''): ?>
-              <div class="invoice-date-note">Invoiced <?= htmlspecialchars($group['invoiceDate']) ?></div>
+              <div class="invoice-date-note">
+                Invoiced <?= htmlspecialchars($group['invoiceDate']) ?><?php if ($group['invoiceAgeDays'] !== null): ?> (<?= $group['invoiceAgeDays'] ?> days ago)<?php endif; ?>
+              </div>
             <?php endif; ?>
           </div>
         </li>
