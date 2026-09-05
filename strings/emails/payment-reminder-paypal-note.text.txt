@@ -1,0 +1,1 @@
+If you already sent a PayPal payment for this, please double-check it went to {{paypalEmail}} - a different PayPal account with a similar name has received a few payments by mistake, and I can't credit anything that didn't land in mine.
