@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-29-B
+// Build: 2026-09-05-A
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -114,6 +114,50 @@ $merchEditCatalog = [
     }
     .merch-color-edit {
       font-size: 0.85em;
+    }
+    /* 2026-09-05 (Steve: printed the wrong quantity 4 times in a row -
+       "I've had 4 separate messages from people who ordered 2x of the
+       same item... in my haste to get these printed and shipped I read
+       them as a single item order") - a plain "2" in the Quantity
+       column looks exactly like every other cell until you're already
+       reading that specific column closely, which isn't how this page
+       actually gets scanned while working. Two reinforcing fixes below:
+       tint the WHOLE row so a multi-quantity order is visible no matter
+       which column your eye lands on (works even when just skimming
+       Item names), and turn the Quantity cell itself into a loud badge
+       for the moments you do look right at it. Both keyed off the same
+       $rowQuantity > 1 check server-side - see the row loop below. */
+    tr.merch-row-multi {
+      background: #fff4e0;
+    }
+    tr.merch-row-multi:hover {
+      background: #ffe9c2;
+    }
+    .merch-qty-badge {
+      display: inline-block;
+      min-width: 1.6em;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #b34700;
+      color: #fff;
+      font-weight: bold;
+      font-size: 1.05em;
+      text-align: center;
+    }
+    /* Same badge, smaller, riding right in front of the Item name -
+       Steve's own description of the failure ("read them as a single
+       item order") is about misreading the ITEM line, not the Quantity
+       column specifically, so the flag needs to show up there too. */
+    .merch-qty-flag {
+      display: inline-block;
+      margin-right: 6px;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: #b34700;
+      color: #fff;
+      font-weight: bold;
+      font-size: 0.85em;
+      vertical-align: middle;
     }
   </style>
 </head>
@@ -265,6 +309,14 @@ $merchEditCatalog = [
               // row's Item regardless of which column comes first in
               // the CSV's header order.
               $rowItem = $itemIndex !== false ? trim($data[$itemIndex] ?? '') : '';
+              // 2026-09-05 (Steve: multiple missed 2x orders) - drives
+              // both the whole-row highlight and the Quantity/Item
+              // badges below. Same "trim then cast" pattern already
+              // used for $rowQuantityForEdit further down; computed
+              // once up front for the same reason $rowItem is (needed
+              // by more than one column's rendering, regardless of
+              // display order).
+              $rowQuantity = $quantityIndex !== false ? (int) trim($data[$quantityIndex] ?? '1') : 1;
               $rowIsCreated = $createdIndex !== false && trim($data[$createdIndex] ?? '') !== '';
               $rowIsFulfilled = $fulfilledIndex !== false && trim($data[$fulfilledIndex] ?? '') !== '';
               $rowIsInvoiced = $invoiceDateIndex !== false && trim($data[$invoiceDateIndex] ?? '') !== '';
@@ -279,7 +331,7 @@ $merchEditCatalog = [
                   ? merch_shipment_key($data[$nameIndex] ?? '', $data[$zipIndex] ?? '')
                   : '';
               $rowShipmentReady = $shipmentAllCreated[$rowShipmentKey] ?? true;
-              echo '<tr data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '" data-cancelled="' . ($rowIsCancelled ? '1' : '0') . '">';
+              echo '<tr class="' . ($rowQuantity > 1 ? 'merch-row-multi' : '') . '" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '" data-cancelled="' . ($rowIsCancelled ? '1' : '0') . '" data-quantity="' . $rowQuantity . '">';
               foreach ($displayOrder as $col) {
                   $i = $columnIndexByName[$col] ?? null;
                   if ($i === null) {
@@ -472,11 +524,34 @@ $merchEditCatalog = [
                       $rowSizeForEdit = $sizeIndex !== false ? trim($data[$sizeIndex] ?? '') : '';
                       $rowSleeveForEdit = $sleeveIndex !== false ? trim($data[$sleeveIndex] ?? '') : '';
                       echo '<td style="padding:6px; border-bottom:1px solid #eee; white-space:nowrap;" class="merch-item-cell">';
-                      echo '<span class="merch-item-display">' . htmlspecialchars($cell);
+                      echo '<span class="merch-item-display">';
+                      // 2026-09-05 (Steve: 4 missed 2x orders) - the
+                      // Item name is what actually gets read while
+                      // deciding what to print, so the quantity flag
+                      // needs to sit right in front of it, not just in
+                      // its own column off to the side.
+                      if ($rowQuantity > 1) {
+                          echo '<span class="merch-qty-flag">&times;' . $rowQuantity . '</span>';
+                      }
+                      echo htmlspecialchars($cell);
                       if (!$rowIsInvoiced) {
                           echo ' <button type="button" class="merch-item-edit-btn" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-item="' . htmlspecialchars($rowItem, ENT_QUOTES) . '" data-qty="' . htmlspecialchars($rowQuantityForEdit, ENT_QUOTES) . '" data-color="' . htmlspecialchars($rowColorForEdit, ENT_QUOTES) . '" data-size="' . htmlspecialchars($rowSizeForEdit, ENT_QUOTES) . '" data-sleeve="' . htmlspecialchars($rowSleeveForEdit, ENT_QUOTES) . '">Edit</button>';
                       }
                       echo '</span>';
+                      echo '</td>';
+                  } elseif ($col === 'Quantity') {
+                      // 2026-09-05 (Steve: 4 missed 2x orders) - a plain
+                      // "2" here reads the same as every other cell.
+                      // Badge it when it actually matters (>1); a
+                      // quantity of 1, which is most rows, stays plain
+                      // text so the badge itself doesn't become
+                      // wallpaper you learn to ignore.
+                      echo '<td style="padding:6px; border-bottom:1px solid #eee; text-align:center;">';
+                      if ($rowQuantity > 1) {
+                          echo '<span class="merch-qty-badge">&times;' . $rowQuantity . '</span>';
+                      } else {
+                          echo htmlspecialchars($cell);
+                      }
                       echo '</td>';
                   } elseif ($col === 'Name') {
                       // 2026-08-23: Fulfillment already exists as

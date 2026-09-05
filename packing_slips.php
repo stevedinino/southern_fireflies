@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-29-A
+// Build: 2026-09-05-A
 //
 // 2026-08-28 (Steve): the "ready to pack" checkboxes below now write
 // back to Fulfilled on merchandise.csv when checked, instead of being a
@@ -186,6 +186,21 @@ uksort($colorGroups, function ($a, $b) {
     if ($b === '(No color specified)') return -1;
     return strcasecmp($a, $b);
 });
+
+// 2026-09-05 (Steve: printed the wrong quantity 4 times - "in my haste
+// to get these printed and shipped I read them as a single item
+// order") - one small helper instead of repeating the same badge-vs-
+// plain-text check in all three item-line spots below (main
+// checklist, Still In Progress, By Color). Only escapes/renders the
+// "x2" part - callers still print the item name/color themselves,
+// same as before this existed.
+function merch_qty_badge_html(int $quantity): string
+{
+    if ($quantity > 1) {
+        return '<span class="item-qty-multi">&times;' . $quantity . '</span>';
+    }
+    return '&times;' . $quantity;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -244,6 +259,23 @@ uksort($colorGroups, function ($a, $b) {
   .item-lines div { margin: 2px 0; }
 
   .item-color { color: #555; }
+
+  /* 2026-09-05 (Steve: printed the wrong quantity 4 times - "in my
+     haste to get these printed and shipped I read them as a single
+     item order") - matches the same badge added to ourmerch.php's
+     Quantity/Item columns, so a multi-quantity line looks the same
+     whichever of the two pages Steve's actually looking at when he
+     misses it. A quantity of 1 (most lines) stays as plain "&times;1"
+     text - see the qty > 1 checks below - so the badge doesn't turn
+     into wallpaper. */
+  .item-qty-multi {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #b34700;
+    color: #fff;
+    font-weight: bold;
+  }
 
   .empty-note { text-align: center; color: #666; margin-top: 60px; }
 
@@ -362,7 +394,7 @@ uksort($colorGroups, function ($a, $b) {
                   <?php if ($color !== ''): ?>
                     &mdash; <span class="item-color"><?= htmlspecialchars($color) ?></span>
                   <?php endif; ?>
-                  &times;<?= $quantity ?>
+                  <?= merch_qty_badge_html($quantity) ?>
                 </div>
               <?php endforeach; ?>
             </div>
@@ -413,7 +445,7 @@ uksort($colorGroups, function ($a, $b) {
                     <?php if ($color !== ''): ?>
                       &mdash; <span class="item-color"><?= htmlspecialchars($color) ?></span>
                     <?php endif; ?>
-                    &times;<?= $quantity ?>
+                    <?= merch_qty_badge_html($quantity) ?>
                     <?php if ($itemCreated): ?>
                       <span class="item-status-done">&check; printed</span>
                     <?php else: ?>
@@ -447,7 +479,7 @@ uksort($colorGroups, function ($a, $b) {
           <ul class="color-items">
             <?php foreach ($colorItems as $colorItem): ?>
               <li>
-                &bull; <?= htmlspecialchars($colorItem['item']) ?> &times;<?= $colorItem['quantity'] ?>
+                &bull; <?= htmlspecialchars($colorItem['item']) ?> <?= merch_qty_badge_html($colorItem['quantity']) ?>
                 <span class="color-item-customer">&mdash; #<?= (int)$colorItem['orderNumber'] ?> <?= htmlspecialchars($colorItem['customerName']) ?></span>
               </li>
             <?php endforeach; ?>
