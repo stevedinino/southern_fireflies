@@ -1,8 +1,13 @@
 name: Deploy to Network Solutions
+
+# Runs every time a commit lands on main (i.e. every time a PR is merged
+# or you push directly to main). Change the branch name below if your
+# default branch is called something else.
 on:
   push:
     branches:
       - main
+
 jobs:
   deploy:
     name: Sync files over SFTP
@@ -10,6 +15,14 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+
+      # 2026-08-31: replaces SamKirkland/FTP-Deploy-Action, which turned
+      # out to only speak ftp/ftps - it can't talk to Network Solutions'
+      # real SSH-based SFTP at all (that mismatch is what caused the
+      # first run's "Timeout (control socket)" failure). This action
+      # speaks actual SFTP over username/password, no SSH key or shell/
+      # rsync access on the server required - just the plain SFTP file
+      # access the mister_firefly_ftp account already has.
       - name: Deploy via SFTP
         uses: milanmk/actions-file-deployer@master
         with:
@@ -18,7 +31,50 @@ jobs:
           remote-port: ${{ secrets.SFTP_PORT }}
           remote-user: ${{ secrets.SFTP_USERNAME }}
           remote-password: ${{ secrets.SFTP_PASSWORD }}
+
+          # mister_firefly_ftp is set up on the Network Solutions side to
+          # be jailed to /southernfireflies as its own root (confirmed by
+          # Steve's manual RealFTP test) - so both sides are just "the
+          # site root" and need no subfolder path.
+          #
+          # 2026-09-05 (Steve, first deploy after the password fix):
+          # remote-path was './' here, on the assumption that a relative
+          # path would mean "wherever the SFTP login lands" - same idea
+          # as local-path meaning "the checkout root." It doesn't work
+          # that way for remote-path: this action resolves it with
+          # `realpath --canonicalize-missing` BEFORE it ever opens the
+          # SFTP connection, i.e. against the RUNNER's own local
+          # filesystem, not the remote one. './' became the runner's own
+          # absolute checkout path
+          # (/home/runner/work/southern_fireflies/southern_fireflies),
+          # and every file this workflow has "successfully" deployed
+          # since the SFTP action went in on 2026-08-31 went into a
+          # nested folder tree matching that exact path INSIDE the jail
+          # (confirmed on the live server: /southernfireflies/home/runner/
+          # work/southern_fireflies/southern_fireflies/... - that stray
+          # tree needs manual cleanup via the same FTP client, separate
+          # from this file) - never at the jail's own root, where the
+          # live site actually reads from. The action's own README
+          # example uses a real absolute path
+          # ("/var/www/example.com"), which is the format that survives
+          # realpath unchanged - so remote-path is now '/', the jail's
+          # own root, matching the site-root intent this comment always
+          # described. local-path is untouched - it was never run
+          # through realpath and './' already meant the checkout root
+          # correctly.
           local-path: './'
-          remote-path: './'
+          remote-path: '/'
+
+          # "full" is the ONLY sync mode that never deletes anything on
+          # the server - "delta" mode can. That matters here because
+          # config.php, the *.csv data files, the *_counter.txt files,
+          # login_throttle.json, and everything else under backups/ all
+          # live ONLY on the server (deliberately gitignored - see
+          # .gitignore) and must survive every deploy. In practice "full"
+          # can't touch them even by accident: they were never part of
+          # this git checkout to begin with, so they're simply not among
+          # the files this step ever looks at.
+          #
+          # .git/ and .github/ are excluded from the upload by this
+          # action's own default behavior - nothing extra needed here.
           sync: full
-          ssh-options: -o HostKeyAlgorithms=+ssh-rsa
