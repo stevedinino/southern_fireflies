@@ -7,7 +7,9 @@ A quick update since you placed your order: we've gotten our pricing squared awa
 {{lineItemsText}}{{discountLineText}}- Tax (7%): {{tax}}
 {{shippingLineText}}Total: {{total}}
 
-{{last4Text}}You can send that whenever it's convenient via Venmo (@{{venmoHandle}}) or PayPal ({{paypalEmail}}){{accountNote}}
+{{last4Text}}You can send that whenever it's convenient via Venmo (@{{venmoHandle}}) or PayPal.
+
+For PayPal, please send to this exact email address: {{paypalEmail}} - don't search PayPal by name, since there's a different account with a similar name and money sent there can't be recovered.{{accountNote}}
 
 As noted on the website, these are handmade to order, so please allow a couple of weeks for us to get to yours. We'll process and ship orders as soon as we can, and follow up by email once yours is on its way. Thank you again for your order and your patience!
 

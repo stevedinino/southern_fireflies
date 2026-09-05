@@ -10,7 +10,8 @@
     <li><strong>Total: {{total}}</strong></li>
   </ul>
   {{last4Html}}
-  <p>You can send that whenever it's convenient via Venmo (<strong>@{{venmoHandle}}</strong>) or PayPal (<strong>{{paypalEmail}}</strong>){{accountNote}}</p>
+  <p>You can send that whenever it's convenient via Venmo (<strong>@{{venmoHandle}}</strong>) or PayPal.</p>
+  <p>For PayPal, please send to this exact email address: <strong>{{paypalEmail}}</strong> &mdash; don't search PayPal by name, since there's a different account with a similar name and money sent there can't be recovered.{{accountNote}}</p>
   <p>As noted on the website, these are handmade to order, so please allow a couple of weeks for us to get to yours. We'll process and ship orders as soon as we can, and follow up by email once yours is on its way. Thank you again for your order and your patience!</p>
   <p>Mr. Firefly (aka Steve)<br/>Southern Fireflies Retreats</p>
 </div>

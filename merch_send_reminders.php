@@ -88,7 +88,7 @@ foreach ($anchorIds as $anchorId) {
     }
 
     $itemLines = merch_reminder_format_item_lines($group['items']);
-    $sendResult = merch_send_payment_reminder($itemLines, $group['name'], $group['email']);
+    $sendResult = merch_send_payment_reminder($itemLines, $group['name'], $group['email'], $group['isPrinted']);
 
     $results[] = [
         'anchorOrderId' => $anchorId,

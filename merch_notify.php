@@ -343,9 +343,22 @@ function merch_send_manual_followup(array $pricing, string $name, string $email)
  * this email causes any column to get stamped; merch_send_reminders.php
  * calls this directly with no follow-up write of any kind.
  *
+ * $isPrinted picks which PayPal account to warn about (2026-09-01,
+ * per Steve): printed-item customers were told to pay
+ * PAYPAL_EMAIL_PRINTED by name for a while, and PayPal's "send by
+ * name" flow was matching a different, similarly-named PayPal user
+ * instead of Steve - real money went to a stranger. Fixed going
+ * forward (invoice-body now gives the exact address and says not to
+ * search by name), but some of the customers THIS reminder reaches
+ * may be exactly the ones who already hit that trap and think
+ * they've paid. Shop-item (shirts/hats) customers pay Janet's PayPal,
+ * which was never part of this mixup, so the note only applies when
+ * $isPrinted is true - same condition merch_send_invoice() uses for
+ * VENMO_LAST4_PRINTED/PAYPAL_EMAIL_PRINTED above.
+ *
  * Returns ['sent' => bool, 'error' => string].
  */
-function merch_send_payment_reminder(array $itemLines, string $name, string $email): array
+function merch_send_payment_reminder(array $itemLines, string $name, string $email, bool $isPrinted): array
 {
     $itemLabel = implode(' & ', $itemLines);
     $safeName = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
@@ -355,6 +368,21 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
     foreach ($itemLines as $line) {
         $lineItemsHtml .= '<li>' . htmlspecialchars($line, ENT_QUOTES, 'UTF-8') . '</li>';
         $lineItemsText .= '- ' . $line . "\n";
+    }
+
+    // Same "own string file, code only adds the paragraph break back"
+    // pattern merch_send_invoice() uses for last4Text/last4Html above -
+    // see the comment there for why the blank line is added in code
+    // instead of relying on trailing newlines surviving in the .txt file.
+    $payPalNoteHtml = '';
+    $payPalNoteText = '';
+    if ($isPrinted) {
+        $payPalNoteHtml = merch_load_string('emails/payment-reminder-paypal-note.html', [
+            'paypalEmail' => htmlspecialchars(PAYPAL_EMAIL_PRINTED, ENT_QUOTES, 'UTF-8'),
+        ]);
+        $payPalNoteText = merch_load_string('emails/payment-reminder-paypal-note.text', [
+            'paypalEmail' => PAYPAL_EMAIL_PRINTED,
+        ]) . "\n\n";
     }
 
     try {
@@ -370,10 +398,12 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
         $mail->Body = merch_load_string('emails/payment-reminder.html', [
             'name' => $safeName,
             'lineItemsHtml' => $lineItemsHtml,
+            'payPalNoteHtml' => $payPalNoteHtml,
         ]);
         $mail->AltBody = merch_load_string('emails/payment-reminder.text', [
             'name' => $name,
             'lineItemsText' => $lineItemsText,
+            'payPalNoteText' => $payPalNoteText,
         ]);
         $mail->send();
         return ['sent' => true, 'error' => ''];
