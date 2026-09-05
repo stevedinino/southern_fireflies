@@ -65,6 +65,22 @@ jobs:
           local-path: './'
           remote-path: '/'
 
+          # Network Solutions' SFTP server only offers legacy host-key
+          # types (confirmed by today's failure: "no matching host key
+          # type found. Their offer: ssh-rsa,ssh-dss") - modern OpenSSH
+          # (what ubuntu-latest ships) refuses both by default, so the
+          # SSH handshake itself fails before any file transfers. This
+          # flag re-enables ssh-rsa as an allowed host-key type so the
+          # connection can complete. This line was already live on
+          # GitHub before 2026-09-05's remote-path fix (confirmed by
+          # that day's FIRST deploy log, which listed it as a configured
+          # input) - it just wasn't in the local copy that fix was based
+          # on, so it got silently dropped when that copy replaced the
+          # real file. Anyone editing this file: pull the CURRENT file
+          # from GitHub first, not an old local copy - this is the
+          # second time a stale base has quietly reverted a working fix.
+          ssh-options: '-o HostKeyAlgorithms=+ssh-rsa'
+
           # "full" is the ONLY sync mode that never deletes anything on
           # the server - "delta" mode can. That matters here because
           # config.php, the *.csv data files, the *_counter.txt files,
