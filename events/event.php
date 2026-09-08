@@ -8,18 +8,31 @@
 // events-data.php manifest sitting next to this file.
 //
 // A brand-new retreat needs: one new entry in events-data.php, plus
-// its flyer/thumbnail images uploaded to /events. No new PHP file.
+// its flyer/thumbnail images uploaded to events/<slug>/. No new PHP
+// file.
 //
 // If ?slug= is missing or doesn't match anything in the manifest,
 // this bails out to a plain "event not found" message rather than a
 // raw PHP error or a blank page - link rot (an old bookmark, a typo
 // in a shared link) should fail obviously, not silently.
+//
+// 2026-09-08: reads events_by_slug() (events_helpers.php) instead of
+// the manifest directly. That function returns null for an
+// archived:true event on purpose, same as an unknown slug - an
+// archived retreat is allowed to have every registration-only field
+// (flyerImage, hotel info, cost, ...) left blank in events-data.php
+// (it may predate this whole system, like Chasin' Fireflies), so
+// rendering this page for one would mean showing a flyer photo and
+// hotel details that were never filled in. Treating it as "not
+// found" and pointing back at the current lineup is the honest
+// result - an archived event's real home is the Gallery page, not
+// here.
 // ============================================================
 
-$events = require __DIR__ . '/events-data.php';
+require __DIR__ . '/events_helpers.php';
 
 $slug = isset($_GET['slug']) ? trim($_GET['slug']) : '';
-$event = $events[$slug] ?? null;
+$event = events_by_slug($slug);
 ?>
 <!DOCTYPE html>
 <html lang="en">

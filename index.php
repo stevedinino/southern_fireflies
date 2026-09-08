@@ -1,12 +1,20 @@
 <?php
-// Build: 2026-08-14-B
+// Build: 2026-09-08-B
 // 2026-08-01: renamed from index.html to index.php so the Save-the-
 // Date grid below could loop over /events/events-data.php instead of
 // being hand-typed - adding a retreat is now one manifest entry, not
 // a new card here AND a new flyer file. The hero tagline text stays
 // exactly as plain hardcoded HTML per Steve's call - only the event
 // grid itself became data-driven.
-$events = require __DIR__ . '/events/events-data.php';
+//
+// 2026-09-08: switched from requiring events-data.php directly to
+// events_upcoming() (events/events_helpers.php) - same underlying
+// data, but this excludes archived:true entries (retreats that
+// already happened and Steve has marked done) so old, sold-out
+// retreats don't linger on the homepage forever. See events-data.php's
+// header for the full story.
+require __DIR__ . '/events/events_helpers.php';
+$events = events_upcoming();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -53,9 +61,9 @@ $events = require __DIR__ . '/events/events-data.php';
       <p class="gallery-intro">Click a card to see that retreat's full flyer and details.</p>
 
       <div class="std-grid">
-<?php foreach ($events as $slug => $event): ?>
+<?php foreach ($events as $event): ?>
 
-        <a class="std-card" href="events/event.php?slug=<?= urlencode($slug) ?>">
+        <a class="std-card" href="events/event.php?slug=<?= urlencode($event['slug']) ?>">
 <?php if ($event['soldOut']): ?>
           <span class="std-badge std-badge-sold-out">Sold Out</span>
 <?php endif; ?>

@@ -1,0 +1,4 @@
+01-demo.mp4: Hearts Cutter Holder demo video - rotating disk locking the cutting templates in place
+02-front.jpg: Hearts Cutter Holder - cutting templates stacked together
+03-with-stand.jpg: Hearts Cutter Holder - templates next to the rotating disk stand
+04-with-stand-angled.jpg: Hearts Cutter Holder - templates and stand, angled view
