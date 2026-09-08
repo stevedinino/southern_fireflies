@@ -1,4 +1,4 @@
-<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; $merchPickupEvents = require __DIR__ . '/events/events-data.php'; // Build: 2026-08-29-A ?>
+<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; require __DIR__ . '/events/events_helpers.php'; $merchPickupEvents = events_upcoming(); // Build: 2026-09-08-B ?>
 <?php
 // 2026-08-25 (Steve): the pickup dropdown below used to just say "I'll
 // pick it up at a retreat" with no way to say WHICH one - fine when
@@ -6,10 +6,14 @@
 // time, but with several retreats' orders now sitting in the CSV at
 // once, Steve had no way to tell who's expecting items at tomorrow's
 // event vs. a later one. $merchPickupEvents (required above) is the
-// SAME manifest index.php's Save-the-Date grid reads - one list, no
-// second copy of retreat names/dates to keep in sync by hand. Not
-// filtered by soldOut: registration being full doesn't mean someone who
-// already registered can't still pick up merch there.
+// SAME list index.php's Save-the-Date grid reads (events_upcoming(),
+// events/events_helpers.php) - one source, no second copy of retreat
+// names/dates to keep in sync by hand. Not filtered by soldOut:
+// registration being full doesn't mean someone who already registered
+// can't still pick up merch there. It IS filtered to non-archived
+// events, same as the homepage grid - once Steve marks a retreat
+// archived (events-data.php), it drops off this list too, so nobody's
+// offered pickup at an event that's long over.
 ?>
 <!DOCTYPE html>
 <html lang="en">
