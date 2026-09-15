@@ -590,6 +590,16 @@
              refreshListPricing() below. -->
         <div id="list-estimate" class="merch-estimate" aria-live="polite"></div>
 
+        <!-- Lets a customer close this modal to add/browse more items
+             without submitting - separate from the small "x" close
+             button up top, and deliberately type="button" so it can
+             never trigger the form's real submit. Does the exact same
+             thing as list-modal-close (closeListModal()) - just a more
+             obvious, thumb-friendly target sitting right next to Submit
+             Order, since a shopper mid-checkout is the person most
+             likely to realize they forgot something. -->
+        <button type="button" class="btn btn-secondary full-width" id="list-keep-browsing-btn">Keep Browsing</button>
+
         <button type="submit" class="btn full-width" id="list-submit-btn">Submit Order</button>
       </form>
     </div>
@@ -1246,6 +1256,7 @@
     const listEmptyNote = document.getElementById('list-empty-note');
     const listEstimate = document.getElementById('list-estimate');
     const listSubmitBtn = document.getElementById('list-submit-btn');
+    const listKeepBrowsingBtn = document.getElementById('list-keep-browsing-btn');
     let listModalReturnFocusEl = null;
 
     const merchCheckoutForm = document.getElementById('merch-checkout-form');
@@ -1379,6 +1390,7 @@
 
     listBarOpen.addEventListener('click', openListModal);
     listModalClose.addEventListener('click', closeListModal);
+    listKeepBrowsingBtn.addEventListener('click', closeListModal);
     listModal.addEventListener('click', (event) => {
       if (event.target === listModal) closeListModal();
     });
