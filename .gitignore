@@ -11,7 +11,7 @@ config.php
 merchandise_orderid_counter.txt
 registrations_regid_counter.txt
 
-# 2026-09-14 (multi-item cart): OrderGroupID's own counter, same
+# 2026-09-14 (multi-item list): OrderGroupID's own counter, same
 # pattern/reasoning as merchandise_orderid_counter.txt above.
 merchandise_ordergroupid_counter.txt
 

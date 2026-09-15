@@ -37,19 +37,19 @@
           <li><a href="about.php">About</a></li>
         </ul>
       </nav>
-      <!-- Cart bar (2026-09-14, moved into the header 2026-09-14): a
+      <!-- List bar (2026-09-14, moved into the header 2026-09-14): a
            small persistent button in the upper-right of the header,
            next to the nav links, once at least one item has been added
            - so a customer can keep browsing the grid below and still
-           see (and get back to) their in-progress cart. Sits in the
+           see (and get back to) their in-progress list. Sits in the
            sticky header, so it stays reachable without scrolling back
            up, the same as the nav links themselves. Hidden entirely
-           while the cart is empty - see renderCart() below. -->
-      <div id="cart-bar" class="cart-bar" hidden>
-        <button type="button" id="cart-bar-open" class="cart-bar-open">
-          <span id="cart-bar-count">0 items</span>
-          <span id="cart-bar-total" class="cart-bar-total"></span>
-          <span class="cart-bar-view">View Cart &rarr;</span>
+           while the list is empty - see renderList() below. -->
+      <div id="list-bar" class="list-bar" hidden>
+        <button type="button" id="list-bar-open" class="list-bar-open">
+          <span id="list-bar-count">0 items</span>
+          <span id="list-bar-total" class="list-bar-total"></span>
+          <span class="list-bar-view">View List &rarr;</span>
         </button>
       </div>
     </div>
@@ -247,16 +247,16 @@
     <div class="merch-modal-content">
       <h2 id="merch-modal-heading">Request: <span id="merch-modal-item"></span></h2>
 
-      <!-- 2026-09-14 (multi-item cart): this form used to also capture
+      <!-- 2026-09-14 (multi-item list): this form used to also capture
            Name/Fulfillment/Address/Retreat/Email/Phone and submit
            straight to merch_order.php - one item, one full checkout,
-           every time. Those shared fields now live ONCE in the cart/
-           checkout modal below (#cart-modal) instead of being re-asked
+           every time. Those shared fields now live ONCE in the list/
+           checkout modal below (#list-modal) instead of being re-asked
            for every item, per the thought-experiment doc's own design
            ("fill out contact/shipping once, submit the whole list").
            This form is JS-only now (no action/method - see
-           addItemFormToCart() below): it just adds/updates one line in
-           the in-memory cart, it never submits anywhere itself. -->
+           addItemFormToList() below): it just adds/updates one line in
+           the in-memory list, it never submits anywhere itself. -->
       <form id="merch-item-form" novalidate>
         <input type="hidden" name="item" id="merch-item-field" value="" />
 
@@ -451,10 +451,10 @@
              nothing read aloud. "polite" (not "assertive") so it waits
              for a pause rather than interrupting whatever field the
              customer is still typing into. 2026-09-14: this is now a
-             per-ITEM subtotal only (no tax/shipping) - those are cart-
+             per-ITEM subtotal only (no tax/shipping) - those are list-
              level figures computed once at checkout, when the real
              combined total (bundle discounts, shared shipping tier)
-             is known - see #cart-estimate below. -->
+             is known - see #list-estimate below. -->
         <div id="merch-estimate" class="merch-estimate" aria-live="polite"></div>
 
         <button type="submit" class="btn full-width" id="merch-item-submit">Add To Your List</button>
@@ -462,23 +462,23 @@
     </div>
   </div>
 
-  <!-- Cart / checkout modal (2026-09-14): the "browse, add several
+  <!-- List / checkout modal (2026-09-14): the "browse, add several
        items to a running list, fill out contact/shipping once, submit
        the whole list" flow from the thought-experiment doc. Reuses the
        same .lightbox/.merch-modal-content dialog pattern (and the same
        focus-trap/Escape/backdrop-click handling) as the item-add modal
-       and the photo viewer above - see openCartModal()/closeCartModal()
+       and the photo viewer above - see openListModal()/closeListModal()
        below. -->
-  <div id="cart-modal" class="lightbox merch-modal" role="dialog" aria-modal="true" aria-labelledby="cart-modal-heading" hidden>
-    <button id="cart-modal-close" class="lightbox-close" type="button" aria-label="Close cart">&times;</button>
-    <div class="merch-modal-content cart-modal-content">
-      <h2 id="cart-modal-heading">Your Cart</h2>
+  <div id="list-modal" class="lightbox merch-modal" role="dialog" aria-modal="true" aria-labelledby="list-modal-heading" hidden>
+    <button id="list-modal-close" class="lightbox-close" type="button" aria-label="Close list">&times;</button>
+    <div class="merch-modal-content list-modal-content">
+      <h2 id="list-modal-heading">Your List</h2>
 
-      <div id="cart-lines"></div>
-      <p id="cart-empty-note" class="merch-estimate-note" hidden>Your cart is empty - close this and tap &ldquo;Add To Your List&rdquo; on anything you'd like to add.</p>
+      <div id="list-lines"></div>
+      <p id="list-empty-note" class="merch-estimate-note" hidden>Your list is empty - close this and tap &ldquo;Add To Your List&rdquo; on anything you'd like to add.</p>
 
       <form action="merch_order.php" method="POST" id="merch-checkout-form">
-        <input type="hidden" name="cart" id="cart-payload-field" value="" />
+        <input type="hidden" name="list" id="list-payload-field" value="" />
 
         <!-- 2026-08-29 (Finding 19, a11y): every field below that used to
              rely on its placeholder alone now has a real <label>,
@@ -581,30 +581,30 @@
         <textarea name="message" id="merch-message" placeholder="Notes - anything else we should know?" rows="3" maxlength="<?= NOTES_MAX_LENGTH ?>"></textarea>
 
         <!-- 2026-09-14: the REAL combined total for everything in the
-             cart - bundle discounts and the shared shipping tier both
-             depend on the whole cart at once, so this is priced
-             server-side (merch_cart_price.php, same
+             list - bundle discounts and the shared shipping tier both
+             depend on the whole list at once, so this is priced
+             server-side (merch_list_price.php, same
              merch_group_calculate() the admin invoice button uses)
              rather than re-derived a second time in JS. Recomputed
-             whenever the cart or Fulfillment choice changes - see
-             refreshCartPricing() below. -->
-        <div id="cart-estimate" class="merch-estimate" aria-live="polite"></div>
+             whenever the list or Fulfillment choice changes - see
+             refreshListPricing() below. -->
+        <div id="list-estimate" class="merch-estimate" aria-live="polite"></div>
 
-        <button type="submit" class="btn full-width" id="cart-submit-btn">Submit Order</button>
+        <button type="submit" class="btn full-width" id="list-submit-btn">Submit Order</button>
       </form>
     </div>
   </div>
 
   <script>
     // Same pricing data pricing.php uses server-side, handed to JS for
-    // two things: the per-item subtotal preview in the add-to-cart
+    // two things: the per-item subtotal preview in the add-to-list
     // modal (calculateItemSubtotal() below - unit price + surcharges
     // only, hand-mirrored from merch_unit_price(); if you ever change
     // a surcharge *rule*, not just a price, update both places), and
     // reading item/color/size lists (GILDAN_COLOR_ITEMS etc. below).
-    // 2026-09-14: the COMBINED cart total (tax, shipping tiers, bundle
+    // 2026-09-14: the COMBINED list total (tax, shipping tiers, bundle
     // discounts) is no longer hand-mirrored here at all - that's priced
-    // server-side by merch_cart_price.php instead, precisely because
+    // server-side by merch_list_price.php instead, precisely because
     // that math is too easy to let drift out of sync by hand - see that
     // file's header comment.
     const MERCH_PRICING = <?php echo json_encode(merch_pricing_for_js()); ?>;
@@ -790,19 +790,19 @@
     });
 
     // ============================================================
-    // Item-add modal (2026-09-14 multi-item cart) - was the whole
+    // Item-add modal (2026-09-14 multi-item list) - was the whole
     // request form (Name/Fulfillment/Address/Retreat/Email/Phone
     // included) submitting straight to merch_order.php, one item per
-    // submission. Now it only captures ONE cart line's own fields
+    // submission. Now it only captures ONE list line's own fields
     // (color/size/sleeve/quantity) and hands that line to the
-    // in-memory cart below - see merch_order.php's file header comment
-    // for the overall design, and the cart/checkout modal section
+    // in-memory list below - see merch_order.php's file header comment
+    // for the overall design, and the list/checkout modal section
     // further down for where Name/Fulfillment/etc. moved to.
     // ============================================================
     const merchModal = document.getElementById('merch-modal');
     const merchModalItem = document.getElementById('merch-modal-item');
     // 2026-08-29 (Finding 19, a11y): remembers whatever had focus right
-    // before the modal opened (an "Add To Your List" button, or a cart
+    // before the modal opened (an "Add To Your List" button, or a list
     // line's "Edit" button), so closeMerchModal() can put focus back
     // there - see openMerchModal()/closeMerchModal() below.
     let merchModalReturnFocusEl = null;
@@ -848,9 +848,9 @@
     // Unit price + surcharges only (oversize/rainbow/stars&stripes) -
     // mirrors the pricing half of what calculateEstimate() used to do
     // in the single-item version of this form. Tax and shipping are
-    // NOT computed here anymore: those depend on the whole cart at
+    // NOT computed here anymore: those depend on the whole list at
     // once (bundle discounts, shared box-capacity shipping tiers), so
-    // they're priced server-side by merch_cart_price.php instead of
+    // they're priced server-side by merch_list_price.php instead of
     // re-derived a second time in JS - see that file's header comment.
     function calculateItemSubtotal(item, quantity, size, sleeve, color) {
       const cfg = MERCH_PRICING;
@@ -891,7 +891,7 @@
       // Bundle nudge (2026-08-21): if this item is part of a
       // MERCH_BUNDLES pair, advertise the buy-both discount. The
       // discount itself is applied automatically once both are in the
-      // cart (merch_cart_price.php -> merch_group_calculate()) - this
+      // list (merch_list_price.php -> merch_group_calculate()) - this
       // is just the "hey, did you know" nudge. Text comes pre-resolved
       // from strings/pages/merch-bundle-nudge.txt via
       // merch_pricing_for_js().
@@ -899,7 +899,7 @@
       if (bundleNudge) {
         html += `<div class="merch-estimate-note merch-bundle-nudge" style="margin-top:6px;"><strong>${bundleNudge}</strong></div>`;
       }
-      html += `<div class="merch-estimate-note" style="margin-top:6px;">Tax and shipping are calculated once for your whole cart at checkout.</div>`;
+      html += `<div class="merch-estimate-note" style="margin-top:6px;">Tax and shipping are calculated once for your whole list at checkout.</div>`;
       merchEstimate.innerHTML = html;
     }
 
@@ -908,20 +908,20 @@
       el.addEventListener('input', updateEstimate);
     });
 
-    // Which existing cart line (by id) the item-add modal is currently
+    // Which existing list line (by id) the item-add modal is currently
     // editing - null means "Add To Your List" will push a brand-new line
-    // instead of updating one in place. Set by a cart line's "Edit"
-    // button (see renderCart() below), cleared on close/submit.
-    let editingCartLineId = null;
+    // instead of updating one in place. Set by a list line's "Edit"
+    // button (see renderList() below), cleared on close/submit.
+    let editingListLineId = null;
 
-    // existingLine (optional): a cart line object to pre-fill the form
+    // existingLine (optional): a list line object to pre-fill the form
     // from and update in place instead of adding a new one - see the
-    // cart line "Edit" button in renderCart() below.
+    // list line "Edit" button in renderList() below.
     function openMerchModal(itemName, existingLine) {
       merchItemField.value = itemName;
       merchModalItem.textContent = itemName;
-      editingCartLineId = existingLine ? existingLine.id : null;
-      merchItemSubmitBtn.textContent = existingLine ? 'Update Cart Line' : 'Add To Your List';
+      editingListLineId = existingLine ? existingLine.id : null;
+      merchItemSubmitBtn.textContent = existingLine ? 'Update List Line' : 'Add To Your List';
 
       const needsGildanColor = GILDAN_COLOR_ITEMS.includes(itemName);
       const needsFilamentColor = FILAMENT_COLOR_ITEMS.includes(itemName);
@@ -999,7 +999,7 @@
     function closeMerchModal() {
       merchModal.hidden = true;
       document.body.classList.remove('lightbox-open');
-      editingCartLineId = null;
+      editingListLineId = null;
       // Return focus to whichever button opened this, so a keyboard
       // user ends up back where they started instead of at the top of
       // the page (the browser's default when the previously-focused
@@ -1017,7 +1017,7 @@
     // once, since which fields are hidden/disabled changes per item
     // (color/size/sleeve fields toggle visibility - see openMerchModal()
     // above). 2026-09-14: generalized to work on either dialog (the
-    // item-add modal AND the cart/checkout modal below), since there
+    // item-add modal AND the list/checkout modal below), since there
     // are now two.
     function focusableWithin(modalEl) {
       const focusable = modalEl.querySelectorAll(
@@ -1056,21 +1056,21 @@
     });
 
     // ============================================================
-    // Cart state (2026-09-14) - the running list the item-add modal
-    // above adds/updates lines in, and the cart/checkout modal below
+    // List state (2026-09-14) - the running list the item-add modal
+    // above adds/updates lines in, and the list/checkout modal below
     // renders, prices, and finally submits as one order. Persisted to
     // localStorage (a real site, not the sandboxed in-conversation
     // preview this pattern is normally restricted on) purely as a
     // convenience so an accidental reload or a bumped link doesn't
-    // silently lose a half-built cart - every read/write is wrapped
-    // in try/catch and the cart still works fine for the page visit if
+    // silently lose a half-built list - every read/write is wrapped
+    // in try/catch and the list still works fine for the page visit if
     // storage is blocked (private browsing, cleared/full storage).
     // ============================================================
-    const CART_STORAGE_KEY = 'sfrMerchCart_v1';
+    const LIST_STORAGE_KEY = 'sfrMerchList_v1';
 
-    function loadStoredCart() {
+    function loadStoredList() {
       try {
-        const raw = window.localStorage.getItem(CART_STORAGE_KEY);
+        const raw = window.localStorage.getItem(LIST_STORAGE_KEY);
         if (!raw) return [];
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
@@ -1079,23 +1079,23 @@
       }
     }
 
-    function saveCartToStorage() {
+    function saveListToStorage() {
       try {
-        window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+        window.localStorage.setItem(LIST_STORAGE_KEY, JSON.stringify(list));
       } catch (err) {
-        // Storage unavailable or full - the cart still works for this
+        // Storage unavailable or full - the list still works for this
         // page visit, it just won't survive a reload. Not worth
         // surfacing to the customer.
       }
     }
 
-    let cart = loadStoredCart();
+    let list = loadStoredList();
 
-    function makeCartLineId() {
+    function makeListLineId() {
       return 'l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     }
 
-    function cartLineDetailLabel(line) {
+    function listLineDetailLabel(line) {
       const details = [];
       if (line.color) details.push(line.color);
       if (line.size) details.push(line.size);
@@ -1103,98 +1103,98 @@
       return details.join(', ');
     }
 
-    function cartLineSubtotal(line) {
+    function listLineSubtotal(line) {
       const est = calculateItemSubtotal(line.item, line.quantity, line.size, line.sleeve, line.color);
       return est ? est.subtotal : 0;
     }
 
-    function removeCartLine(id) {
-      cart = cart.filter((l) => l.id !== id);
-      renderCart();
+    function removeListLine(id) {
+      list = list.filter((l) => l.id !== id);
+      renderList();
     }
 
-    function renderCart() {
-      saveCartToStorage();
+    function renderList() {
+      saveListToStorage();
 
-      const itemCount = cart.reduce((sum, l) => sum + l.quantity, 0);
-      const roughSubtotal = cart.reduce((sum, l) => sum + cartLineSubtotal(l), 0);
+      const itemCount = list.reduce((sum, l) => sum + l.quantity, 0);
+      const roughSubtotal = list.reduce((sum, l) => sum + listLineSubtotal(l), 0);
 
-      if (cart.length === 0) {
-        cartBar.hidden = true;
+      if (list.length === 0) {
+        listBar.hidden = true;
       } else {
-        cartBar.hidden = false;
-        cartBarCount.textContent = `${itemCount} item${itemCount === 1 ? '' : 's'}`;
-        cartBarTotal.textContent = formatMoney(roughSubtotal);
+        listBar.hidden = false;
+        listBarCount.textContent = `${itemCount} item${itemCount === 1 ? '' : 's'}`;
+        listBarTotal.textContent = formatMoney(roughSubtotal);
       }
 
-      cartLinesEl.innerHTML = '';
-      cart.forEach((line) => {
+      listLinesEl.innerHTML = '';
+      list.forEach((line) => {
         const row = document.createElement('div');
-        row.className = 'cart-line';
+        row.className = 'list-line';
 
         const info = document.createElement('div');
-        info.className = 'cart-line-info';
-        const detailLabel = cartLineDetailLabel(line);
-        info.innerHTML = `<div class="cart-line-item">${escapeHtml(line.item)}</div>`
-          + (detailLabel ? `<div class="cart-line-detail">${escapeHtml(detailLabel)}</div>` : '')
-          + `<div class="cart-line-price">${formatMoney(cartLineSubtotal(line))}</div>`;
+        info.className = 'list-line-info';
+        const detailLabel = listLineDetailLabel(line);
+        info.innerHTML = `<div class="list-line-item">${escapeHtml(line.item)}</div>`
+          + (detailLabel ? `<div class="list-line-detail">${escapeHtml(detailLabel)}</div>` : '')
+          + `<div class="list-line-price">${formatMoney(listLineSubtotal(line))}</div>`;
 
         const qtyStepper = document.createElement('div');
-        qtyStepper.className = 'cart-line-qty';
+        qtyStepper.className = 'list-line-qty';
         const decBtn = document.createElement('button');
         decBtn.type = 'button';
-        decBtn.className = 'cart-qty-btn';
+        decBtn.className = 'list-qty-btn';
         decBtn.textContent = '−';
         decBtn.setAttribute('aria-label', `Decrease quantity of ${line.item}`);
         decBtn.addEventListener('click', () => {
           if (line.quantity <= 1) {
-            removeCartLine(line.id);
+            removeListLine(line.id);
           } else {
             line.quantity -= 1;
-            renderCart();
+            renderList();
           }
         });
         const qtyLabel = document.createElement('span');
-        qtyLabel.className = 'cart-qty-label';
+        qtyLabel.className = 'list-qty-label';
         qtyLabel.textContent = String(line.quantity);
         const incBtn = document.createElement('button');
         incBtn.type = 'button';
-        incBtn.className = 'cart-qty-btn';
+        incBtn.className = 'list-qty-btn';
         incBtn.textContent = '+';
         incBtn.setAttribute('aria-label', `Increase quantity of ${line.item}`);
         incBtn.addEventListener('click', () => {
           if (line.quantity >= MERCH_PRICING.maxQuantity) return;
           line.quantity += 1;
-          renderCart();
+          renderList();
         });
         qtyStepper.append(decBtn, qtyLabel, incBtn);
 
         const actions = document.createElement('div');
-        actions.className = 'cart-line-actions';
+        actions.className = 'list-line-actions';
         const editBtn = document.createElement('button');
         editBtn.type = 'button';
-        editBtn.className = 'btn-secondary cart-line-edit';
+        editBtn.className = 'btn-secondary list-line-edit';
         editBtn.textContent = 'Edit';
         editBtn.addEventListener('click', () => {
-          closeCartModal();
+          closeListModal();
           openMerchModal(line.item, line);
         });
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
-        removeBtn.className = 'cart-line-remove';
+        removeBtn.className = 'list-line-remove';
         removeBtn.textContent = 'Remove';
-        removeBtn.setAttribute('aria-label', `Remove ${line.item} from cart`);
-        removeBtn.addEventListener('click', () => removeCartLine(line.id));
+        removeBtn.setAttribute('aria-label', `Remove ${line.item} from list`);
+        removeBtn.addEventListener('click', () => removeListLine(line.id));
         actions.append(editBtn, removeBtn);
 
         row.append(info, qtyStepper, actions);
-        cartLinesEl.appendChild(row);
+        listLinesEl.appendChild(row);
       });
 
-      cartEmptyNote.hidden = cart.length > 0;
-      cartSubmitBtn.disabled = cart.length === 0;
+      listEmptyNote.hidden = list.length > 0;
+      listSubmitBtn.disabled = list.length === 0;
 
-      refreshCartPricing();
+      refreshListPricing();
     }
 
     merchItemForm.addEventListener('submit', (event) => {
@@ -1215,41 +1215,41 @@
       const sleeve = merchSleeveSelect.value;
       const color = FILAMENT_COLOR_ITEMS.includes(item) ? merchColorFilament.value : merchColorGildan.value;
 
-      if (editingCartLineId !== null) {
-        const line = cart.find((l) => l.id === editingCartLineId);
+      if (editingListLineId !== null) {
+        const line = list.find((l) => l.id === editingListLineId);
         if (line) {
           Object.assign(line, { item, quantity, size, sleeve, color });
         }
       } else {
-        if (cart.length >= MERCH_PRICING.cartMaxLines) {
-          window.alert(`You can add up to ${MERCH_PRICING.cartMaxLines} different items to one order - please submit this order first, or remove something to add another.`);
+        if (list.length >= MERCH_PRICING.listMaxLines) {
+          window.alert(`You can add up to ${MERCH_PRICING.listMaxLines} different items to one order - please submit this order first, or remove something to add another.`);
           return;
         }
-        cart.push({ id: makeCartLineId(), item, quantity, size, sleeve, color });
+        list.push({ id: makeListLineId(), item, quantity, size, sleeve, color });
       }
 
-      renderCart();
+      renderList();
       closeMerchModal();
     });
 
     // ============================================================
-    // Cart bar + cart/checkout modal (2026-09-14)
+    // List bar + list/checkout modal (2026-09-14)
     // ============================================================
-    const cartBar = document.getElementById('cart-bar');
-    const cartBarOpen = document.getElementById('cart-bar-open');
-    const cartBarCount = document.getElementById('cart-bar-count');
-    const cartBarTotal = document.getElementById('cart-bar-total');
+    const listBar = document.getElementById('list-bar');
+    const listBarOpen = document.getElementById('list-bar-open');
+    const listBarCount = document.getElementById('list-bar-count');
+    const listBarTotal = document.getElementById('list-bar-total');
 
-    const cartModal = document.getElementById('cart-modal');
-    const cartModalClose = document.getElementById('cart-modal-close');
-    const cartLinesEl = document.getElementById('cart-lines');
-    const cartEmptyNote = document.getElementById('cart-empty-note');
-    const cartEstimate = document.getElementById('cart-estimate');
-    const cartSubmitBtn = document.getElementById('cart-submit-btn');
-    let cartModalReturnFocusEl = null;
+    const listModal = document.getElementById('list-modal');
+    const listModalClose = document.getElementById('list-modal-close');
+    const listLinesEl = document.getElementById('list-lines');
+    const listEmptyNote = document.getElementById('list-empty-note');
+    const listEstimate = document.getElementById('list-estimate');
+    const listSubmitBtn = document.getElementById('list-submit-btn');
+    let listModalReturnFocusEl = null;
 
     const merchCheckoutForm = document.getElementById('merch-checkout-form');
-    const cartPayloadField = document.getElementById('cart-payload-field');
+    const listPayloadField = document.getElementById('list-payload-field');
     const merchNameInput = document.getElementById('merch-name');
     const shippingFields = document.getElementById('shipping-fields');
     const merchAddress = document.getElementById('merch-address');
@@ -1284,64 +1284,64 @@
     merchFulfillment.addEventListener('change', () => {
       updateShippingFieldsRequired();
       // Shipping (Ship vs. Pickup) changes whether the combined total
-      // includes a shipping line at all - re-price the whole cart.
-      refreshCartPricing();
+      // includes a shipping line at all - re-price the whole list.
+      refreshListPricing();
     });
 
-    // Combined pricing across every cart line - bundle discounts and
+    // Combined pricing across every list line - bundle discounts and
     // the shared box-capacity shipping tier both depend on the WHOLE
-    // cart at once, so this is priced server-side by
-    // merch_cart_price.php (same merch_group_calculate() the admin
+    // list at once, so this is priced server-side by
+    // merch_list_price.php (same merch_group_calculate() the admin
     // "Send Invoice" button uses) rather than re-derived a second time
     // in JS - see that file's header comment. Debounced slightly so a
     // burst of quantity-stepper clicks doesn't fire one request per
     // click; requestId guards against an in-flight request that's now
-    // stale (cart changed again before it returned) painting over a
+    // stale (list changed again before it returned) painting over a
     // newer result.
-    let cartPricingDebounceTimer = null;
-    let cartPricingRequestSeq = 0;
+    let listPricingDebounceTimer = null;
+    let listPricingRequestSeq = 0;
 
-    function refreshCartPricing() {
-      if (cartPricingDebounceTimer) {
-        clearTimeout(cartPricingDebounceTimer);
-        cartPricingDebounceTimer = null;
+    function refreshListPricing() {
+      if (listPricingDebounceTimer) {
+        clearTimeout(listPricingDebounceTimer);
+        listPricingDebounceTimer = null;
       }
-      if (cart.length === 0) {
-        cartEstimate.innerHTML = '';
+      if (list.length === 0) {
+        listEstimate.innerHTML = '';
         return;
       }
-      cartPricingDebounceTimer = setTimeout(fetchCartPricing, 200);
+      listPricingDebounceTimer = setTimeout(fetchListPricing, 200);
     }
 
-    function fetchCartPricing() {
-      const requestId = ++cartPricingRequestSeq;
+    function fetchListPricing() {
+      const requestId = ++listPricingRequestSeq;
       const body = new URLSearchParams();
-      body.set('cart', JSON.stringify(cart.map((l) => ({
+      body.set('list', JSON.stringify(list.map((l) => ({
         item: l.item, quantity: l.quantity, size: l.size, sleeve: l.sleeve, color: l.color,
       }))));
       body.set('fulfillment', merchFulfillment.value);
 
-      fetch('merch_cart_price.php', { method: 'POST', body })
+      fetch('merch_list_price.php', { method: 'POST', body })
         .then((res) => res.json())
         .then((data) => {
-          if (requestId !== cartPricingRequestSeq) return; // superseded by a newer request
+          if (requestId !== listPricingRequestSeq) return; // superseded by a newer request
           if (!data.ok) {
-            renderCartPricingFallback();
+            renderListPricingFallback();
             return;
           }
-          renderCartEstimate(data);
+          renderListEstimate(data);
         })
         .catch(() => {
-          if (requestId !== cartPricingRequestSeq) return;
-          renderCartPricingFallback();
+          if (requestId !== listPricingRequestSeq) return;
+          renderListPricingFallback();
         });
     }
 
-    function renderCartPricingFallback() {
-      cartEstimate.innerHTML = `<div class="merch-estimate-note">Could not calculate your total right now &mdash; you can still submit, and we'll confirm your total by email.</div>`;
+    function renderListPricingFallback() {
+      listEstimate.innerHTML = `<div class="merch-estimate-note">Could not calculate your total right now &mdash; you can still submit, and we'll confirm your total by email.</div>`;
     }
 
-    function renderCartEstimate(pricing) {
+    function renderListEstimate(pricing) {
       const isShipping = merchFulfillment.value === 'Ship';
       let html = `<div>Subtotal: ${formatMoney(pricing.subtotal)}</div>`;
       if (pricing.bundleDiscount) {
@@ -1357,70 +1357,70 @@
       } else {
         html += `<div class="merch-estimate-total">Estimated Total: ${formatMoney(pricing.total)}</div>`;
       }
-      cartEstimate.innerHTML = html;
+      listEstimate.innerHTML = html;
     }
 
-    function openCartModal() {
-      cartModalReturnFocusEl = document.activeElement;
-      cartModal.hidden = false;
+    function openListModal() {
+      listModalReturnFocusEl = document.activeElement;
+      listModal.hidden = false;
       document.body.classList.add('lightbox-open');
-      refreshCartPricing();
-      focusFirstFocusable(cartModal);
+      refreshListPricing();
+      focusFirstFocusable(listModal);
     }
 
-    function closeCartModal() {
-      cartModal.hidden = true;
+    function closeListModal() {
+      listModal.hidden = true;
       document.body.classList.remove('lightbox-open');
-      if (cartModalReturnFocusEl) {
-        cartModalReturnFocusEl.focus();
-        cartModalReturnFocusEl = null;
+      if (listModalReturnFocusEl) {
+        listModalReturnFocusEl.focus();
+        listModalReturnFocusEl = null;
       }
     }
 
-    cartBarOpen.addEventListener('click', openCartModal);
-    cartModalClose.addEventListener('click', closeCartModal);
-    cartModal.addEventListener('click', (event) => {
-      if (event.target === cartModal) closeCartModal();
+    listBarOpen.addEventListener('click', openListModal);
+    listModalClose.addEventListener('click', closeListModal);
+    listModal.addEventListener('click', (event) => {
+      if (event.target === listModal) closeListModal();
     });
 
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         if (!merchModal.hidden) closeMerchModal();
-        if (!cartModal.hidden) closeCartModal();
+        if (!listModal.hidden) closeListModal();
         if (!photoViewerModal.hidden) closePhotoViewer();
       }
       if (!merchModal.hidden) trapTabWithin(merchModal, event);
-      if (!cartModal.hidden) trapTabWithin(cartModal, event);
+      if (!listModal.hidden) trapTabWithin(listModal, event);
     });
 
     // Disable the submit button the instant the form is submitted, so a
     // double-click (or an impatient double-tap on mobile) can't create
-    // two orders for one cart. The form still submits normally (real
+    // two orders for one list. The form still submits normally (real
     // navigation to merch_order.php) - this only blocks a second click
     // during the brief window before the page navigates away.
     merchCheckoutForm.addEventListener('submit', (event) => {
-      if (cart.length === 0) {
-        // Shouldn't be reachable (cartSubmitBtn is disabled whenever
-        // the cart is empty), but guard the real submission anyway.
+      if (list.length === 0) {
+        // Shouldn't be reachable (listSubmitBtn is disabled whenever
+        // the list is empty), but guard the real submission anyway.
         event.preventDefault();
         return;
       }
-      cartPayloadField.value = JSON.stringify(cart.map((l) => ({
+      listPayloadField.value = JSON.stringify(list.map((l) => ({
         item: l.item, quantity: l.quantity, size: l.size, sleeve: l.sleeve, color: l.color,
       })));
-      cartSubmitBtn.disabled = true;
-      cartSubmitBtn.textContent = 'Submitting...';
+      listSubmitBtn.disabled = true;
+      listSubmitBtn.textContent = 'Submitting...';
       try {
-        window.localStorage.removeItem(CART_STORAGE_KEY);
+        window.localStorage.removeItem(LIST_STORAGE_KEY);
       } catch (err) {
         // Storage unavailable - nothing to clear, the order still submits fine.
       }
     });
 
     // Reflect whatever was restored from localStorage the moment the
-    // page loads, so a customer who left mid-cart sees it waiting for
+    // page loads, so a customer who left mid-list sees it waiting for
     // them instead of having to notice nothing looks different.
-    renderCart();
+    renderList();
   </script>
 </body>
 </html>
