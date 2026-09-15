@@ -29,7 +29,13 @@ login_throttle.json
 !/backups/.htaccess
 
 # Steve added Claude outputs to the .gitignore. Noticed that the working
-# copies of payment reconcilliations from PayPal and Venmo were getting 
+# copies of payment reconcilliations from PayPal and Venmo were getting
 #uploaded to GitHub. These fall into the same category as the merchandise
 # and registration .csv files - sensitive customer info
 /Claude outputs/*
+
+# 2026-09-15: reports/ holds the recurring SFR_Merch_Analytics.xlsx workbook
+# (and any future ad-hoc reports built from merchandise.csv/registrations.csv).
+# Same sensitivity as those CSVs - real customer names/emails/payment amounts -
+# so never committed.
+/reports/*
