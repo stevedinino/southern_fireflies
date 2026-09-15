@@ -88,8 +88,8 @@ header {
   min-height: var(--nav-height);
 }
 
-/* Order ensures nav links left, cart button (merch.php only - see
-   .cart-bar below) next, hamburger rightmost */
+/* Order ensures nav links left, list button (merch.php only - see
+   .list-bar below) next, hamburger rightmost */
 .main-nav {
   order: 1;
   flex-grow: 1;
@@ -1240,12 +1240,12 @@ body.lightbox-open {
   }
 }
 
-/* ============================ Merch cart button (2026-09-14) ============================ */
+/* ============================ Merch list button (2026-09-14) ============================ */
 /* Originally ported over as a full-width bar pinned to the bottom of
    the viewport (this whole block existed in the old, no-longer-linked
    root layout.css but was never carried into this file - the one every
    page actually links to - see the note on .merch-card above, so
-   #cart-bar/#cart-modal/.cart-line etc in merch.php had no styling on
+   #list-bar/#list-modal/.list-line etc in merch.php had no styling on
    the live site at all until that port). Moved into the header the same
    day, at Steve's request, as a small persistent button in the
    upper-right of the nav bar (see .main-nav's comment above for the
@@ -1253,20 +1253,20 @@ body.lightbox-open {
    styled like the page's other .btn buttons instead of as its own
    full-width strip. Sitting in the sticky header means it's just as
    reachable without scrolling back up as the nav links themselves - see
-   #cart-bar in merch.php and renderCart() there for the show/hide and
+   #list-bar in merch.php and renderList() there for the show/hide and
    count/total logic. */
-.cart-bar {
+.list-bar {
   order: 2;
   margin-left: 12px;
   display: flex;
   align-items: center;
 }
 
-.cart-bar[hidden] {
+.list-bar[hidden] {
   display: none;
 }
 
-.cart-bar-open {
+.list-bar-open {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1282,30 +1282,30 @@ body.lightbox-open {
   white-space: nowrap;
 }
 
-.cart-bar-open:hover {
+.list-bar-open:hover {
   background-color: var(--accent-hover);
 }
 
-.cart-bar-total {
+.list-bar-total {
   margin-left: 2px;
 }
 
-.cart-bar-view {
+.list-bar-view {
   font-weight: normal;
   opacity: 0.9;
 }
 
-/* The cart/checkout modal reuses .merch-modal-content but needs more
+/* The list/checkout modal reuses .merch-modal-content but needs more
    room for the line-item list on top of the shared contact form. */
-.cart-modal-content {
+.list-modal-content {
   max-width: 480px;
 }
 
-#cart-lines {
+#list-lines {
   margin-bottom: 6px;
 }
 
-.cart-line {
+.list-line {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1313,35 +1313,35 @@ body.lightbox-open {
   border-bottom: 1px solid #eee;
 }
 
-.cart-line-info {
+.list-line-info {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.cart-line-item {
+.list-line-item {
   font-weight: bold;
   color: #333;
 }
 
-.cart-line-detail {
+.list-line-detail {
   font-size: 0.85rem;
   color: #777;
 }
 
-.cart-line-price {
+.list-line-price {
   font-size: 0.9rem;
   color: #444;
   margin-top: 2px;
 }
 
-.cart-line-qty {
+.list-line-qty {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
 }
 
-.cart-qty-btn {
+.list-qty-btn {
   width: 28px;
   height: 28px;
   border: 1px solid #ccc;
@@ -1354,30 +1354,30 @@ body.lightbox-open {
   padding: 0;
 }
 
-.cart-qty-btn:hover {
+.list-qty-btn:hover {
   background: #f3f0e8;
 }
 
-.cart-qty-label {
+.list-qty-label {
   min-width: 1.4em;
   text-align: center;
   font-weight: bold;
 }
 
-.cart-line-actions {
+.list-line-actions {
   display: flex;
   flex-direction: column;
   gap: 4px;
   flex: 0 0 auto;
 }
 
-.cart-line-actions .cart-line-edit {
+.list-line-actions .list-line-edit {
   padding: 4px 10px;
   font-size: 0.8rem;
   margin: 0;
 }
 
-.cart-line-remove {
+.list-line-remove {
   border: none;
   background: none;
   color: #a8585c;
@@ -1387,12 +1387,12 @@ body.lightbox-open {
   text-decoration: underline;
 }
 
-.cart-line-remove:hover {
+.list-line-remove:hover {
   color: #832e32;
 }
 
 @media (max-width: 480px) {
-  .cart-bar-open {
+  .list-bar-open {
     font-size: 0.78rem;
     gap: 6px;
     padding: 6px 10px;
@@ -1400,16 +1400,16 @@ body.lightbox-open {
 
   /* Header real estate is tight next to the hamburger at this width -
      "3 items · $87.50" still says everything that matters; tapping the
-     button is what "View Cart" was there to suggest. */
-  .cart-bar-view {
+     button is what "View List" was there to suggest. */
+  .list-bar-view {
     display: none;
   }
 
-  .cart-line {
+  .list-line {
     flex-wrap: wrap;
   }
 
-  .cart-line-actions {
+  .list-line-actions {
     flex-direction: row;
     margin-left: auto;
   }
