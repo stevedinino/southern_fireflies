@@ -1,7 +1,7 @@
 <div style='font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif; color:#333; max-width:500px; margin:0 auto;'>
   <p>Hi {{name}}!</p>
   <p>Thank you so much for your order - we really appreciate your support.</p>
-  <p>A quick update since you placed your order: we've gotten our pricing squared away, so instead of leaving you guessing, here's exactly what you owe:</p>
+  <p>Here's exactly what you owe:</p>
   <ul>
     {{lineItemsHtml}}
     {{discountLineHtml}}

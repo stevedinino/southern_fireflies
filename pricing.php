@@ -268,11 +268,22 @@ const OVERSIZE_SURCHARGE_SIZES = ['3XL', '4XL', '5XL'];
 // file starts correct, and add the matching key to merch_order.php's
 // $values array or new orders will fail loudly (by design) instead of
 // silently misaligning again.
+// 2026-09-14 (multi-item list): the live file's actual header has grown
+// past this constant twice before without it being updated here (Retreat,
+// Cancelled - both added straight to the live CSV; every reader/writer in
+// this codebase keys off the FILE's own header row, never this constant,
+// so that was harmless, but it means this list is a record of what a
+// brand-new/empty file gets, not necessarily what's live right now - see
+// the file-level comment above). OrderGroupID is added the same way:
+// appended at the end so nothing that reads an early column by position
+// (there's exactly one such spot, merch_order.php's own bootstrap scan of
+// column 0 for OrderID) is affected.
 const MERCH_CSV_HEADER = [
     'OrderID', 'Name', 'Email', 'Phone', 'Item', 'Quantity', 'Color',
     'Original Color', 'Size', 'Sleeve', 'Notes', 'Fulfillment', 'Address',
     'City', 'State', 'Zip', 'Price', 'Tax', 'Shipping', 'Invoice Date',
-    'Pymt Date', 'Created', 'Fulfilled', 'Timestamp', 'IP',
+    'Pymt Date', 'Created', 'Fulfilled', 'Timestamp', 'IP', 'Retreat',
+    'Cancelled', 'OrderGroupID',
 ];
 
 // ------------------------------------------------------------
@@ -550,6 +561,16 @@ const FLAT_SHIPPING_MAX_QTY = 2; // orders above this need a manual shipping quo
 const MAX_QUANTITY = 25; // no legitimate single request needs more than this
 const NOTES_MAX_LENGTH = 500; // characters
 
+// 2026-09-14: list checkout (merch.php/merch_order.php/merch_list_price.php)
+// caps how many distinct line items one submission can carry - same
+// "sanity cap, not a pricing rule, shared so the form and the handler
+// can't drift apart" reasoning as MAX_QUANTITY above. A customer who
+// legitimately wants more than this many different items in one order
+// can still just submit a second list - this only guards against an
+// absurd/abusive POST (this codebase loops over every line server-side
+// now), not real demand.
+const LIST_MAX_LINES = 20;
+
 /**
  * Per-unit price for one item, given its size/sleeve/color choices.
  * Returns null if the item name isn't recognized (guards against
@@ -643,6 +664,7 @@ function merch_pricing_for_js(): array
         'flatShippingRate' => FLAT_SHIPPING_RATE,
         'flatShippingMaxQty' => FLAT_SHIPPING_MAX_QTY,
         'maxQuantity' => MAX_QUANTITY,
+        'listMaxLines' => LIST_MAX_LINES,
         'mailerTierItems' => MAILER_TIER_ITEMS,
         'boxBaseItems' => BOX_BASE_ITEMS,
         // Which color list each item's request form shows - derived

@@ -2,7 +2,7 @@ Hi {{name}}!
 
 Thank you so much for your order - we really appreciate your support.
 
-A quick update since you placed your order: we've gotten our pricing squared away, so instead of leaving you guessing, here's exactly what you owe:
+Here's exactly what you owe:
 
 {{lineItemsText}}{{discountLineText}}- Tax (7%): {{tax}}
 {{shippingLineText}}Total: {{total}}

@@ -45,7 +45,7 @@ use PHPMailer\PHPMailer\Exception;
 
 /**
  * The simple, always-the-same acknowledgment sent for every new
- * submission now that auto-invoicing is off (2026-07-26): "thanks, 
+ * submission now that auto-invoicing is off (2026-07-26): "thanks,
  * we'll follow up with your total." No pricing shown, no payment
  * info - those only ever appear later in the real invoice email sent
  * via the "Send Invoice" button (merch_invoice.php ->
@@ -56,11 +56,29 @@ use PHPMailer\PHPMailer\Exception;
  * need to act on, not the visible CC used on real invoices) so he
  * knows to check ourmerch.php for new requests to process.
  *
+ * $items is every line in this submission: an array of
+ * ['item' => string, 'quantity' => int]. A single-item list (still the
+ * common case) gets the same one-line wording this always had
+ * ("Thanks for your X request!"); two or more items get a distinct
+ * "here's your list" template (emails/submission-ack-list.*) instead
+ * of an awkward "Thanks for your X & Y & Z request!" subject line -
+ * see the 2026-09-14 multi-item list comment in merch_order.php.
+ *
  * Returns ['sent' => bool, 'error' => string].
  */
-function merch_send_submission_ack(string $name, string $email, string $itemLabel): array
+function merch_send_submission_ack(string $name, string $email, array $items): array
 {
     $safeName = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
+    $isMultiItem = count($items) > 1;
+
+    $itemListHtml = '';
+    $itemListText = '';
+    foreach ($items as $it) {
+        $qtyLabel = ((int) $it['quantity']) > 1 ? " (x{$it['quantity']})" : '';
+        $itemListHtml .= '<li>' . htmlspecialchars($it['item'], ENT_QUOTES, 'UTF-8') . $qtyLabel . '</li>';
+        $itemListText .= '- ' . $it['item'] . $qtyLabel . "\n";
+    }
+
     try {
         $mail = merch_mailer();
         $mail->addAddress($email, $name);
@@ -68,9 +86,21 @@ function merch_send_submission_ack(string $name, string $email, string $itemLabe
             $mail->addBCC(NOTIFY_MRFIREFLY_EMAIL);
         }
         $mail->isHTML(true);
-        $mail->Subject = merch_load_string('emails/submission-ack.subject', ['itemLabel' => $itemLabel]);
-        $mail->Body = merch_load_string('emails/submission-ack.html', ['name' => $safeName]);
-        $mail->AltBody = merch_load_string('emails/submission-ack.text', ['name' => $name]);
+
+        if ($isMultiItem) {
+            $mail->Subject = merch_load_string('emails/submission-ack-list.subject');
+            $mail->Body = merch_load_string('emails/submission-ack-list.html', ['name' => $safeName, 'itemListHtml' => $itemListHtml]);
+            $mail->AltBody = merch_load_string('emails/submission-ack-list.text', ['name' => $name, 'itemListText' => $itemListText]);
+        } else {
+            // Unchanged wording/behavior from before the list existed -
+            // deliberately no quantity suffix here, matching what this
+            // subject line has always said.
+            $itemLabel = $items[0]['item'] ?? '';
+            $mail->Subject = merch_load_string('emails/submission-ack.subject', ['itemLabel' => $itemLabel]);
+            $mail->Body = merch_load_string('emails/submission-ack.html', ['name' => $safeName]);
+            $mail->AltBody = merch_load_string('emails/submission-ack.text', ['name' => $name]);
+        }
+
         $mail->send();
         return ['sent' => true, 'error' => ''];
     } catch (Exception $e) {

@@ -88,7 +88,8 @@ header {
   min-height: var(--nav-height);
 }
 
-/* Order ensures nav links left, hamburger right */
+/* Order ensures nav links left, cart button (merch.php only - see
+   .cart-bar below) next, hamburger rightmost */
 .main-nav {
   order: 1;
   flex-grow: 1;
@@ -136,7 +137,7 @@ header {
 }
 
 .menu-toggle {
-  order: 2;
+  order: 3;
   margin-left: 12px;
   display: none;
   font-size: 26px;
@@ -861,7 +862,18 @@ body.lightbox-open {
   margin-top: 24px;
 }
 
+/* 2026-09-14 (uniform card sizes): .merch-card is now a flex column so
+   its content stacks the same way regardless of which pieces a given
+   item has (gallery link, Request button, ...). Combined with the
+   fixed-aspect .merch-media-slot and the capped/scrollable .merch-desc
+   below, every card in .merch-grid now renders at the same height -
+   the height the Tool Holder Stand / Logo Shirt / Finding Your Way
+   Shirt row already had (short description, single photo, no gallery
+   link) - instead of stretching taller for a longer description, a
+   portrait demo video, or a multi-photo gallery link. */
 .merch-card {
+  display: flex;
+  flex-direction: column;
   background: #fff;
   border-radius: 10px;
   box-shadow: var(--card-shadow);
@@ -871,11 +883,52 @@ body.lightbox-open {
   box-sizing: border-box;
 }
 
-.merch-photo {
+/* 2026-09-14: margin-top: auto soaks up whatever's left of the card's
+   fixed height and pushes this footer - "See all N photos" / "Click
+   photo to enlarge" plus "Add To Your List", zero, one, or both - flush
+   against the bottom of every card alike, instead of each button
+   sitting right after .merch-price and leaving the leftover space
+   beneath it (visible on a card with only one button, or none, once its
+   siblings' extra button pushed everyone's card to the same height). */
+.merch-card-actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.merch-card-actions .btn {
+  margin: 0;
+}
+
+/* Fixed-aspect media slot: every card face - photo, video, or no media
+   yet (e.g. "More Coming Soon") - reserves exactly the same space here.
+   Previously only the <img> itself carried aspect-ratio:1/1, so a card
+   with no media yet had no reserved height at all (it collapsed to
+   almost nothing outside a stretched grid row - visible on
+   single-column mobile widths), and a video's own wrapper (below) used
+   a taller portrait ratio, making video-first cards taller than photo
+   cards for reasons that had nothing to do with their text. Giving the
+   slot itself the aspect ratio fixes both. */
+.merch-media-slot {
+  position: relative;
   width: 100%;
   aspect-ratio: 1 / 1;
-  object-fit: cover;
   margin: 0 0 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.merch-media-slot .merch-photo,
+.merch-media-slot .merch-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  margin: 0;
+  border-radius: 6px;
 }
 
 .merch-photo.zoomable {
@@ -888,30 +941,17 @@ body.lightbox-open {
   box-shadow: var(--elevated-shadow);
 }
 
+/* Used to be its own fixed-width (max-width: 260px) portrait box, sized
+   via the padding-top: 177.63% trick to show a demo video's full native
+   608x1080 frame uncropped - which is exactly what made a video-first
+   card taller than a photo-first one (see .merch-media-slot above).
+   .merch-media-slot now owns the sizing for every card face, video
+   included, so this just supplies the black fill behind the video
+   (visible briefly before its poster/first frame paints, and in any
+   letterboxed gap object-fit: cover might leave) instead of shaping the
+   box itself. */
 .merch-video-wrapper {
-  position: relative;
-  width: 100%;
-  max-width: 260px;
-  margin: 0 auto 12px;
-  /* portrait 608x1080 video: height as a percentage of width, via the padding-top trick.
-     More reliable across mobile browsers than the CSS aspect-ratio property. */
-  padding-top: 177.63%;
   background: #000;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.merch-video {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  border-radius: 6px;
-  background: #000;
-  box-sizing: border-box;
-  object-fit: cover;
 }
 
 .merch-photo-wide {
@@ -954,16 +994,77 @@ body.lightbox-open {
   color: var(--accent);
 }
 
+/* 2026-09-14 (uniform card sizes): a fixed height, not just a cap - 8
+   lines (11.2em = 8 x the 1.4 line-height this inherits from body, at
+   this element's own 0.95rem font-size), the natural height of the
+   longest description in the Tool Holder Stand / Logo Shirt / Finding
+   Your Way Shirt row this page's cards are now sized to match. A fixed
+   height (rather than max-height) matters here specifically because
+   "uniform" has to work both directions: a short description (Logo Hat,
+   More Coming Soon, ...) needs to leave blank space below it rather than
+   shrinking its card, exactly as a long one needs to scroll rather than
+   growing its card - max-height alone only handles the second half.
+   Longer descriptions scroll inside this box instead of growing the
+   card past that row's height. */
 .merch-desc {
   font-size: 0.95rem;
   color: #555;
   margin: 0 0 10px;
+  height: 11.2em;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
+/* Fade the last ~1.5 lines toward transparent - a "scroll for more" cue
+   rather than text that just stops mid-sentence. 2026-09-14: split out
+   from .merch-desc itself and gated behind this class, which
+   updateDescFade() in merch.php's script toggles on/off based on actual
+   scroll position - a plain unconditional mask on .merch-desc faded the
+   last line even for a description that exactly fills the box with
+   nothing left to scroll to (e.g. Tool Holder Stand at some widths), and
+   kept fading it even once a scrollable one was scrolled all the way to
+   its own end, which reads as "there's still more" when there isn't.
+   This only ever applies to a box that's actually still scrollable. */
+.merch-desc.merch-desc-has-more {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5em), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5em), transparent 100%);
+}
+
+/* Visible (not overlay-hidden-until-hover) scrollbar, thin and in the
+   site's accent color, so the "more text below" affordance from the
+   fade above is backed by an actual scrollbar a visitor can see and
+   grab - Chromium/Safari only render a custom scrollbar via these
+   pseudo-elements when the box actually overflows, so this never shows
+   on a card whose description already fits. .merch-desc's own
+   scrollbar-width: thin above is the Firefox equivalent (Firefox has no
+   ::-webkit-scrollbar hook to color the thumb). */
+.merch-desc::-webkit-scrollbar {
+  width: 6px;
+}
+
+.merch-desc::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.merch-desc::-webkit-scrollbar-thumb {
+  background: rgba(98, 129, 65, 0.35);
+  border-radius: 3px;
+}
+
+/* 2026-09-14 (uniform card sizes): min-height reserves 3 lines (4.2em =
+   3 x the 1.4 line-height this inherits from body). merch_price_display()
+   (pricing.php) only ever emits two shapes - a 1-line "$X plus tax and
+   shipping" for everything else, or the shirts' longer short/long-sleeve
+   line, which wraps to 3 lines at card width - so 3 lines is a real
+   ceiling, not a guess. Reserving it means a 1-line price card (e.g. Tool
+   Holder Stand) takes up the same footer space as a 3-line one (e.g.
+   Logo Shirt) instead of ending up shorter overall. */
 .merch-price {
   font-weight: bold;
   color: #333;
   margin: 0 0 12px;
+  min-height: 4.2em;
 }
 
 .merch-price-note {
@@ -1136,6 +1237,181 @@ body.lightbox-open {
   .std-grid {
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 14px;
+  }
+}
+
+/* ============================ Merch cart button (2026-09-14) ============================ */
+/* Originally ported over as a full-width bar pinned to the bottom of
+   the viewport (this whole block existed in the old, no-longer-linked
+   root layout.css but was never carried into this file - the one every
+   page actually links to - see the note on .merch-card above, so
+   #cart-bar/#cart-modal/.cart-line etc in merch.php had no styling on
+   the live site at all until that port). Moved into the header the same
+   day, at Steve's request, as a small persistent button in the
+   upper-right of the nav bar (see .main-nav's comment above for the
+   flex order: nav links, then this, then the mobile hamburger),
+   styled like the page's other .btn buttons instead of as its own
+   full-width strip. Sitting in the sticky header means it's just as
+   reachable without scrolling back up as the nav links themselves - see
+   #cart-bar in merch.php and renderCart() there for the show/hide and
+   count/total logic. */
+.cart-bar {
+  order: 2;
+  margin-left: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.cart-bar[hidden] {
+  display: none;
+}
+
+.cart-bar-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: bold;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  padding: 8px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cart-bar-open:hover {
+  background-color: var(--accent-hover);
+}
+
+.cart-bar-total {
+  margin-left: 2px;
+}
+
+.cart-bar-view {
+  font-weight: normal;
+  opacity: 0.9;
+}
+
+/* The cart/checkout modal reuses .merch-modal-content but needs more
+   room for the line-item list on top of the shared contact form. */
+.cart-modal-content {
+  max-width: 480px;
+}
+
+#cart-lines {
+  margin-bottom: 6px;
+}
+
+.cart-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.cart-line-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cart-line-item {
+  font-weight: bold;
+  color: #333;
+}
+
+.cart-line-detail {
+  font-size: 0.85rem;
+  color: #777;
+}
+
+.cart-line-price {
+  font-size: 0.9rem;
+  color: #444;
+  margin-top: 2px;
+}
+
+.cart-line-qty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.cart-qty-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--accent);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.cart-qty-btn:hover {
+  background: #f3f0e8;
+}
+
+.cart-qty-label {
+  min-width: 1.4em;
+  text-align: center;
+  font-weight: bold;
+}
+
+.cart-line-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.cart-line-actions .cart-line-edit {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.cart-line-remove {
+  border: none;
+  background: none;
+  color: #a8585c;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 4px 2px;
+  text-decoration: underline;
+}
+
+.cart-line-remove:hover {
+  color: #832e32;
+}
+
+@media (max-width: 480px) {
+  .cart-bar-open {
+    font-size: 0.78rem;
+    gap: 6px;
+    padding: 6px 10px;
+  }
+
+  /* Header real estate is tight next to the hamburger at this width -
+     "3 items · $87.50" still says everything that matters; tapping the
+     button is what "View Cart" was there to suggest. */
+  .cart-bar-view {
+    display: none;
+  }
+
+  .cart-line {
+    flex-wrap: wrap;
+  }
+
+  .cart-line-actions {
+    flex-direction: row;
+    margin-left: auto;
   }
 }
 

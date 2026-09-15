@@ -37,6 +37,21 @@
           <li><a href="about.php">About</a></li>
         </ul>
       </nav>
+      <!-- Cart bar (2026-09-14, moved into the header 2026-09-14): a
+           small persistent button in the upper-right of the header,
+           next to the nav links, once at least one item has been added
+           - so a customer can keep browsing the grid below and still
+           see (and get back to) their in-progress cart. Sits in the
+           sticky header, so it stays reachable without scrolling back
+           up, the same as the nav links themselves. Hidden entirely
+           while the cart is empty - see renderCart() below. -->
+      <div id="cart-bar" class="cart-bar" hidden>
+        <button type="button" id="cart-bar-open" class="cart-bar-open">
+          <span id="cart-bar-count">0 items</span>
+          <span id="cart-bar-total" class="cart-bar-total"></span>
+          <span class="cart-bar-view">View Cart &rarr;</span>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -162,12 +177,33 @@
           <h2><?= htmlspecialchars($itemName, ENT_QUOTES, 'UTF-8') ?></h2>
           <p class="merch-desc"><?= $merchItem['description'] ?></p>
           <p class="merch-price"><?= $orderable ? merch_price_display($itemName) : '&nbsp;' ?></p>
+          <!-- 2026-09-14: buttons live in their own margin-top:auto
+               footer so they sit flush with the card's bottom edge no
+               matter how many of them a given card has (0, 1, or 2) -
+               otherwise a card with just one button (or none, e.g. "More
+               Coming Soon") left it sitting higher than a card with two,
+               even though .merch-card's fixed height already made the
+               cards themselves match (see the "uniform card sizes" notes
+               in styles/layout.css). -->
+          <div class="merch-card-actions">
           <?php if (count($media) > 1): ?>
-            <button type="button" class="merch-gallery-link" data-gallery="<?= $galleryJson ?>"><?= $galleryLabel ?> &rarr;</button>
+            <button type="button" class="btn btn-secondary full-width merch-gallery-link" data-gallery="<?= $galleryJson ?>"><?= $galleryLabel ?> &rarr;</button>
+          <?php elseif ($first !== null && $first['type'] !== 'video'): ?>
+            <!-- A single-photo card otherwise had no button here at all,
+                 so its "Add To Your List" button sat higher than a
+                 multi-photo card's - see the "See all N photos" button
+                 above. This is the same .merch-gallery-link (same JS
+                 wiring, just a 1-slide array) purely so every card's
+                 button row lines up; clicking the photo itself already
+                 did this. Deliberately NOT shown for a single-video card
+                 (below) - the video's own on-screen controls already
+                 offer a fullscreen/enlarge affordance. -->
+            <button type="button" class="btn btn-secondary full-width merch-gallery-link" data-gallery="<?= $galleryJson ?>">Click photo to enlarge &rarr;</button>
           <?php endif; ?>
           <?php if ($orderable): ?>
-            <button type="button" class="btn full-width merch-request-btn" data-item="<?= htmlspecialchars($itemName, ENT_QUOTES, 'UTF-8') ?>">Request This Item</button>
+            <button type="button" class="btn full-width merch-request-btn" data-item="<?= htmlspecialchars($itemName, ENT_QUOTES, 'UTF-8') ?>">Add To Your List</button>
           <?php endif; ?>
+          </div>
         </div>
         <?php endforeach; ?>
 
@@ -204,112 +240,25 @@
        page content to a screen reader) - see openMerchModal()/
        closeMerchModal() below for the focus trap that goes with it
        (moving focus in on open, cycling Tab within the modal while
-       it's open, and returning focus to whichever "Request This Item"
+       it's open, and returning focus to whichever "Add To Your List"
        button opened it on close). -->
   <div id="merch-modal" class="lightbox merch-modal" role="dialog" aria-modal="true" aria-labelledby="merch-modal-heading" hidden>
     <button id="merch-modal-close" class="lightbox-close" type="button" aria-label="Close request form">&times;</button>
     <div class="merch-modal-content">
       <h2 id="merch-modal-heading">Request: <span id="merch-modal-item"></span></h2>
 
-      <form action="merch_order.php" method="POST" id="merch-form">
+      <!-- 2026-09-14 (multi-item cart): this form used to also capture
+           Name/Fulfillment/Address/Retreat/Email/Phone and submit
+           straight to merch_order.php - one item, one full checkout,
+           every time. Those shared fields now live ONCE in the cart/
+           checkout modal below (#cart-modal) instead of being re-asked
+           for every item, per the thought-experiment doc's own design
+           ("fill out contact/shipping once, submit the whole list").
+           This form is JS-only now (no action/method - see
+           addItemFormToCart() below): it just adds/updates one line in
+           the in-memory cart, it never submits anywhere itself. -->
+      <form id="merch-item-form" novalidate>
         <input type="hidden" name="item" id="merch-item-field" value="" />
-
-        <!-- 2026-08-29 (Finding 19, a11y): every field below that used to
-             rely on its placeholder alone now has a real <label>,
-             visually hidden (styles/layout.css's .visually-hidden - the
-             same utility already used elsewhere on this site) so the
-             look of the form is unchanged but a screen reader announces
-             a real name for the field instead of nothing at all - a
-             placeholder isn't a label and most screen readers don't
-             treat it as one. -->
-        <label for="merch-name" class="visually-hidden">Full Name</label>
-        <input type="text" name="name" id="merch-name" placeholder="Full Name" required />
-
-        <label for="merch-fulfillment" class="four-day-label">How would you like to receive this?</label>
-        <select name="fulfillment" id="merch-fulfillment" required>
-          <option value="Ship" selected>Ship to me</option>
-          <option value="Pickup at retreat">I'll pick it up at a retreat</option>
-        </select>
-
-        <div id="shipping-fields">
-          <label for="merch-address" class="visually-hidden">Street Address</label>
-          <input type="text" name="address" id="merch-address" placeholder="Street Address" required />
-          <div class="address-row">
-            <label for="merch-city" class="visually-hidden">City</label>
-            <input type="text" name="city" id="merch-city" placeholder="City" required />
-            <label for="merch-state" class="visually-hidden">State</label>
-            <select name="state" id="merch-state" required>
-              <option value="" selected disabled>Select a state&hellip;</option>
-              <option value="AL">Alabama</option>
-              <option value="AZ">Arizona</option>
-              <option value="AR">Arkansas</option>
-              <option value="CA">California</option>
-              <option value="CO">Colorado</option>
-              <option value="CT">Connecticut</option>
-              <option value="DE">Delaware</option>
-              <option value="DC">District of Columbia</option>
-              <option value="FL">Florida</option>
-              <option value="GA">Georgia</option>
-              <option value="ID">Idaho</option>
-              <option value="IL">Illinois</option>
-              <option value="IN">Indiana</option>
-              <option value="IA">Iowa</option>
-              <option value="KS">Kansas</option>
-              <option value="KY">Kentucky</option>
-              <option value="LA">Louisiana</option>
-              <option value="ME">Maine</option>
-              <option value="MD">Maryland</option>
-              <option value="MA">Massachusetts</option>
-              <option value="MI">Michigan</option>
-              <option value="MN">Minnesota</option>
-              <option value="MS">Mississippi</option>
-              <option value="MO">Missouri</option>
-              <option value="MT">Montana</option>
-              <option value="NE">Nebraska</option>
-              <option value="NV">Nevada</option>
-              <option value="NH">New Hampshire</option>
-              <option value="NJ">New Jersey</option>
-              <option value="NM">New Mexico</option>
-              <option value="NY">New York</option>
-              <option value="NC">North Carolina</option>
-              <option value="ND">North Dakota</option>
-              <option value="OH">Ohio</option>
-              <option value="OK">Oklahoma</option>
-              <option value="OR">Oregon</option>
-              <option value="PA">Pennsylvania</option>
-              <option value="RI">Rhode Island</option>
-              <option value="SC">South Carolina</option>
-              <option value="SD">South Dakota</option>
-              <option value="TN">Tennessee</option>
-              <option value="TX">Texas</option>
-              <option value="UT">Utah</option>
-              <option value="VT">Vermont</option>
-              <option value="VA">Virginia</option>
-              <option value="WA">Washington</option>
-              <option value="WV">West Virginia</option>
-              <option value="WI">Wisconsin</option>
-              <option value="WY">Wyoming</option>
-            </select>
-            <label for="merch-zip" class="visually-hidden">ZIP Code</label>
-            <input type="text" name="zip" id="merch-zip" placeholder="ZIP" required />
-          </div>
-        </div>
-
-        <div id="retreat-fields" hidden>
-          <label for="merch-retreat" class="four-day-label">Which retreat will you pick this up at?</label>
-          <select name="retreat" id="merch-retreat">
-            <option value="" selected disabled>Select a retreat&hellip;</option>
-<?php foreach ($merchPickupEvents as $merchPickupEvent): ?>
-<?php $merchPickupEventLabel = trim($merchPickupEvent['dateRange']) . ' – ' . trim($merchPickupEvent['title']); ?>
-            <option value="<?= htmlspecialchars($merchPickupEventLabel, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($merchPickupEventLabel, ENT_QUOTES, 'UTF-8') ?></option>
-<?php endforeach; ?>
-          </select>
-        </div>
-
-        <label for="merch-email" class="visually-hidden">Email Address</label>
-        <input type="email" name="email" id="merch-email" placeholder="Email Address" required />
-        <label for="merch-phone" class="visually-hidden">Phone Number (optional)</label>
-        <input type="tel" name="phone" id="merch-phone" placeholder="Phone Number (optional)" />
 
         <div id="size-field-wrapper" hidden>
           <label for="merch-size" class="four-day-label">Size</label>
@@ -496,29 +445,168 @@
         <label for="merch-quantity" class="four-day-label">Quantity</label>
         <input type="number" name="quantity" id="merch-quantity" min="1" max="<?= MAX_QUANTITY ?>" value="1" required />
 
+        <!-- 2026-08-29 (Finding 19, a11y): aria-live so a screen reader
+             announces the running estimate as quantity/color/size
+             change, instead of the total silently updating with
+             nothing read aloud. "polite" (not "assertive") so it waits
+             for a pause rather than interrupting whatever field the
+             customer is still typing into. 2026-09-14: this is now a
+             per-ITEM subtotal only (no tax/shipping) - those are cart-
+             level figures computed once at checkout, when the real
+             combined total (bundle discounts, shared shipping tier)
+             is known - see #cart-estimate below. -->
+        <div id="merch-estimate" class="merch-estimate" aria-live="polite"></div>
+
+        <button type="submit" class="btn full-width" id="merch-item-submit">Add To Your List</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Cart / checkout modal (2026-09-14): the "browse, add several
+       items to a running list, fill out contact/shipping once, submit
+       the whole list" flow from the thought-experiment doc. Reuses the
+       same .lightbox/.merch-modal-content dialog pattern (and the same
+       focus-trap/Escape/backdrop-click handling) as the item-add modal
+       and the photo viewer above - see openCartModal()/closeCartModal()
+       below. -->
+  <div id="cart-modal" class="lightbox merch-modal" role="dialog" aria-modal="true" aria-labelledby="cart-modal-heading" hidden>
+    <button id="cart-modal-close" class="lightbox-close" type="button" aria-label="Close cart">&times;</button>
+    <div class="merch-modal-content cart-modal-content">
+      <h2 id="cart-modal-heading">Your Cart</h2>
+
+      <div id="cart-lines"></div>
+      <p id="cart-empty-note" class="merch-estimate-note" hidden>Your cart is empty - close this and tap &ldquo;Add To Your List&rdquo; on anything you'd like to add.</p>
+
+      <form action="merch_order.php" method="POST" id="merch-checkout-form">
+        <input type="hidden" name="cart" id="cart-payload-field" value="" />
+
+        <!-- 2026-08-29 (Finding 19, a11y): every field below that used to
+             rely on its placeholder alone now has a real <label>,
+             visually hidden (styles/layout.css's .visually-hidden - the
+             same utility already used elsewhere on this site) so the
+             look of the form is unchanged but a screen reader announces
+             a real name for the field instead of nothing at all - a
+             placeholder isn't a label and most screen readers don't
+             treat it as one. -->
+        <label for="merch-name" class="visually-hidden">Full Name</label>
+        <input type="text" name="name" id="merch-name" placeholder="Full Name" required />
+
+        <label for="merch-fulfillment" class="four-day-label">How would you like to receive this?</label>
+        <select name="fulfillment" id="merch-fulfillment" required>
+          <option value="Ship" selected>Ship to me</option>
+          <option value="Pickup at retreat">I'll pick it up at a retreat</option>
+        </select>
+
+        <div id="shipping-fields">
+          <label for="merch-address" class="visually-hidden">Street Address</label>
+          <input type="text" name="address" id="merch-address" placeholder="Street Address" required />
+          <div class="address-row">
+            <label for="merch-city" class="visually-hidden">City</label>
+            <input type="text" name="city" id="merch-city" placeholder="City" required />
+            <label for="merch-state" class="visually-hidden">State</label>
+            <select name="state" id="merch-state" required>
+              <option value="" selected disabled>Select a state&hellip;</option>
+              <option value="AL">Alabama</option>
+              <option value="AZ">Arizona</option>
+              <option value="AR">Arkansas</option>
+              <option value="CA">California</option>
+              <option value="CO">Colorado</option>
+              <option value="CT">Connecticut</option>
+              <option value="DE">Delaware</option>
+              <option value="DC">District of Columbia</option>
+              <option value="FL">Florida</option>
+              <option value="GA">Georgia</option>
+              <option value="ID">Idaho</option>
+              <option value="IL">Illinois</option>
+              <option value="IN">Indiana</option>
+              <option value="IA">Iowa</option>
+              <option value="KS">Kansas</option>
+              <option value="KY">Kentucky</option>
+              <option value="LA">Louisiana</option>
+              <option value="ME">Maine</option>
+              <option value="MD">Maryland</option>
+              <option value="MA">Massachusetts</option>
+              <option value="MI">Michigan</option>
+              <option value="MN">Minnesota</option>
+              <option value="MS">Mississippi</option>
+              <option value="MO">Missouri</option>
+              <option value="MT">Montana</option>
+              <option value="NE">Nebraska</option>
+              <option value="NV">Nevada</option>
+              <option value="NH">New Hampshire</option>
+              <option value="NJ">New Jersey</option>
+              <option value="NM">New Mexico</option>
+              <option value="NY">New York</option>
+              <option value="NC">North Carolina</option>
+              <option value="ND">North Dakota</option>
+              <option value="OH">Ohio</option>
+              <option value="OK">Oklahoma</option>
+              <option value="OR">Oregon</option>
+              <option value="PA">Pennsylvania</option>
+              <option value="RI">Rhode Island</option>
+              <option value="SC">South Carolina</option>
+              <option value="SD">South Dakota</option>
+              <option value="TN">Tennessee</option>
+              <option value="TX">Texas</option>
+              <option value="UT">Utah</option>
+              <option value="VT">Vermont</option>
+              <option value="VA">Virginia</option>
+              <option value="WA">Washington</option>
+              <option value="WV">West Virginia</option>
+              <option value="WI">Wisconsin</option>
+              <option value="WY">Wyoming</option>
+            </select>
+            <label for="merch-zip" class="visually-hidden">ZIP Code</label>
+            <input type="text" name="zip" id="merch-zip" placeholder="ZIP" required />
+          </div>
+        </div>
+
+        <div id="retreat-fields" hidden>
+          <label for="merch-retreat" class="four-day-label">Which retreat will you pick this up at?</label>
+          <select name="retreat" id="merch-retreat">
+            <option value="" selected disabled>Select a retreat&hellip;</option>
+<?php foreach ($merchPickupEvents as $merchPickupEvent): ?>
+<?php $merchPickupEventLabel = trim($merchPickupEvent['dateRange']) . ' – ' . trim($merchPickupEvent['title']); ?>
+            <option value="<?= htmlspecialchars($merchPickupEventLabel, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($merchPickupEventLabel, ENT_QUOTES, 'UTF-8') ?></option>
+<?php endforeach; ?>
+          </select>
+        </div>
+
+        <label for="merch-email" class="visually-hidden">Email Address</label>
+        <input type="email" name="email" id="merch-email" placeholder="Email Address" required />
+        <label for="merch-phone" class="visually-hidden">Phone Number (optional)</label>
+        <input type="tel" name="phone" id="merch-phone" placeholder="Phone Number (optional)" />
+
         <label for="merch-message" class="visually-hidden">Notes - anything else we should know?</label>
         <textarea name="message" id="merch-message" placeholder="Notes - anything else we should know?" rows="3" maxlength="<?= NOTES_MAX_LENGTH ?>"></textarea>
 
-        <!-- 2026-08-29 (Finding 19, a11y): aria-live so a screen reader
-             announces the running estimate as quantity/color/size/
-             fulfillment change, instead of the total silently updating
-             with nothing read aloud. "polite" (not "assertive") so it
-             waits for a pause rather than interrupting whatever field
-             the customer is still typing into. -->
-        <div id="merch-estimate" class="merch-estimate" aria-live="polite"></div>
+        <!-- 2026-09-14: the REAL combined total for everything in the
+             cart - bundle discounts and the shared shipping tier both
+             depend on the whole cart at once, so this is priced
+             server-side (merch_cart_price.php, same
+             merch_group_calculate() the admin invoice button uses)
+             rather than re-derived a second time in JS. Recomputed
+             whenever the cart or Fulfillment choice changes - see
+             refreshCartPricing() below. -->
+        <div id="cart-estimate" class="merch-estimate" aria-live="polite"></div>
 
-        <button type="submit" class="btn full-width">Submit Request</button>
+        <button type="submit" class="btn full-width" id="cart-submit-btn">Submit Order</button>
       </form>
     </div>
   </div>
 
   <script>
-    // Same pricing data pricing.php uses server-side, handed to JS so the
-    // estimate below updates live without a round trip to the server.
-    // Note: this shares the *numbers*, not the calculation code itself -
-    // calculateEstimate() below mirrors merch_calculate()'s arithmetic by
-    // hand. If you ever change the surcharge *rules* (not just a price),
-    // update both places.
+    // Same pricing data pricing.php uses server-side, handed to JS for
+    // two things: the per-item subtotal preview in the add-to-cart
+    // modal (calculateItemSubtotal() below - unit price + surcharges
+    // only, hand-mirrored from merch_unit_price(); if you ever change
+    // a surcharge *rule*, not just a price, update both places), and
+    // reading item/color/size lists (GILDAN_COLOR_ITEMS etc. below).
+    // 2026-09-14: the COMBINED cart total (tax, shipping tiers, bundle
+    // discounts) is no longer hand-mirrored here at all - that's priced
+    // server-side by merch_cart_price.php instead, precisely because
+    // that math is too easy to let drift out of sync by hand - see that
+    // file's header comment.
     const MERCH_PRICING = <?php echo json_encode(merch_pricing_for_js()); ?>;
 
     const menuToggle = document.querySelector('.menu-toggle');
@@ -678,16 +766,49 @@
       if (event.key === 'ArrowRight') showNextPhoto();
     });
 
-    // Item request modal
+    // ============================================================
+    // Card description fade (2026-09-14 uniform card sizes follow-up) -
+    // .merch-desc-has-more (styles/layout.css) is what actually draws
+    // the bottom fade; this just decides, per card, whether that class
+    // belongs on it right now. Re-checked on scroll (so the fade drops
+    // once a card is scrolled to its own true end, and comes back if
+    // scrolled back up) and on resize (narrower cards wrap to more
+    // lines, which can turn a description that fit into one that
+    // doesn't, and vice versa).
+    // ============================================================
+    function updateDescFade(desc) {
+      const hasMore = desc.scrollHeight - desc.scrollTop - desc.clientHeight > 1;
+      desc.classList.toggle('merch-desc-has-more', hasMore);
+    }
+    const merchDescEls = document.querySelectorAll('.merch-desc');
+    merchDescEls.forEach((desc) => {
+      updateDescFade(desc);
+      desc.addEventListener('scroll', () => updateDescFade(desc), { passive: true });
+    });
+    window.addEventListener('resize', () => {
+      merchDescEls.forEach(updateDescFade);
+    });
+
+    // ============================================================
+    // Item-add modal (2026-09-14 multi-item cart) - was the whole
+    // request form (Name/Fulfillment/Address/Retreat/Email/Phone
+    // included) submitting straight to merch_order.php, one item per
+    // submission. Now it only captures ONE cart line's own fields
+    // (color/size/sleeve/quantity) and hands that line to the
+    // in-memory cart below - see merch_order.php's file header comment
+    // for the overall design, and the cart/checkout modal section
+    // further down for where Name/Fulfillment/etc. moved to.
+    // ============================================================
     const merchModal = document.getElementById('merch-modal');
     const merchModalItem = document.getElementById('merch-modal-item');
-    const merchNameInput = document.getElementById('merch-name');
     // 2026-08-29 (Finding 19, a11y): remembers whatever had focus right
-    // before the modal opened (always one of the "Request This Item"
-    // buttons in practice), so closeMerchModal() can put focus back
+    // before the modal opened (an "Add To Your List" button, or a cart
+    // line's "Edit" button), so closeMerchModal() can put focus back
     // there - see openMerchModal()/closeMerchModal() below.
     let merchModalReturnFocusEl = null;
     const merchItemField = document.getElementById('merch-item-field');
+    const merchItemForm = document.getElementById('merch-item-form');
+    const merchItemSubmitBtn = document.getElementById('merch-item-submit');
     const merchModalClose = document.getElementById('merch-modal-close');
     const colorFieldWrapper = document.getElementById('color-field-wrapper');
     const colorFieldLabel = document.getElementById('color-field-label');
@@ -699,14 +820,6 @@
     const merchSizeSelect = document.getElementById('merch-size');
     const sleeveFieldWrapper = document.getElementById('sleeve-field-wrapper');
     const merchSleeveSelect = document.getElementById('merch-sleeve');
-    const shippingFields = document.getElementById('shipping-fields');
-    const merchAddress = document.getElementById('merch-address');
-    const merchCity = document.getElementById('merch-city');
-    const merchState = document.getElementById('merch-state');
-    const merchZip = document.getElementById('merch-zip');
-    const retreatFields = document.getElementById('retreat-fields');
-    const merchRetreat = document.getElementById('merch-retreat');
-    const merchFulfillment = document.getElementById('merch-fulfillment');
     const merchQuantity = document.getElementById('merch-quantity');
     const merchEstimate = document.getElementById('merch-estimate');
 
@@ -722,36 +835,24 @@
     // Shirts need a size and a sleeve-length choice; nothing else does
     const SIZE_AND_SLEEVE_ITEMS = MERCH_PRICING.shirtItems;
 
-    function updateShippingFieldsRequired() {
-      const shipping = merchFulfillment.value === 'Ship';
-      shippingFields.hidden = !shipping;
-      [merchAddress, merchCity, merchState, merchZip].forEach((el) => {
-        el.required = shipping;
-      });
-      // 2026-08-25: same show/require toggle, mirrored for "which
-      // retreat" - Ship and Pickup at retreat are the only two
-      // Fulfillment values, so it's just the inverse of `shipping`,
-      // no separate condition needed.
-      retreatFields.hidden = shipping;
-      merchRetreat.required = !shipping;
-      if (shipping) {
-        // Switched back to Ship after picking a retreat - clear the
-        // stale selection so it can't ride along in the submission
-        // (mirrors merch_order.php's own server-side blanking of this
-        // field whenever Fulfillment isn't Pickup).
-        merchRetreat.value = '';
-      }
+    function formatMoney(n) {
+      return '$' + n.toFixed(2);
     }
 
-    merchFulfillment.addEventListener('change', () => {
-      updateShippingFieldsRequired();
-      updateEstimate();
-    });
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      }[ch]));
+    }
 
-    // Mirrors merch_calculate() in pricing.php - same rules, same numbers
-    // (via MERCH_PRICING above), just running in the browser for a live
-    // preview instead of at submit time.
-    function calculateEstimate(item, quantity, size, sleeve, color, isShipping) {
+    // Unit price + surcharges only (oversize/rainbow/stars&stripes) -
+    // mirrors the pricing half of what calculateEstimate() used to do
+    // in the single-item version of this form. Tax and shipping are
+    // NOT computed here anymore: those depend on the whole cart at
+    // once (bundle discounts, shared box-capacity shipping tiers), so
+    // they're priced server-side by merch_cart_price.php instead of
+    // re-derived a second time in JS - see that file's header comment.
+    function calculateItemSubtotal(item, quantity, size, sleeve, color) {
       const cfg = MERCH_PRICING;
       const base = cfg.prices[item];
       if (base === undefined) return null;
@@ -768,56 +869,7 @@
         unitPrice += cfg.starsStripesSurcharge;
       }
 
-      const subtotal = unitPrice * quantity;
-      const tax = Math.round(subtotal * cfg.taxRate * 100) / 100;
-
-      let shipping = null;
-      let shippingNote = '';
-      if (isShipping) {
-        if (cfg.boxShippingItems.includes(item)) {
-          // Printed items use box-capacity tiers, not the flat qty<=2
-          // rule below - mirrors merch_printed_shipping() in pricing.php.
-          // A single order line only ever has ONE item type, so this
-          // only ever has to look at whichever count is non-zero.
-          const boxBaseQty = cfg.boxBaseItems.includes(item) ? quantity : 0;
-          const mailerTierQty = cfg.mailerTierItems.includes(item) ? quantity : 0;
-          const cap = cfg.shipmentQtyCaps[item];
-
-          if (cap && quantity > cap.max) {
-            // Per-class bulky-item cap checked first, same as
-            // server-side (merch_shipment_cap_note()) - more than one
-            // Tape Gun Holder or Tool Stand always needs hand-packing.
-            // (A box-base item over its cap lands here too, so the
-            // boxBaseQty === 1 branch below never sees 2+.)
-            shippingNote = cap.note;
-          } else if (boxBaseQty === 1) {
-            if (mailerTierQty <= cfg.mailerTierWithBoxBaseMax) {
-              shipping = cfg.printedShipRateBox;
-            } else if (mailerTierQty <= cfg.mailerTierWithBoxBaseExpandedMax) {
-              shipping = cfg.printedShipRateBoxExpanded;
-            } else {
-              shippingNote = cfg.shippingNotes.toolStandPlusExtra;
-            }
-          } else if (mailerTierQty <= cfg.mailerTierMailerMax) {
-            shipping = cfg.printedShipRateMailer;
-          } else if (mailerTierQty <= cfg.mailerTierAloneMax) {
-            shipping = cfg.printedShipRateBox;
-          } else {
-            shippingNote = cfg.shippingNotes.tooManyCircleOvalAlone;
-          }
-        } else if (quantity <= cfg.flatShippingMaxQty) {
-          shipping = cfg.flatShippingRate;
-        } else {
-          shippingNote = cfg.shippingNotes.overFlatRateQty;
-        }
-      }
-
-      const total = subtotal + tax + (shipping ?? 0);
-      return { unitPrice, subtotal, tax, shipping, total, shippingNote };
-    }
-
-    function formatMoney(n) {
-      return '$' + n.toFixed(2);
+      return { unitPrice, subtotal: unitPrice * quantity };
     }
 
     function updateEstimate() {
@@ -828,37 +880,26 @@
       // Only one of the two color selects is ever enabled at a time - read
       // whichever one is actually active (see openMerchModal() below).
       const color = FILAMENT_COLOR_ITEMS.includes(item) ? merchColorFilament.value : merchColorGildan.value;
-      const isShipping = merchFulfillment.value === 'Ship';
 
-      const est = calculateEstimate(item, quantity, size, sleeve, color, isShipping);
+      const est = calculateItemSubtotal(item, quantity, size, sleeve, color);
       if (!est) {
         merchEstimate.innerHTML = '';
         return;
       }
 
-      let html = `<div>Subtotal: ${formatMoney(est.subtotal)} (${quantity} &times; ${formatMoney(est.unitPrice)})</div>`;
-      html += `<div>Tax (7%): ${formatMoney(est.tax)}</div>`;
-      if (est.shipping !== null) {
-        html += `<div>Shipping: ${formatMoney(est.shipping)}</div>`;
-        html += `<div class="merch-estimate-total">Estimated Total: ${formatMoney(est.total)}</div>`;
-      } else if (isShipping) {
-        html += `<div class="merch-estimate-note">${est.shippingNote}</div>`;
-        html += `<div class="merch-estimate-total">Estimated Total (excl. shipping): ${formatMoney(est.total)}</div>`;
-      } else {
-        html += `<div class="merch-estimate-total">Estimated Total: ${formatMoney(est.total)}</div>`;
-      }
+      let html = `<div class="merch-estimate-total">Item subtotal: ${formatMoney(est.subtotal)} (${quantity} &times; ${formatMoney(est.unitPrice)})</div>`;
       // Bundle nudge (2026-08-21): if this item is part of a
       // MERCH_BUNDLES pair, advertise the buy-both discount. The
-      // discount itself is applied server-side when the requests are
-      // combined at invoice time - this estimate is single-item by
-      // design, so it never shows the discounted math directly. Text
-      // comes pre-resolved from strings/pages/merch-bundle-nudge.txt
-      // via merch_pricing_for_js().
+      // discount itself is applied automatically once both are in the
+      // cart (merch_cart_price.php -> merch_group_calculate()) - this
+      // is just the "hey, did you know" nudge. Text comes pre-resolved
+      // from strings/pages/merch-bundle-nudge.txt via
+      // merch_pricing_for_js().
       const bundleNudge = MERCH_PRICING.bundleNudges[item];
       if (bundleNudge) {
         html += `<div class="merch-estimate-note merch-bundle-nudge" style="margin-top:6px;"><strong>${bundleNudge}</strong></div>`;
       }
-      html += `<div class="merch-estimate-note" style="margin-top:6px;">Estimated total for this item only &mdash; if you're planning more than one request, we'll combine everything into a single total and shipping cost when we follow up.</div>`;
+      html += `<div class="merch-estimate-note" style="margin-top:6px;">Tax and shipping are calculated once for your whole cart at checkout.</div>`;
       merchEstimate.innerHTML = html;
     }
 
@@ -867,9 +908,20 @@
       el.addEventListener('input', updateEstimate);
     });
 
-    function openMerchModal(itemName) {
+    // Which existing cart line (by id) the item-add modal is currently
+    // editing - null means "Add To Your List" will push a brand-new line
+    // instead of updating one in place. Set by a cart line's "Edit"
+    // button (see renderCart() below), cleared on close/submit.
+    let editingCartLineId = null;
+
+    // existingLine (optional): a cart line object to pre-fill the form
+    // from and update in place instead of adding a new one - see the
+    // cart line "Edit" button in renderCart() below.
+    function openMerchModal(itemName, existingLine) {
       merchItemField.value = itemName;
       merchModalItem.textContent = itemName;
+      editingCartLineId = existingLine ? existingLine.id : null;
+      merchItemSubmitBtn.textContent = existingLine ? 'Update Cart Line' : 'Add To Your List';
 
       const needsGildanColor = GILDAN_COLOR_ITEMS.includes(itemName);
       const needsFilamentColor = FILAMENT_COLOR_ITEMS.includes(itemName);
@@ -894,14 +946,19 @@
       const starsStripesOption = document.getElementById('color-option-stars-stripes');
       starsStripesOption.hidden = !MERCH_PRICING.starsStripesEligibleItems.includes(itemName);
 
-      if (!needsGildanColor) {
+      const existingColor = existingLine ? (existingLine.color || '') : '';
+      if (needsGildanColor) {
+        merchColorGildan.value = existingColor;
+      } else {
         merchColorGildan.value = '';
       }
       if (
-        !needsFilamentColor
-        || (merchColorFilament.value === 'Rainbow (+$2)' && rainbowOption.hidden)
-        || (merchColorFilament.value === 'Stars & Stripes (+$7)' && starsStripesOption.hidden)
+        needsFilamentColor
+        && !(existingColor === 'Rainbow (+$2)' && rainbowOption.hidden)
+        && !(existingColor === 'Stars & Stripes (+$7)' && starsStripesOption.hidden)
       ) {
+        merchColorFilament.value = existingColor;
+      } else {
         merchColorFilament.value = '';
       }
 
@@ -910,41 +967,43 @@
       merchSizeSelect.required = needsSizeAndSleeve;
       sleeveFieldWrapper.hidden = !needsSizeAndSleeve;
       merchSleeveSelect.required = needsSizeAndSleeve;
-      if (!needsSizeAndSleeve) {
+      if (needsSizeAndSleeve) {
+        merchSizeSelect.value = existingLine ? (existingLine.size || '') : '';
+        merchSleeveSelect.value = existingLine ? (existingLine.sleeve || '') : '';
+      } else {
         merchSizeSelect.value = '';
         merchSleeveSelect.value = '';
       }
 
-      // Default to "Ship to me" every time the modal opens for a new item
-      merchFulfillment.value = 'Ship';
-      updateShippingFieldsRequired();
-
-      // Reset quantity to 1 so the estimate doesn't carry over from a
-      // previous item's request in the same page visit
-      merchQuantity.value = 1;
+      // New item: always start at quantity 1, same as before. Editing
+      // an existing line: start from whatever it's currently set to.
+      merchQuantity.value = existingLine ? existingLine.quantity : 1;
       updateEstimate();
 
       merchModal.hidden = false;
       document.body.classList.add('lightbox-open');
 
       // 2026-08-29 (Finding 19, a11y): move focus INTO the dialog the
-      // moment it opens - without this, focus stayed on the "Request
-      // This Item" button underneath the now-visible modal, so a
+      // moment it opens - without this, focus stayed on whichever
+      // button opened it, underneath the now-visible modal, so a
       // keyboard/screen-reader user tabbing "forward" would walk
       // through the rest of the page behind an open dialog before ever
-      // reaching the form they just opened. Name is the form's first
-      // fillable field, so landing there skips straight to typing.
+      // reaching the form they just opened. 2026-09-14: Name used to be
+      // the form's first field and always got focus directly; now the
+      // first VISIBLE field varies by item (color/size may be hidden),
+      // so this focuses whichever real control is actually first.
       merchModalReturnFocusEl = document.activeElement;
-      merchNameInput.focus();
+      focusFirstFocusable(merchModal);
     }
 
     function closeMerchModal() {
       merchModal.hidden = true;
       document.body.classList.remove('lightbox-open');
-      // Return focus to whichever "Request This Item" button opened
-      // this, so a keyboard user ends up back where they started
-      // instead of at the top of the page (the browser's default when
-      // the previously-focused element is hidden out from under it).
+      editingCartLineId = null;
+      // Return focus to whichever button opened this, so a keyboard
+      // user ends up back where they started instead of at the top of
+      // the page (the browser's default when the previously-focused
+      // element is hidden out from under it).
       if (merchModalReturnFocusEl) {
         merchModalReturnFocusEl.focus();
         merchModalReturnFocusEl = null;
@@ -956,14 +1015,25 @@
     // walks focus out into the (visually covered, but still in the DOM)
     // page behind it. Recomputed on every Tab press rather than cached
     // once, since which fields are hidden/disabled changes per item
-    // (color/size/sleeve/shipping-vs-pickup fields all toggle visibility
-    // - see openMerchModal()/updateShippingFieldsRequired() above).
-    function trapMerchModalTab(event) {
-      if (event.key !== 'Tab' || merchModal.hidden) return;
-      const focusable = merchModal.querySelectorAll(
+    // (color/size/sleeve fields toggle visibility - see openMerchModal()
+    // above). 2026-09-14: generalized to work on either dialog (the
+    // item-add modal AND the cart/checkout modal below), since there
+    // are now two.
+    function focusableWithin(modalEl) {
+      const focusable = modalEl.querySelectorAll(
         'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
       );
-      const visible = Array.from(focusable).filter((el) => el.offsetParent !== null);
+      return Array.from(focusable).filter((el) => el.offsetParent !== null);
+    }
+
+    function focusFirstFocusable(modalEl) {
+      const visible = focusableWithin(modalEl);
+      if (visible.length > 0) visible[0].focus();
+    }
+
+    function trapTabWithin(modalEl, event) {
+      if (event.key !== 'Tab') return;
+      const visible = focusableWithin(modalEl);
       if (visible.length === 0) return;
       const first = visible[0];
       const last = visible[visible.length - 1];
@@ -984,25 +1054,373 @@
     merchModal.addEventListener('click', (event) => {
       if (event.target === merchModal) closeMerchModal();
     });
+
+    // ============================================================
+    // Cart state (2026-09-14) - the running list the item-add modal
+    // above adds/updates lines in, and the cart/checkout modal below
+    // renders, prices, and finally submits as one order. Persisted to
+    // localStorage (a real site, not the sandboxed in-conversation
+    // preview this pattern is normally restricted on) purely as a
+    // convenience so an accidental reload or a bumped link doesn't
+    // silently lose a half-built cart - every read/write is wrapped
+    // in try/catch and the cart still works fine for the page visit if
+    // storage is blocked (private browsing, cleared/full storage).
+    // ============================================================
+    const CART_STORAGE_KEY = 'sfrMerchCart_v1';
+
+    function loadStoredCart() {
+      try {
+        const raw = window.localStorage.getItem(CART_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (err) {
+        return [];
+      }
+    }
+
+    function saveCartToStorage() {
+      try {
+        window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+      } catch (err) {
+        // Storage unavailable or full - the cart still works for this
+        // page visit, it just won't survive a reload. Not worth
+        // surfacing to the customer.
+      }
+    }
+
+    let cart = loadStoredCart();
+
+    function makeCartLineId() {
+      return 'l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    }
+
+    function cartLineDetailLabel(line) {
+      const details = [];
+      if (line.color) details.push(line.color);
+      if (line.size) details.push(line.size);
+      if (line.sleeve) details.push(line.sleeve);
+      return details.join(', ');
+    }
+
+    function cartLineSubtotal(line) {
+      const est = calculateItemSubtotal(line.item, line.quantity, line.size, line.sleeve, line.color);
+      return est ? est.subtotal : 0;
+    }
+
+    function removeCartLine(id) {
+      cart = cart.filter((l) => l.id !== id);
+      renderCart();
+    }
+
+    function renderCart() {
+      saveCartToStorage();
+
+      const itemCount = cart.reduce((sum, l) => sum + l.quantity, 0);
+      const roughSubtotal = cart.reduce((sum, l) => sum + cartLineSubtotal(l), 0);
+
+      if (cart.length === 0) {
+        cartBar.hidden = true;
+      } else {
+        cartBar.hidden = false;
+        cartBarCount.textContent = `${itemCount} item${itemCount === 1 ? '' : 's'}`;
+        cartBarTotal.textContent = formatMoney(roughSubtotal);
+      }
+
+      cartLinesEl.innerHTML = '';
+      cart.forEach((line) => {
+        const row = document.createElement('div');
+        row.className = 'cart-line';
+
+        const info = document.createElement('div');
+        info.className = 'cart-line-info';
+        const detailLabel = cartLineDetailLabel(line);
+        info.innerHTML = `<div class="cart-line-item">${escapeHtml(line.item)}</div>`
+          + (detailLabel ? `<div class="cart-line-detail">${escapeHtml(detailLabel)}</div>` : '')
+          + `<div class="cart-line-price">${formatMoney(cartLineSubtotal(line))}</div>`;
+
+        const qtyStepper = document.createElement('div');
+        qtyStepper.className = 'cart-line-qty';
+        const decBtn = document.createElement('button');
+        decBtn.type = 'button';
+        decBtn.className = 'cart-qty-btn';
+        decBtn.textContent = '−';
+        decBtn.setAttribute('aria-label', `Decrease quantity of ${line.item}`);
+        decBtn.addEventListener('click', () => {
+          if (line.quantity <= 1) {
+            removeCartLine(line.id);
+          } else {
+            line.quantity -= 1;
+            renderCart();
+          }
+        });
+        const qtyLabel = document.createElement('span');
+        qtyLabel.className = 'cart-qty-label';
+        qtyLabel.textContent = String(line.quantity);
+        const incBtn = document.createElement('button');
+        incBtn.type = 'button';
+        incBtn.className = 'cart-qty-btn';
+        incBtn.textContent = '+';
+        incBtn.setAttribute('aria-label', `Increase quantity of ${line.item}`);
+        incBtn.addEventListener('click', () => {
+          if (line.quantity >= MERCH_PRICING.maxQuantity) return;
+          line.quantity += 1;
+          renderCart();
+        });
+        qtyStepper.append(decBtn, qtyLabel, incBtn);
+
+        const actions = document.createElement('div');
+        actions.className = 'cart-line-actions';
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'btn-secondary cart-line-edit';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => {
+          closeCartModal();
+          openMerchModal(line.item, line);
+        });
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'cart-line-remove';
+        removeBtn.textContent = 'Remove';
+        removeBtn.setAttribute('aria-label', `Remove ${line.item} from cart`);
+        removeBtn.addEventListener('click', () => removeCartLine(line.id));
+        actions.append(editBtn, removeBtn);
+
+        row.append(info, qtyStepper, actions);
+        cartLinesEl.appendChild(row);
+      });
+
+      cartEmptyNote.hidden = cart.length > 0;
+      cartSubmitBtn.disabled = cart.length === 0;
+
+      refreshCartPricing();
+    }
+
+    merchItemForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      // No native form action on this form (it's JS-only - see the
+      // HTML comment above #merch-item-form), so checkValidity() +
+      // reportValidity() is what actually triggers the browser's native
+      // "please fill this out" bubble UI for required fields, same as
+      // a real submit always would.
+      if (!merchItemForm.checkValidity()) {
+        merchItemForm.reportValidity();
+        return;
+      }
+
+      const item = merchItemField.value;
+      const quantity = Math.min(MERCH_PRICING.maxQuantity, Math.max(1, parseInt(merchQuantity.value, 10) || 1));
+      const size = merchSizeSelect.value;
+      const sleeve = merchSleeveSelect.value;
+      const color = FILAMENT_COLOR_ITEMS.includes(item) ? merchColorFilament.value : merchColorGildan.value;
+
+      if (editingCartLineId !== null) {
+        const line = cart.find((l) => l.id === editingCartLineId);
+        if (line) {
+          Object.assign(line, { item, quantity, size, sleeve, color });
+        }
+      } else {
+        if (cart.length >= MERCH_PRICING.cartMaxLines) {
+          window.alert(`You can add up to ${MERCH_PRICING.cartMaxLines} different items to one order - please submit this order first, or remove something to add another.`);
+          return;
+        }
+        cart.push({ id: makeCartLineId(), item, quantity, size, sleeve, color });
+      }
+
+      renderCart();
+      closeMerchModal();
+    });
+
+    // ============================================================
+    // Cart bar + cart/checkout modal (2026-09-14)
+    // ============================================================
+    const cartBar = document.getElementById('cart-bar');
+    const cartBarOpen = document.getElementById('cart-bar-open');
+    const cartBarCount = document.getElementById('cart-bar-count');
+    const cartBarTotal = document.getElementById('cart-bar-total');
+
+    const cartModal = document.getElementById('cart-modal');
+    const cartModalClose = document.getElementById('cart-modal-close');
+    const cartLinesEl = document.getElementById('cart-lines');
+    const cartEmptyNote = document.getElementById('cart-empty-note');
+    const cartEstimate = document.getElementById('cart-estimate');
+    const cartSubmitBtn = document.getElementById('cart-submit-btn');
+    let cartModalReturnFocusEl = null;
+
+    const merchCheckoutForm = document.getElementById('merch-checkout-form');
+    const cartPayloadField = document.getElementById('cart-payload-field');
+    const merchNameInput = document.getElementById('merch-name');
+    const shippingFields = document.getElementById('shipping-fields');
+    const merchAddress = document.getElementById('merch-address');
+    const merchCity = document.getElementById('merch-city');
+    const merchState = document.getElementById('merch-state');
+    const merchZip = document.getElementById('merch-zip');
+    const retreatFields = document.getElementById('retreat-fields');
+    const merchRetreat = document.getElementById('merch-retreat');
+    const merchFulfillment = document.getElementById('merch-fulfillment');
+
+    function updateShippingFieldsRequired() {
+      const shipping = merchFulfillment.value === 'Ship';
+      shippingFields.hidden = !shipping;
+      [merchAddress, merchCity, merchState, merchZip].forEach((el) => {
+        el.required = shipping;
+      });
+      // 2026-08-25: same show/require toggle, mirrored for "which
+      // retreat" - Ship and Pickup at retreat are the only two
+      // Fulfillment values, so it's just the inverse of `shipping`,
+      // no separate condition needed.
+      retreatFields.hidden = shipping;
+      merchRetreat.required = !shipping;
+      if (shipping) {
+        // Switched back to Ship after picking a retreat - clear the
+        // stale selection so it can't ride along in the submission
+        // (mirrors merch_order.php's own server-side blanking of this
+        // field whenever Fulfillment isn't Pickup).
+        merchRetreat.value = '';
+      }
+    }
+
+    merchFulfillment.addEventListener('change', () => {
+      updateShippingFieldsRequired();
+      // Shipping (Ship vs. Pickup) changes whether the combined total
+      // includes a shipping line at all - re-price the whole cart.
+      refreshCartPricing();
+    });
+
+    // Combined pricing across every cart line - bundle discounts and
+    // the shared box-capacity shipping tier both depend on the WHOLE
+    // cart at once, so this is priced server-side by
+    // merch_cart_price.php (same merch_group_calculate() the admin
+    // "Send Invoice" button uses) rather than re-derived a second time
+    // in JS - see that file's header comment. Debounced slightly so a
+    // burst of quantity-stepper clicks doesn't fire one request per
+    // click; requestId guards against an in-flight request that's now
+    // stale (cart changed again before it returned) painting over a
+    // newer result.
+    let cartPricingDebounceTimer = null;
+    let cartPricingRequestSeq = 0;
+
+    function refreshCartPricing() {
+      if (cartPricingDebounceTimer) {
+        clearTimeout(cartPricingDebounceTimer);
+        cartPricingDebounceTimer = null;
+      }
+      if (cart.length === 0) {
+        cartEstimate.innerHTML = '';
+        return;
+      }
+      cartPricingDebounceTimer = setTimeout(fetchCartPricing, 200);
+    }
+
+    function fetchCartPricing() {
+      const requestId = ++cartPricingRequestSeq;
+      const body = new URLSearchParams();
+      body.set('cart', JSON.stringify(cart.map((l) => ({
+        item: l.item, quantity: l.quantity, size: l.size, sleeve: l.sleeve, color: l.color,
+      }))));
+      body.set('fulfillment', merchFulfillment.value);
+
+      fetch('merch_cart_price.php', { method: 'POST', body })
+        .then((res) => res.json())
+        .then((data) => {
+          if (requestId !== cartPricingRequestSeq) return; // superseded by a newer request
+          if (!data.ok) {
+            renderCartPricingFallback();
+            return;
+          }
+          renderCartEstimate(data);
+        })
+        .catch(() => {
+          if (requestId !== cartPricingRequestSeq) return;
+          renderCartPricingFallback();
+        });
+    }
+
+    function renderCartPricingFallback() {
+      cartEstimate.innerHTML = `<div class="merch-estimate-note">Could not calculate your total right now &mdash; you can still submit, and we'll confirm your total by email.</div>`;
+    }
+
+    function renderCartEstimate(pricing) {
+      const isShipping = merchFulfillment.value === 'Ship';
+      let html = `<div>Subtotal: ${formatMoney(pricing.subtotal)}</div>`;
+      if (pricing.bundleDiscount) {
+        html += `<div>Bundle discount: &minus;${formatMoney(pricing.bundleDiscount)}</div>`;
+      }
+      html += `<div>Tax (7%): ${formatMoney(pricing.tax)}</div>`;
+      if (pricing.shipping !== null) {
+        html += `<div>Shipping: ${formatMoney(pricing.shipping)}</div>`;
+        html += `<div class="merch-estimate-total">Estimated Total: ${formatMoney(pricing.total)}</div>`;
+      } else if (isShipping) {
+        html += `<div class="merch-estimate-note">${pricing.shippingNote}</div>`;
+        html += `<div class="merch-estimate-total">Estimated Total (excl. shipping): ${formatMoney(pricing.total)}</div>`;
+      } else {
+        html += `<div class="merch-estimate-total">Estimated Total: ${formatMoney(pricing.total)}</div>`;
+      }
+      cartEstimate.innerHTML = html;
+    }
+
+    function openCartModal() {
+      cartModalReturnFocusEl = document.activeElement;
+      cartModal.hidden = false;
+      document.body.classList.add('lightbox-open');
+      refreshCartPricing();
+      focusFirstFocusable(cartModal);
+    }
+
+    function closeCartModal() {
+      cartModal.hidden = true;
+      document.body.classList.remove('lightbox-open');
+      if (cartModalReturnFocusEl) {
+        cartModalReturnFocusEl.focus();
+        cartModalReturnFocusEl = null;
+      }
+    }
+
+    cartBarOpen.addEventListener('click', openCartModal);
+    cartModalClose.addEventListener('click', closeCartModal);
+    cartModal.addEventListener('click', (event) => {
+      if (event.target === cartModal) closeCartModal();
+    });
+
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         if (!merchModal.hidden) closeMerchModal();
+        if (!cartModal.hidden) closeCartModal();
         if (!photoViewerModal.hidden) closePhotoViewer();
       }
-      trapMerchModalTab(event);
+      if (!merchModal.hidden) trapTabWithin(merchModal, event);
+      if (!cartModal.hidden) trapTabWithin(cartModal, event);
     });
 
     // Disable the submit button the instant the form is submitted, so a
     // double-click (or an impatient double-tap on mobile) can't create
-    // two order rows for one request. The form still submits normally -
-    // this only blocks a second click during the brief window before the
-    // page navigates away.
-    const merchForm = document.getElementById('merch-form');
-    const merchSubmitBtn = merchForm.querySelector('button[type="submit"]');
-    merchForm.addEventListener('submit', () => {
-      merchSubmitBtn.disabled = true;
-      merchSubmitBtn.textContent = 'Submitting...';
+    // two orders for one cart. The form still submits normally (real
+    // navigation to merch_order.php) - this only blocks a second click
+    // during the brief window before the page navigates away.
+    merchCheckoutForm.addEventListener('submit', (event) => {
+      if (cart.length === 0) {
+        // Shouldn't be reachable (cartSubmitBtn is disabled whenever
+        // the cart is empty), but guard the real submission anyway.
+        event.preventDefault();
+        return;
+      }
+      cartPayloadField.value = JSON.stringify(cart.map((l) => ({
+        item: l.item, quantity: l.quantity, size: l.size, sleeve: l.sleeve, color: l.color,
+      })));
+      cartSubmitBtn.disabled = true;
+      cartSubmitBtn.textContent = 'Submitting...';
+      try {
+        window.localStorage.removeItem(CART_STORAGE_KEY);
+      } catch (err) {
+        // Storage unavailable - nothing to clear, the order still submits fine.
+      }
     });
+
+    // Reflect whatever was restored from localStorage the moment the
+    // page loads, so a customer who left mid-cart sees it waiting for
+    // them instead of having to notice nothing looks different.
+    renderCart();
   </script>
 </body>
 </html>
