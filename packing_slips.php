@@ -543,6 +543,31 @@ function merch_qty_badge_html(int $quantity): string
         });
     }
 
+    // 2026-09-14 (Steve: "Could not save Fulfilled" on a shipment that
+    // actually did save when checked on ourmerch.php afterward): checking
+    // off several shipments in quick succession used to fire that many
+    // merch_update.php requests all at once. Each one is individually
+    // correct and race-free (it takes an exclusive file lock before
+    // reading, so no two of them can ever see a stale copy of
+    // merchandise.csv), but on this shared host several requests arriving
+    // together also queue up behind a limited pool of PHP workers and each
+    // other's file lock - and a request stuck waiting long enough can hit
+    // a host/proxy-level timeout and come back to the browser as a
+    // failure even though it (or the one behind it) goes on to finish the
+    // write moments later once its turn comes. Routing every call through
+    // this one queue means only one request is ever in flight from this
+    // page, so nothing wait behind anything else in the first place - a
+    // click just visibly takes its turn instead of racing.
+    let updateQueue = Promise.resolve();
+    function queueFulfilledUpdate(orderIds, checked) {
+      const result = updateQueue.then(() => setFulfilledForOrders(orderIds, checked));
+      // Keep the queue moving even if this call ends up rejected (see the
+      // .catch() below) - one bad request shouldn't stall every checkbox
+      // queued up behind it.
+      updateQueue = result.catch(() => {});
+      return result;
+    }
+
     document.querySelectorAll('.shipment-check[data-order-ids]').forEach((box) => {
       const orderIds = box.dataset.orderIds.split(',').map((id) => id.trim()).filter((id) => id !== '');
       box.addEventListener('change', () => {
@@ -552,7 +577,7 @@ function merch_qty_badge_html(int $quantity): string
         if (orderIds.length === 0) return;
 
         box.disabled = true;
-        setFulfilledForOrders(orderIds, checked)
+        queueFulfilledUpdate(orderIds, checked)
           .then((results) => {
             box.disabled = false;
             const failed = results.filter((r) => !r.ok);
@@ -568,6 +593,19 @@ function merch_qty_badge_html(int $quantity): string
                 + ' - please check this shipment on ourmerch.php.'
               );
             }
+          })
+          .catch(() => {
+            // 2026-09-14: a genuine network failure or non-JSON response
+            // (host hiccup, connection dropped mid-request) used to leave
+            // the checkbox disabled forever with no explanation, since
+            // nothing here caught a rejected promise. Now it resets and
+            // says plainly that it doesn't know whether the save went
+            // through, instead of going silent.
+            box.disabled = false;
+            box.checked = previousChecked;
+            alert(
+              'Lost the connection while saving this shipment - please check ourmerch.php to see whether it actually saved before trying again.'
+            );
           });
       });
     });

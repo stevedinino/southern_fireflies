@@ -306,6 +306,13 @@ if (count($orderIds) === 1) {
     unset($row);
 
     if (!$found) {
+        // 2026-09-14: logged rather than silently returned - this is the
+        // one way a "Could not save" error can reach the browser for the
+        // Fulfilled field specifically (applyToRow() never itself returns
+        // ok:false for a plain boolean field), so if a row that genuinely
+        // exists ever turns up "not found" here, this is the evidence
+        // that will say why instead of leaving it a guess.
+        error_log("merch_update.php: OrderID {$orderId} not found for field '{$field}' (rows read: " . count($rows) . ")");
         flock($handle, LOCK_UN);
         fclose($handle);
         http_response_code(404);
@@ -373,6 +380,13 @@ foreach ($orderIds as $oneOrderId) {
     unset($row);
 
     if (!$found) {
+        // 2026-09-14: same reasoning as the single-order path above -
+        // applyToRow() never returns ok:false on its own for a plain
+        // boolean field like Fulfilled, so "not found" is the only way
+        // this batch can report a per-ID failure. Logged so a genuinely
+        // unexpected miss (vs. a stale page listing an order that's
+        // since been removed/renumbered) leaves real evidence.
+        error_log("merch_update.php: OrderID {$oneOrderId} not found for field '{$field}' in batch [" . implode(',', $orderIds) . '] (rows read: ' . count($rows) . ')');
         $results[$oneOrderId] = ['ok' => false, 'error' => 'Order not found - the page may be out of date, try refreshing.'];
         continue;
     }

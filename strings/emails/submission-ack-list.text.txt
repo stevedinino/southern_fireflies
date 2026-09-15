@@ -1,0 +1,11 @@
+Hi {{name}}!
+
+Thanks so much for your order - here's what we've got on file:
+
+{{itemListText}}
+We'll follow up separately by email with your exact total (including tax and shipping) and payment instructions.
+
+Thanks for your patience!
+
+Mr. Firefly (aka Steve)
+Southern Fireflies Retreats

@@ -11,6 +11,10 @@ config.php
 merchandise_orderid_counter.txt
 registrations_regid_counter.txt
 
+# 2026-09-14 (multi-item cart): OrderGroupID's own counter, same
+# pattern/reasoning as merchandise_orderid_counter.txt above.
+merchandise_ordergroupid_counter.txt
+
 # Login-throttle state (login_throttle.php, Finding 9 fix) - live,
 # constantly-changing server state, not code. Never committed for the
 # same reason as the counters above.
@@ -23,3 +27,9 @@ login_throttle.json
 # deliberately tracked.
 /backups/*
 !/backups/.htaccess
+
+# Steve added Claude outputs to the .gitignore. Noticed that the working
+# copies of payment reconcilliations from PayPal and Venmo were getting 
+#uploaded to GitHub. These fall into the same category as the merchandise
+# and registration .csv files - sensitive customer info
+/Claude outputs/*

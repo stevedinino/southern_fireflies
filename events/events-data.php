@@ -96,7 +96,7 @@ return [
         'dateRange' => 'Sep 10–13, 2026',
         'startDate' => '2026-09-10',
         'endDate' => '2026-09-13',
-        'archived' => false,
+        'archived' => true,
         'registerLabel' => 'September 10-13, 2026 - Sunflower Fields & Southern Dreams',
         'flyerImage' => 'events/sunflower-sept-2026/flyer.png',
         'thumbImage' => 'events/sunflower-sept-2026/flyer_thumb.jpg',
