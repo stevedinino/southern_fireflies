@@ -1,0 +1,1 @@
+<h2>Error: Please go back and choose one of the listed amounts, or enter a custom amount between ${{minAmount}} and ${{maxAmount}}.</h2>

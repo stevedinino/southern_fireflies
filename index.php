@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-08-B
+// Build: 2026-09-16-A
 // 2026-08-01: renamed from index.html to index.php so the Save-the-
 // Date grid below could loop over /events/events-data.php instead of
 // being hand-typed - adding a retreat is now one manifest entry, not
@@ -85,5 +85,7 @@ $events = events_upcoming();
       navLinks.classList.toggle('show');
     });
   </script>
+
+  <?php include __DIR__ . '/footer.php'; ?>
 </body>
 </html>

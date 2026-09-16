@@ -1,6 +1,6 @@
-<?php require __DIR__ . '/events/events_helpers.php'; // Build: 2026-09-08-B ?>
+<?php require __DIR__ . '/events/events_helpers.php'; // Build: 2026-09-16-A ?>
 <!DOCTYPE html>
-<!-- Build: 2026-09-08-B -->
+<!-- Build: 2026-09-16-A -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -215,5 +215,7 @@
       if (event.key === 'ArrowRight') showNextPhoto();
     });
   </script>
+
+  <?php include __DIR__ . '/footer.php'; ?>
 </body>
 </html>

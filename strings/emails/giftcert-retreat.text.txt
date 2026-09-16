@@ -1,0 +1,19 @@
+Thanks for your ${{amount}} gift certificate, {{buyerName}}!
+
+Here's a copy for your records:
+
+Code: {{code}}
+Amount: ${{amount}}
+Good for: {{event}}
+To: {{to}}
+From: {{from}}
+
+If you already printed the certificate page after submitting, you're all set - this email
+is just a backup copy in case you need it again.
+
+Don't forget to send ${{amount}} via Venmo (@{{venmoHandle}}) or PayPal ({{paypalEmail}})
+if you haven't already - see southernfirefliesretreats.com/cancellation.php for details.
+
+We can't wait to craft with whoever unwraps this!
+
+Southern Fireflies Retreat
