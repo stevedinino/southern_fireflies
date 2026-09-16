@@ -1,4 +1,4 @@
-<?php require __DIR__ . '/strings.php'; // Build: 2026-08-29-B ?>
+<?php require __DIR__ . '/strings.php'; // Build: 2026-09-16-A ?>
 <!DOCTYPE html>
 <!--
   Renamed from register.html to retreat-register.php on 2026-08-01 so
@@ -121,5 +121,7 @@
       registerSubmitBtn.textContent = 'Submitting...';
     });
   </script>
+
+  <?php include __DIR__ . '/footer.php'; ?>
 </body>
 </html>

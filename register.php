@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-29-A
+// Build: 2026-09-16-A
 // 2026-08-29 (code review Finding 3): RegID assignment below now goes
 // through id_sequence.php's persistent counter instead of a bare
 // max(existing rows)+1, matching the same fix just applied to
@@ -237,6 +237,10 @@ if ($name && $address && $phone && $email && $event) {
               ' . merch_load_string('pages/registration-thankyou-redirect') . '
             </div>
           </div>
+
+          <footer class="site-footer">
+            <p>' . merch_load_string('pages/footer.html', ['year' => date('Y')]) . '</p>
+          </footer>
         </body>
         </html>';
     } else {

@@ -1535,3 +1535,21 @@ body.lightbox-open {
     font-size: 1rem;
   }
 }
+
+/* ============================ Footer ============================ */
+/* Shared copyright notice - see footer.php. Deliberately understated
+   (small, muted text) since it's a legal formality, not a page element
+   anyone needs to notice. */
+.site-footer {
+  max-width: var(--container-width);
+  margin: 40px auto 0;
+  padding: 16px 20px 24px;
+  text-align: center;
+  border-top: 1px solid rgba(98, 129, 65, 0.2);
+}
+
+.site-footer p {
+  margin: 0;
+  color: #666;
+  font-size: 13px;
+}

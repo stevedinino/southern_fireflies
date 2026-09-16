@@ -1,0 +1,1 @@
+<h2>Error: Please go back and fill in all required fields (who it's to, who it's from, your name and email, and which retreat if this is a retreat certificate).</h2>

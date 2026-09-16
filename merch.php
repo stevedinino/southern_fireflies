@@ -1,4 +1,4 @@
-<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; require __DIR__ . '/events/events_helpers.php'; $merchPickupEvents = events_upcoming(); // Build: 2026-09-08-B ?>
+<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; require __DIR__ . '/events/events_helpers.php'; $merchPickupEvents = events_upcoming(); // Build: 2026-09-16-A ?>
 <?php
 // 2026-08-25 (Steve): the pickup dropdown below used to just say "I'll
 // pick it up at a retreat" with no way to say WHICH one - fine when
@@ -1434,5 +1434,7 @@
     // them instead of having to notice nothing looks different.
     renderList();
   </script>
+
+  <?php include __DIR__ . '/footer.php'; ?>
 </body>
 </html>

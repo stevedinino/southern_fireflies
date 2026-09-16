@@ -1,0 +1,15 @@
+<div style='font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif; color:#333; max-width:500px; margin:0 auto;'>
+  <p>Hi {{buyerName}}!</p>
+  <p>Thanks for your ${{amount}} gift certificate request - here's a copy for your records:</p>
+  <table style='width:100%; border-collapse: collapse;'>
+    <tr><td style='padding:6px 0; font-weight:bold;'>Code:</td><td style='padding:6px 0;'>{{code}}</td></tr>
+    <tr><td style='padding:6px 0; font-weight:bold;'>Amount:</td><td style='padding:6px 0;'>${{amount}}</td></tr>
+    <tr><td style='padding:6px 0; font-weight:bold;'>To:</td><td style='padding:6px 0;'>{{to}}</td></tr>
+    <tr><td style='padding:6px 0; font-weight:bold;'>From:</td><td style='padding:6px 0;'>{{from}}</td></tr>
+  </table>
+  <p style='margin-top:20px;'>If you already printed the certificate page after submitting, you're all set - this email is just a backup copy in case you need it again. It doesn't expire.</p>
+  <p>Don't forget to send ${{amount}} via Venmo (<strong>@{{venmoHandle}}</strong>) or PayPal (<strong>{{paypalEmail}}</strong>) if you haven't already - see our
+  <a href='https://southernfirefliesretreats.com/cancellation.php' style='color:#628141;'>policies page</a> for details.</p>
+  <p>Thanks so much!</p>
+  <p>Mr. Firefly (aka Steve)<br/>Southern Fireflies Retreats</p>
+</div>

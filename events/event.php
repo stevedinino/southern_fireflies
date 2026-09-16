@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-01-A
+// Build: 2026-09-16-A
 // ============================================================
 // Single shared flyer page for every retreat. Replaces the old
 // event-august-2026.html / event-august-2027.html / etc files -
@@ -134,5 +134,7 @@ $event = events_by_slug($slug);
     });
 <?php endif; ?>
   </script>
+
+  <?php include __DIR__ . '/../footer.php'; ?>
 </body>
 </html>

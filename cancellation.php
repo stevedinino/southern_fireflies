@@ -1,6 +1,6 @@
-<?php require __DIR__ . '/strings.php'; // Build: 2026-08-01-A ?>
+<?php require __DIR__ . '/strings.php'; // Build: 2026-09-16-A ?>
 <!DOCTYPE html>
-<!-- Build: 2026-08-01-A -->
+<!-- Build: 2026-09-16-A -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -38,5 +38,7 @@
       navLinks.classList.toggle('show');
     });
   </script>
+
+  <?php include __DIR__ . '/footer.php'; ?>
 </body>
 </html>

@@ -1,0 +1,16 @@
+<div style='font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif; color:#333; max-width:500px; margin:0 auto;'>
+  <h2 style='color:#628141;'>Thanks for your ${{amount}} gift certificate, {{buyerName}}!</h2>
+  <p>Here's a copy for your records:</p>
+  <table style='width:100%; border-collapse: collapse;'>
+    <tr><td style='padding:6px 0; font-weight:bold;'>Code:</td><td style='padding:6px 0;'>{{code}}</td></tr>
+    <tr><td style='padding:6px 0; font-weight:bold;'>Amount:</td><td style='padding:6px 0;'>${{amount}}</td></tr>
+    <tr><td style='padding:6px 0; font-weight:bold;'>Good for:</td><td style='padding:6px 0;'>{{event}}</td></tr>
+    <tr><td style='padding:6px 0; font-weight:bold;'>To:</td><td style='padding:6px 0;'>{{to}}</td></tr>
+    <tr><td style='padding:6px 0; font-weight:bold;'>From:</td><td style='padding:6px 0;'>{{from}}</td></tr>
+  </table>
+  <p style='margin-top:20px;'>If you already printed the certificate page after submitting, you're all set - this email is just a backup copy in case you need it again.</p>
+  <p style='margin-top:20px;'>Don't forget to send ${{amount}} via Venmo (<strong>@{{venmoHandle}}</strong>) or PayPal (<strong>{{paypalEmail}}</strong>) if you haven't already - see our
+  <a href='https://southernfirefliesretreats.com/cancellation.php' style='color:#628141;'>policies page</a> for details.</p>
+  <p>We can't wait to craft with whoever unwraps this!</p>
+  <p style='color:#888; font-size:13px; margin-top:30px;'>Southern Fireflies Retreat</p>
+</div>
