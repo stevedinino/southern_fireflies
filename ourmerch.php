@@ -180,40 +180,43 @@ $merchEditCatalog = [
       font-size: 1.05em;
       color: #444;
     }
-    .print-plate-batch-list {
+    .print-plate-group-block {
+      margin: 0 0 14px 0;
+    }
+    .print-plate-group-block:last-child {
+      margin-bottom: 0;
+    }
+    .print-plate-group-heading {
+      margin: 0 0 4px 0;
+      font-size: 0.9em;
+      font-weight: bold;
+      color: #555;
+    }
+    .print-plate-plate-list {
       list-style: none;
-      margin: 0 0 10px 0;
+      margin: 0;
       padding: 0;
       font-size: 0.95em;
     }
-    .print-plate-batch-list li {
+    .print-plate-plate-list li {
       margin: 4px 0;
       padding: 4px 8px;
       background: #eef7ee;
       border-radius: 4px;
     }
-    .print-plate-batch-detail {
+    .print-plate-plate-list li.print-plate-partial {
+      background: #f8f3e6;
+    }
+    .print-plate-plate-fill {
       color: #667;
-      font-size: 0.9em;
-    }
-    .print-plate-no-batch {
-      color: #888;
       font-size: 0.85em;
-      font-style: italic;
-      margin: 0 0 8px 0;
+      font-weight: normal;
     }
-    .print-plate-item-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      font-size: 0.9em;
-    }
-    .print-plate-item-list li {
-      margin: 2px 0;
-    }
-    .print-plate-item-orders {
+    .print-plate-plate-orders {
+      display: block;
       color: #777;
-      font-size: 0.9em;
+      font-size: 0.88em;
+      margin-top: 2px;
     }
   </style>
 </head>
@@ -347,8 +350,8 @@ $merchEditCatalog = [
           // see #merch-print-plate-pane below and print_plates.php.
           // Read-only first cut, per Steve 2026-09-17 - doesn't check
           // anything off, just groups the same Needs Creating queue by
-          // color and matches it against Steve's own known plate
-          // layouts (print_plates.php's PRINT_PLATE_RECIPES).
+          // color and packs it against Steve's own known per-item plate
+          // capacities (print_plates.php's PRINT_PLATE_GROUPS).
           echo '<button type="button" id="merch-print-plate-btn" class="btn" style="padding:4px 12px; font-size:0.85em;">Sort by Print Plate</button>';
           // 2026-08-23: independent of the named views above (which
           // never show a cancelled row, full stop - nothing to act on
@@ -677,8 +680,14 @@ $merchEditCatalog = [
       // Read-only: no checkboxes, no writes, nothing wired to
       // merch_update.php - see the design doc
       // (Claude outputs/print-plate-batch-sort-design-20260917.md)
-      // for why this stays read-only for the first cut, and for what
-      // "recipe" means below.
+      // for why this stays read-only for the first cut.
+      //
+      // 2026-09-17, second pass: rewritten for print_plates.php's
+      // capacity-based model (PRINT_PLATE_GROUPS) after the original
+      // "batch summary + separate full item list" layout below turned
+      // out to double-render the same units and confused Steve. Every
+      // unit now appears exactly once, as part of exactly one plate
+      // line (full or partial) - no separate leftover list.
       $printPlateGroups = print_plate_group_queue($printPlateRows);
       ?>
       <div id="merch-print-plate-pane" class="merch-table-pane" style="display:none; padding:16px;">
@@ -686,44 +695,38 @@ $merchEditCatalog = [
           <p style="text-align:center; color:#666;">Nothing here right now &mdash; either Needs Creating is empty, or everything left is a shirt/hat or a Stars &amp; Stripes order, neither of which go through this view.</p>
         <?php else: ?>
           <p style="color:#666; font-size:0.85em; margin-top:0;">
-            Read-only planning view: the same Needs Creating queue, grouped by color (most-ordered colors first) and matched against the plate layouts in <code>print_plates.php</code>. Doesn't check anything off &mdash; use the normal table for that.
+            Read-only planning view: the same Needs Creating queue, grouped by color (most-ordered colors first), then by item group, and packed into plates using the solo/shared capacities in <code>print_plates.php</code>. Every order line appears in exactly one plate below, full or partial &mdash; nothing is hidden or double-counted. A partial plate is a candidate for combining by hand with something else in that color, same as always. Doesn't check anything off &mdash; use the normal table for that.
           </p>
           <?php foreach ($printPlateGroups as $group): ?>
             <div class="print-plate-color-group">
               <h3 class="print-plate-color-heading"><?= htmlspecialchars($group['color']) ?></h3>
-              <?php if (!empty($group['batches'])): ?>
-                <ul class="print-plate-batch-list">
-                  <?php foreach ($group['batches'] as $batch): ?>
-                    <?php
-                    $itemBits = [];
-                    foreach ($batch['items'] as $batchItem => $batchQty) {
-                        $itemBits[] = $batchQty . 'x ' . htmlspecialchars($batchItem);
-                    }
-                    ?>
-                    <li>
-                      <strong><?= (int) $batch['plates'] ?>&times; plate<?= $batch['plates'] === 1 ? '' : 's' ?></strong>
-                      &mdash; <?= htmlspecialchars($batch['recipe']) ?>
-                      <span class="print-plate-batch-detail">(<?= implode(', ', $itemBits) ?>)</span>
-                    </li>
-                  <?php endforeach; ?>
-                </ul>
-              <?php else: ?>
-                <p class="print-plate-no-batch">No full plate match yet from print_plates.php's recipes &mdash; everything below is a partial mix.</p>
-              <?php endif; ?>
-              <ul class="print-plate-item-list">
-                <?php foreach ($group['items'] as $itemName => $pool): ?>
-                  <?php
-                  $orderBits = [];
-                  foreach ($pool['orders'] as $o) {
-                      $orderBits[] = '#' . htmlspecialchars($o['orderId']) . ' ' . htmlspecialchars($o['customerName']) . ' (' . (int) $o['qty'] . ')';
-                  }
-                  ?>
-                  <li>
-                    <?= (int) $pool['qty'] ?>&times; <?= htmlspecialchars($itemName) ?>
-                    <span class="print-plate-item-orders">&mdash; <?= implode(', ', $orderBits) ?></span>
-                  </li>
-                <?php endforeach; ?>
-              </ul>
+              <?php foreach ($group['plateGroups'] as $pg): ?>
+                <div class="print-plate-group-block">
+                  <div class="print-plate-group-heading"><?= htmlspecialchars($pg['group']) ?></div>
+                  <ul class="print-plate-plate-list">
+                    <?php foreach ($pg['plates'] as $plateIndex => $plate): ?>
+                      <?php
+                      $isFull = $plate['fillFraction'] >= 0.999;
+                      $fillPct = (int) round($plate['fillFraction'] * 100);
+                      $itemBits = [];
+                      $orderBits = [];
+                      foreach ($plate['items'] as $itemName => $data) {
+                          $itemBits[] = (int) $data['qty'] . '&times; ' . htmlspecialchars($itemName);
+                          foreach ($data['orders'] as $o) {
+                              $orderBits[] = '#' . htmlspecialchars($o['orderId']) . ' ' . htmlspecialchars($o['customerName']) . ' (' . (int) $o['qty'] . ')';
+                          }
+                      }
+                      ?>
+                      <li class="<?= $isFull ? '' : 'print-plate-partial' ?>">
+                        <strong>Plate <?= $plateIndex + 1 ?></strong>
+                        &mdash; <?= implode(', ', $itemBits) ?>
+                        <span class="print-plate-plate-fill"><?= $isFull ? '(full)' : '(' . $fillPct . '% full)' ?></span>
+                        <span class="print-plate-plate-orders"><?= implode(', ', $orderBits) ?></span>
+                      </li>
+                    <?php endforeach; ?>
+                  </ul>
+                </div>
+              <?php endforeach; ?>
             </div>
           <?php endforeach; ?>
         <?php endif; ?>
