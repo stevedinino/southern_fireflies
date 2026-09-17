@@ -3,6 +3,7 @@
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
+require __DIR__ . '/print_plates.php'; // 2026-09-17: for print_plate_group_queue() - powers the read-only "Sort by Print Plate" toggle below
 
 // 2026-08-20 (Steve): working an order means glancing back and forth
 // between a handful of fields, but they're spread across the CSV's 25
@@ -93,6 +94,10 @@ $merchEditCatalog = [
     .merch-view-btn.active {
       background: #333;
     }
+    #merch-print-plate-btn.active {
+      background: #333;
+      color: #fff;
+    }
     /* Click affordance for the editable Color cell - same idea as a
        plain-text "click to edit" field, so it reads as interactive next
        to the checkbox/button cells beside it. */
@@ -158,6 +163,57 @@ $merchEditCatalog = [
       font-weight: bold;
       font-size: 0.85em;
       vertical-align: middle;
+    }
+    /* "Sort by Print Plate" pane (2026-09-17) - same visual language
+       as packing_slips.php's existing "By Color" section (muted
+       headings/secondary text, light divider), not reinvented here. */
+    .print-plate-color-group {
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #eee;
+    }
+    .print-plate-color-group:last-child {
+      border-bottom: none;
+    }
+    .print-plate-color-heading {
+      margin: 0 0 8px 0;
+      font-size: 1.05em;
+      color: #444;
+    }
+    .print-plate-batch-list {
+      list-style: none;
+      margin: 0 0 10px 0;
+      padding: 0;
+      font-size: 0.95em;
+    }
+    .print-plate-batch-list li {
+      margin: 4px 0;
+      padding: 4px 8px;
+      background: #eef7ee;
+      border-radius: 4px;
+    }
+    .print-plate-batch-detail {
+      color: #667;
+      font-size: 0.9em;
+    }
+    .print-plate-no-batch {
+      color: #888;
+      font-size: 0.85em;
+      font-style: italic;
+      margin: 0 0 8px 0;
+    }
+    .print-plate-item-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      font-size: 0.9em;
+    }
+    .print-plate-item-list li {
+      margin: 2px 0;
+    }
+    .print-plate-item-orders {
+      color: #777;
+      font-size: 0.9em;
     }
   </style>
 </head>
@@ -241,6 +297,11 @@ $merchEditCatalog = [
       // Steve ships the whole box together, not whichever parts happen
       // to be done first (2026-08-15, per Steve).
       $shipmentAllCreated = []; // normalized "name|zip" -> bool
+      // 2026-09-17: accumulated below (same loop as the table rows) for
+      // the "Sort by Print Plate" pane - one entry per row that meets
+      // the same "needs creating" criteria the needs-creating named
+      // view uses. See print_plates.php.
+      $printPlateRows = [];
       if ($nameIndex !== false && $zipIndex !== false) {
           foreach ($rows as $data) {
               $rPaid = $pymtDateIndex !== false && trim($data[$pymtDateIndex] ?? '') !== '';
@@ -277,7 +338,18 @@ $merchEditCatalog = [
           echo '<button type="button" class="btn merch-view-btn" data-view="needs-invoicing" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">Needs Invoicing</button>';
           echo '<button type="button" class="btn merch-view-btn" data-view="needs-payment" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">Needs Payment</button>';
           echo '<button type="button" class="btn merch-view-btn" data-view="needs-creating" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">Needs Creating</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-shipping" style="padding:4px 12px; font-size:0.85em;">Needs Shipping</button>';
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-shipping" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">Needs Shipping</button>';
+          // 2026-09-17 (Steve): "sort the Needs Creating list to give me
+          // an optimized list of same color gadgets I can print
+          // together." NOT another data-view case below (applyView()
+          // shows/hides existing rows; this groups/aggregates them
+          // instead), so it's a separate toggle with its own pane -
+          // see #merch-print-plate-pane below and print_plates.php.
+          // Read-only first cut, per Steve 2026-09-17 - doesn't check
+          // anything off, just groups the same Needs Creating queue by
+          // color and matches it against Steve's own known plate
+          // layouts (print_plates.php's PRINT_PLATE_RECIPES).
+          echo '<button type="button" id="merch-print-plate-btn" class="btn" style="padding:4px 12px; font-size:0.85em;">Sort by Print Plate</button>';
           // 2026-08-23: independent of the named views above (which
           // never show a cancelled row, full stop - nothing to act on
           // there) - this is a manual override for browsing/auditing,
@@ -295,7 +367,7 @@ $merchEditCatalog = [
           // is unchanged for everyone else.
           echo '<label style="margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-pickup-only" /> Pickup at Retreat only</label>';
           echo '</div>';
-          echo '<div class="merch-table-pane"><table style="width:100%; border-collapse: collapse;">';
+          echo '<div class="merch-table-pane" id="merch-table-pane"><table style="width:100%; border-collapse: collapse;">';
           echo '<tr>';
           foreach ($displayOrder as $col) {
               echo '<th style="padding:6px; text-align:left; white-space:nowrap;">' . htmlspecialchars($col) . '</th>';
@@ -331,6 +403,21 @@ $merchEditCatalog = [
                   ? merch_shipment_key($data[$nameIndex] ?? '', $data[$zipIndex] ?? '')
                   : '';
               $rowShipmentReady = $shipmentAllCreated[$rowShipmentKey] ?? true;
+              // 2026-09-17: same "needs creating" test as the
+              // needs-creating case in applyView() below (Ship rows
+              // need paid, Pickup rows don't), plus never cancelled -
+              // matching every named view's default (Show Cancelled is
+              // a manual override for the flat table only, not
+              // extended to this separate pane).
+              if (!$rowIsCreated && ($rowIsShipping ? $rowIsPaid : true) && !$rowIsCancelled) {
+                  $printPlateRows[] = [
+                      'item' => $rowItem,
+                      'color' => $colorIndex !== false ? trim($data[$colorIndex] ?? '') : '',
+                      'qty' => $rowQuantity,
+                      'orderId' => $orderId,
+                      'customerName' => $nameIndex !== false ? trim($data[$nameIndex] ?? '') : '',
+                  ];
+              }
               echo '<tr class="' . ($rowQuantity > 1 ? 'merch-row-multi' : '') . '" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '" data-cancelled="' . ($rowIsCancelled ? '1' : '0') . '" data-quantity="' . $rowQuantity . '">';
               foreach ($displayOrder as $col) {
                   $i = $columnIndexByName[$col] ?? null;
@@ -580,7 +667,67 @@ $merchEditCatalog = [
       } else {
           echo '<p style="text-align:center;">No merch requests yet.</p>';
       }
+
+      // 2026-09-17: "Sort by Print Plate" pane - hidden by default
+      // (toggled by the button in the filter bar above; see the JS
+      // near the bottom of this file), pre-rendered here rather than
+      // built client-side since the grouping/matching logic
+      // (print_plate_group_queue(), print_plates.php) is PHP, and
+      // $printPlateRows was already collected in the row loop above.
+      // Read-only: no checkboxes, no writes, nothing wired to
+      // merch_update.php - see the design doc
+      // (Claude outputs/print-plate-batch-sort-design-20260917.md)
+      // for why this stays read-only for the first cut, and for what
+      // "recipe" means below.
+      $printPlateGroups = print_plate_group_queue($printPlateRows);
       ?>
+      <div id="merch-print-plate-pane" class="merch-table-pane" style="display:none; padding:16px;">
+        <?php if (empty($printPlateGroups)): ?>
+          <p style="text-align:center; color:#666;">Nothing here right now &mdash; either Needs Creating is empty, or everything left is a shirt/hat or a Stars &amp; Stripes order, neither of which go through this view.</p>
+        <?php else: ?>
+          <p style="color:#666; font-size:0.85em; margin-top:0;">
+            Read-only planning view: the same Needs Creating queue, grouped by color (most-ordered colors first) and matched against the plate layouts in <code>print_plates.php</code>. Doesn't check anything off &mdash; use the normal table for that.
+          </p>
+          <?php foreach ($printPlateGroups as $group): ?>
+            <div class="print-plate-color-group">
+              <h3 class="print-plate-color-heading"><?= htmlspecialchars($group['color']) ?></h3>
+              <?php if (!empty($group['batches'])): ?>
+                <ul class="print-plate-batch-list">
+                  <?php foreach ($group['batches'] as $batch): ?>
+                    <?php
+                    $itemBits = [];
+                    foreach ($batch['items'] as $batchItem => $batchQty) {
+                        $itemBits[] = $batchQty . 'x ' . htmlspecialchars($batchItem);
+                    }
+                    ?>
+                    <li>
+                      <strong><?= (int) $batch['plates'] ?>&times; plate<?= $batch['plates'] === 1 ? '' : 's' ?></strong>
+                      &mdash; <?= htmlspecialchars($batch['recipe']) ?>
+                      <span class="print-plate-batch-detail">(<?= implode(', ', $itemBits) ?>)</span>
+                    </li>
+                  <?php endforeach; ?>
+                </ul>
+              <?php else: ?>
+                <p class="print-plate-no-batch">No full plate match yet from print_plates.php's recipes &mdash; everything below is a partial mix.</p>
+              <?php endif; ?>
+              <ul class="print-plate-item-list">
+                <?php foreach ($group['items'] as $itemName => $pool): ?>
+                  <?php
+                  $orderBits = [];
+                  foreach ($pool['orders'] as $o) {
+                      $orderBits[] = '#' . htmlspecialchars($o['orderId']) . ' ' . htmlspecialchars($o['customerName']) . ' (' . (int) $o['qty'] . ')';
+                  }
+                  ?>
+                  <li>
+                    <?= (int) $pool['qty'] ?>&times; <?= htmlspecialchars($itemName) ?>
+                    <span class="print-plate-item-orders">&mdash; <?= implode(', ', $orderBits) ?></span>
+                  </li>
+                <?php endforeach; ?>
+              </ul>
+            </div>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      </div>
 
       <div class="button-container" style="text-align:center; margin-top:20px;">
         <p style="margin:0;">
@@ -1322,6 +1469,27 @@ $merchEditCatalog = [
     // Apply whatever view was restored (or the 'all' default) now that
     // the table and buttons above actually exist to apply it to.
     applyView(currentView);
+
+    // 2026-09-17: "Sort by Print Plate" - deliberately NOT another
+    // data-view case in applyView() above. That switch shows/hides
+    // EXISTING rows; this swaps the whole table for a separate,
+    // pre-rendered, grouped/aggregated pane (#merch-print-plate-pane,
+    // built server-side by print_plate_group_queue() since the
+    // matching logic is PHP, not JS). Toggling it off returns to
+    // whatever named view/checkboxes were already active - it doesn't
+    // touch currentView, showCancelled, or pickupOnly at all.
+    const printPlateBtn = document.getElementById('merch-print-plate-btn');
+    const printPlatePane = document.getElementById('merch-print-plate-pane');
+    const merchTablePane = document.getElementById('merch-table-pane');
+    if (printPlateBtn && printPlatePane && merchTablePane) {
+      let printPlateShown = false;
+      printPlateBtn.addEventListener('click', () => {
+        printPlateShown = !printPlateShown;
+        printPlateBtn.classList.toggle('active', printPlateShown);
+        printPlatePane.style.display = printPlateShown ? '' : 'none';
+        merchTablePane.style.display = printPlateShown ? 'none' : '';
+      });
+    }
   </script>
 </body>
 </html>
