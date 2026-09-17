@@ -24,7 +24,14 @@
 //          request form's item field. Must be unique across folders.
 //   class: a key of MERCH_CLASSES (pricing.php), or the literal word
 //          "none" for a display-only card (no price, no Request
-//          button) - that's how 99-more-coming-soon works.
+//          button).
+// Optional keys, display-only ("class: none") cards only:
+//   link:     a URL (relative or absolute) - when set, the card gets a
+//             single .btn link in its actions row instead of a Request
+//             button (used by the Gift Certificates card to point at
+//             gift-certificate.php - see items/99-more-coming-soon/).
+//   linkText: the link button's label. Defaults to "Learn More" when
+//             "link:" is set but "linkText:" is not.
 //
 // The folder ORDER on the page is plain string order of the folder
 // names - hence the 10/20/.../99 numeric prefixes. Inserting an item
@@ -129,6 +136,14 @@ function merch_catalog(): array
             $description = "[Missing description: items/{$folder}/description.txt not found on server]";
         }
 
+        // Optional display-card link button (see file header). Only
+        // meaningful for "class: none" cards - an orderable item's
+        // action row is always its Request button, so a stray "link:"
+        // in an orderable item's item.txt is silently ignored rather
+        // than fought over.
+        $link = ($class === 'none' && !empty($meta['link'])) ? $meta['link'] : null;
+        $linkText = $link !== null ? ($meta['linkText'] ?? 'Learn More') : null;
+
         $catalog[] = [
             'name' => $name,
             'folder' => $folder,
@@ -136,6 +151,8 @@ function merch_catalog(): array
             'attrs' => $attrs,
             'description' => $description,
             'media' => merch_items_scan_media($dir, "items/{$folder}", $name),
+            'link' => $link,
+            'linkText' => $linkText,
         ];
     }
 

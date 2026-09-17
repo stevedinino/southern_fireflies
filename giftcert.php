@@ -39,7 +39,15 @@ require_once __DIR__ . '/events/events_helpers.php';
 // the printed certificate's amount line simple and keeps Venmo/PayPal
 // requests easy to eyeball against gift_certificates.csv, without
 // hard-blocking someone who wants an odd amount.
-const GIFTCERT_TIERS = [25, 50, 100, 150];
+//
+// Split per TYPE as of 2026-09-17 (Janet's call): a Retreat certificate
+// should offer amounts that actually match what she charges per
+// registration (events/events-data.php's costText - "$185 for 3 days,
+// $215 for 4 days") rather than the original Merch tiers, which have
+// nothing to do with retreat pricing. $50 stays as a smaller/partial-
+// gift option; Merch keeps its original four tiers unchanged.
+const GIFTCERT_TIERS_MERCH = [25, 50, 100, 150];
+const GIFTCERT_TIERS_RETREAT = [50, 185, 215];
 
 // Bounds for the "custom amount" field - not a real pricing rule, just
 // a sanity ceiling/floor against typos or abuse (a $0 or $50,000
@@ -102,6 +110,17 @@ function giftcert_code_number(string $code): ?int
 }
 
 /**
+ * The preset tier list for one cert type - Merch or Retreat. Centralized
+ * here (rather than letting the form and the validator each keep their
+ * own copy) so the two can never disagree about which amounts are
+ * actually offered/accepted for a given type.
+ */
+function giftcert_tiers_for_type(string $type): array
+{
+    return $type === 'Retreat' ? GIFTCERT_TIERS_RETREAT : GIFTCERT_TIERS_MERCH;
+}
+
+/**
  * Every valid "Retreat" cert event label, same "dateRange – title"
  * format merch_order.php already validates pickup retreats against -
  * one source of truth (events/events-data.php via events_helpers.php)
@@ -120,11 +139,12 @@ function giftcert_valid_retreat_events(): array
 }
 
 /**
- * Validates a submitted amount against the tier list or the custom
- * bounds. Returns the validated float, or null if it's neither a
- * recognized tier nor a legal custom amount.
+ * Validates a submitted amount against $type's tier list or the custom
+ * bounds (bounds are shared across both types - see GIFTCERT_MIN_AMOUNT/
+ * GIFTCERT_MAX_AMOUNT). Returns the validated float, or null if it's
+ * neither a recognized tier for that type nor a legal custom amount.
  */
-function giftcert_validate_amount(string $amountRaw, string $customRaw): ?float
+function giftcert_validate_amount(string $amountRaw, string $customRaw, string $type): ?float
 {
     if ($amountRaw === 'custom') {
         $custom = filter_var(trim($customRaw), FILTER_VALIDATE_FLOAT);
@@ -141,7 +161,7 @@ function giftcert_validate_amount(string $amountRaw, string $customRaw): ?float
     }
 
     $tier = filter_var($amountRaw, FILTER_VALIDATE_INT);
-    if ($tier !== false && in_array($tier, GIFTCERT_TIERS, true)) {
+    if ($tier !== false && in_array($tier, giftcert_tiers_for_type($type), true)) {
         return (float) $tier;
     }
 

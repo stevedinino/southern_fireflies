@@ -14,6 +14,7 @@
 // retreats don't linger on the homepage forever. See events-data.php's
 // header for the full story.
 require __DIR__ . '/events/events_helpers.php';
+require __DIR__ . '/strings.php';
 $events = events_upcoming();
 ?>
 <!DOCTYPE html>
@@ -53,6 +54,16 @@ $events = events_upcoming();
       Pre-register below to save your spot at an upcoming retreat!
     </p>
   </section>
+
+  <!-- Gift certificate promo banner (2026-09-16, holiday season) - same
+       markup/string as merch.php and retreat-register.php, see
+       .giftcert-banner in layout.css. -->
+  <div class="content-wrapper">
+    <div class="giftcert-banner">
+      <p><?= merch_load_string('pages/giftcert-banner') ?></p>
+      <a href="gift-certificate.php" class="btn">Get a Gift Certificate</a>
+    </div>
+  </div>
 
   <div class="content-wrapper">
 
