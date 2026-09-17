@@ -76,7 +76,7 @@ if ($type !== 'Merch' && $type !== 'Retreat') {
 
 $amountRaw = isset($_POST['amount']) ? trim((string) $_POST['amount']) : '';
 $customRaw = isset($_POST['customAmount']) ? trim((string) $_POST['customAmount']) : '';
-$amount = giftcert_validate_amount($amountRaw, $customRaw);
+$amount = giftcert_validate_amount($amountRaw, $customRaw, $type);
 if ($amount === null) {
     giftcert_render_error_page(merch_load_string('errors/giftcert-invalid-amount', [
         'minAmount' => GIFTCERT_MIN_AMOUNT,

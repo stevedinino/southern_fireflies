@@ -69,6 +69,18 @@
   <!-- Wrapped in its own .content-wrapper so this gets the exact same
        max-width + centering + side-gutter behavior as every other boxed
        block on the page, instead of running full-bleed edge to edge. -->
+  <!-- Gift certificate promo banner (2026-09-16, holiday season) - same
+       markup/string as index.php and retreat-register.php, see
+       .giftcert-banner in layout.css. Sits above the existing
+       "how this works" demand-banner so it reads as its own callout,
+       not folded into that notice box. -->
+  <div class="content-wrapper">
+    <div class="giftcert-banner">
+      <p><?= merch_load_string('pages/giftcert-banner') ?></p>
+      <a href="gift-certificate.php" class="btn">Get a Gift Certificate</a>
+    </div>
+  </div>
+
   <div class="content-wrapper">
     <div class="demand-banner">
       <p><?= merch_load_string('pages/merch-banner') ?></p>
@@ -202,6 +214,12 @@
           <?php endif; ?>
           <?php if ($orderable): ?>
             <button type="button" class="btn full-width merch-request-btn" data-item="<?= htmlspecialchars($itemName, ENT_QUOTES, 'UTF-8') ?>">Add To Your List</button>
+          <?php elseif ($merchItem['link'] !== null): ?>
+            <!-- Display-only card with an optional link button (see
+                 merch_items.php's file header) - currently just the Gift
+                 Certificates card, but folder-driven so any future
+                 "class: none" card can opt in the same way. -->
+            <a href="<?= htmlspecialchars($merchItem['link'], ENT_QUOTES, 'UTF-8') ?>" class="btn full-width"><?= htmlspecialchars($merchItem['linkText'], ENT_QUOTES, 'UTF-8') ?></a>
           <?php endif; ?>
           </div>
         </div>

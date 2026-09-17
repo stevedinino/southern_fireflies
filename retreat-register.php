@@ -34,6 +34,18 @@
     </div>
   </header>
 
+  <!-- Gift certificate promo banner (2026-09-16, holiday season) - same
+       markup/string as index.php and merch.php, see .giftcert-banner in
+       layout.css. Kept in its own content-wrapper above the form,
+       rather than inside .form-container, so it doesn't interrupt the
+       registration flow itself. -->
+  <div class="content-wrapper">
+    <div class="giftcert-banner">
+      <p><?= merch_load_string('pages/giftcert-banner') ?></p>
+      <a href="gift-certificate.php" class="btn">Get a Gift Certificate</a>
+    </div>
+  </div>
+
   <div class="content-wrapper">
     <div class="form-container">
       <h2>Retreat Registration</h2>

@@ -129,22 +129,54 @@ $retreatEvents = giftcert_valid_retreat_events();
           </select>
         </div>
 
+        <!-- Two parallel amount fieldsets, one per certificate type
+             (2026-09-17, Janet's call): a Retreat certificate should
+             offer amounts that match what she actually charges per
+             registration (events/events-data.php's costText - $185/3
+             days, $215/4 days), not the Merch tiers, which have nothing
+             to do with retreat pricing. Both share name="amount" (and
+             each Custom radio shares name="amount" too), so only one
+             fieldset's selection can ever be "the" submitted value -
+             updateTypeVisibility() below disables/hides whichever one
+             isn't the active type so a stale selection from the other
+             type can never ride along. -->
+        <div id="amount-fieldset-merch">
         <fieldset class="giftcert-amount-fieldset">
           <legend>Amount</legend>
-<?php foreach (GIFTCERT_TIERS as $tier): ?>
+<?php foreach (GIFTCERT_TIERS_MERCH as $tier): ?>
           <div class="giftcert-radio-row">
-            <input type="radio" name="amount" id="amount-<?= $tier ?>" value="<?= $tier ?>"<?= $tier === GIFTCERT_TIERS[0] ? ' checked' : '' ?> />
-            <label for="amount-<?= $tier ?>">$<?= $tier ?></label>
+            <input type="radio" class="giftcert-amount-tier" name="amount" id="amount-merch-<?= $tier ?>" value="<?= $tier ?>"<?= $tier === GIFTCERT_TIERS_MERCH[0] ? ' checked' : '' ?> />
+            <label for="amount-merch-<?= $tier ?>">$<?= $tier ?></label>
           </div>
 <?php endforeach; ?>
           <div class="giftcert-radio-row">
-            <input type="radio" name="amount" id="amount-custom" value="custom" />
-            <label for="amount-custom">Custom amount:</label>
+            <input type="radio" class="giftcert-amount-custom-radio" name="amount" id="amount-custom-merch" value="custom" />
+            <label for="amount-custom-merch">Custom amount:</label>
             <div class="giftcert-custom-amount-wrapper">
-              $<input type="number" name="customAmount" id="giftcert-custom-amount" min="<?= GIFTCERT_MIN_AMOUNT ?>" max="<?= GIFTCERT_MAX_AMOUNT ?>" step="1" disabled aria-label="Custom amount in dollars" />
+              $<input type="number" class="giftcert-custom-amount-input" name="customAmount" id="giftcert-custom-amount-merch" min="<?= GIFTCERT_MIN_AMOUNT ?>" max="<?= GIFTCERT_MAX_AMOUNT ?>" step="1" disabled aria-label="Custom amount in dollars" />
             </div>
           </div>
         </fieldset>
+        </div>
+
+        <div id="amount-fieldset-retreat" hidden>
+        <fieldset class="giftcert-amount-fieldset">
+          <legend>Amount</legend>
+<?php foreach (GIFTCERT_TIERS_RETREAT as $tier): ?>
+          <div class="giftcert-radio-row">
+            <input type="radio" class="giftcert-amount-tier" name="amount" id="amount-retreat-<?= $tier ?>" value="<?= $tier ?>" />
+            <label for="amount-retreat-<?= $tier ?>">$<?= $tier ?></label>
+          </div>
+<?php endforeach; ?>
+          <div class="giftcert-radio-row">
+            <input type="radio" class="giftcert-amount-custom-radio" name="amount" id="amount-custom-retreat" value="custom" />
+            <label for="amount-custom-retreat">Custom amount:</label>
+            <div class="giftcert-custom-amount-wrapper">
+              $<input type="number" class="giftcert-custom-amount-input" name="customAmount" id="giftcert-custom-amount-retreat" min="<?= GIFTCERT_MIN_AMOUNT ?>" max="<?= GIFTCERT_MAX_AMOUNT ?>" step="1" disabled aria-label="Custom amount in dollars" />
+            </div>
+          </div>
+        </fieldset>
+        </div>
 
         <label for="giftcert-to" class="visually-hidden">Recipient's Name (To)</label>
         <input type="text" name="to" id="giftcert-to" placeholder="To (recipient's name)" required maxlength="60" />
@@ -188,14 +220,16 @@ $retreatEvents = giftcert_valid_retreat_events();
       navLinks.classList.toggle('show');
     });
 
-    // Type toggle: swap which payment block and event field show, same
-    // show/hide-by-radio pattern as merch.php's fulfillment field and
-    // retreat-register.php's event-display block.
+    // Type toggle: swap which payment block, event field, and amount
+    // fieldset show, same show/hide-by-radio pattern as merch.php's
+    // fulfillment field and retreat-register.php's event-display block.
     const typeRadios = document.querySelectorAll('input[name="type"]');
     const eventFieldWrapper = document.getElementById('event-field-wrapper');
     const giftcertEventSelect = document.getElementById('giftcert-event');
     const paymentMerch = document.getElementById('payment-merch');
     const paymentRetreat = document.getElementById('payment-retreat');
+    const amountFieldsetMerch = document.getElementById('amount-fieldset-merch');
+    const amountFieldsetRetreat = document.getElementById('amount-fieldset-retreat');
 
     function updateTypeVisibility() {
       const isRetreat = document.getElementById('type-retreat').checked;
@@ -203,6 +237,33 @@ $retreatEvents = giftcert_valid_retreat_events();
       giftcertEventSelect.required = isRetreat;
       paymentMerch.hidden = isRetreat;
       paymentRetreat.hidden = !isRetreat;
+
+      // Amount tiers are type-specific (2026-09-17, Janet's call - a
+      // Retreat cert offers her actual per-registration prices, not the
+      // Merch tiers). Both fieldsets share name="amount", so whichever
+      // one isn't the active type gets disabled entirely - a stale
+      // selection (or a half-typed custom amount) sitting in the hidden
+      // fieldset must never be what actually submits.
+      amountFieldsetMerch.hidden = isRetreat;
+      amountFieldsetRetreat.hidden = !isRetreat;
+      const showFieldset = isRetreat ? amountFieldsetRetreat : amountFieldsetMerch;
+      const hideFieldset = isRetreat ? amountFieldsetMerch : amountFieldsetRetreat;
+
+      hideFieldset.querySelectorAll('input').forEach((input) => {
+        input.disabled = true;
+        input.checked = false;
+      });
+      showFieldset.querySelectorAll('input').forEach((input) => {
+        input.disabled = false;
+      });
+      // Default to that type's first preset tier every time the type
+      // changes, rather than trying to carry a selection across - an
+      // amount (especially a custom one) picked for one type has no
+      // business silently becoming the other type's amount.
+      showFieldset.querySelector('.giftcert-amount-tier').checked = true;
+      const showCustomInput = showFieldset.querySelector('.giftcert-custom-amount-input');
+      showCustomInput.disabled = true;
+      showCustomInput.value = '';
     }
     typeRadios.forEach((radio) => radio.addEventListener('change', updateTypeVisibility));
     updateTypeVisibility();
@@ -210,23 +271,27 @@ $retreatEvents = giftcert_valid_retreat_events();
     // Custom-amount toggle: the number input only accepts a value (and
     // only counts toward "custom" is selected) when its own radio is
     // checked - disabled inputs aren't submitted at all, so picking a
-    // tier can't accidentally also send a stale custom amount.
-    const amountRadios = document.querySelectorAll('input[name="amount"]');
-    const customAmountInput = document.getElementById('giftcert-custom-amount');
-    const customAmountRadio = document.getElementById('amount-custom');
+    // tier can't accidentally also send a stale custom amount. Wired up
+    // per fieldset so it works identically for the Merch and Retreat
+    // amount groups.
+    document.querySelectorAll('.giftcert-amount-fieldset').forEach((fieldset) => {
+      const customRadio = fieldset.querySelector('.giftcert-amount-custom-radio');
+      const customInput = fieldset.querySelector('.giftcert-custom-amount-input');
+      const amountRadios = fieldset.querySelectorAll('input[type="radio"]');
 
-    function updateCustomAmountState() {
-      customAmountInput.disabled = !customAmountRadio.checked;
-      if (customAmountRadio.checked) {
-        customAmountInput.focus();
+      function updateCustomAmountState() {
+        customInput.disabled = !customRadio.checked;
+        if (customRadio.checked) {
+          customInput.focus();
+        }
       }
-    }
-    amountRadios.forEach((radio) => radio.addEventListener('change', updateCustomAmountState));
-    // Typing directly into the amount box implies choosing "custom",
-    // even if the radio itself wasn't clicked first.
-    customAmountInput.addEventListener('focus', () => {
-      customAmountRadio.checked = true;
-      updateCustomAmountState();
+      amountRadios.forEach((radio) => radio.addEventListener('change', updateCustomAmountState));
+      // Typing directly into the amount box implies choosing "custom",
+      // even if the radio itself wasn't clicked first.
+      customInput.addEventListener('focus', () => {
+        customRadio.checked = true;
+        updateCustomAmountState();
+      });
     });
 
     // Same disable-on-submit feedback as retreat-register.php's form -

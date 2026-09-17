@@ -1536,6 +1536,52 @@ body.lightbox-open {
   }
 }
 
+/* ======================= Gift certificate banner ======================= */
+/* Small promotional callout announcing gift certificates (2026-09-16,
+   holiday season) - same markup/string reused as-is on index.php,
+   merch.php, and retreat-register.php, each inside its own
+   .content-wrapper for the usual max-width/centering/gutter. Modeled on
+   .demand-banner's contained-card shape just above, but in the site's
+   green accent rather than .demand-banner's tan so it reads as a
+   distinct "here's something new" callout instead of another
+   informational notice, and it carries its own button rather than just
+   text. */
+.giftcert-banner {
+  background-color: #eaf0e1;
+  border: 1px solid rgba(98, 129, 65, 0.35);
+  border-radius: 10px;
+  padding: 12px 20px;
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 20px;
+}
+
+.giftcert-banner p {
+  margin: 0;
+  text-align: center;
+  color: #3f5029;
+  font-size: 1.1rem;
+  line-height: 1.5;
+}
+
+.giftcert-banner .btn {
+  flex-shrink: 0;
+  margin: 4px 0;
+}
+
+@media (max-width: 600px) {
+  .giftcert-banner {
+    padding: 12px 16px;
+    flex-direction: column;
+  }
+  .giftcert-banner p {
+    font-size: 1rem;
+  }
+}
+
 /* ============================ Footer ============================ */
 /* Shared copyright notice - see footer.php. Deliberately understated
    (small, muted text) since it's a legal formality, not a page element

@@ -1,2 +1,4 @@
-name: More Coming Soon
+name: Gift Certificates
 class: none
+link: gift-certificate.php
+linkText: Get a Gift Certificate
