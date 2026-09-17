@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-17-A
+// Build: 2026-09-17-B
 // ============================================================
 // Print-plate batching config + matching logic for ourmerch.php's
 // "Sort by Print Plate" toggle (Needs Creating view, read-only first
@@ -10,46 +10,76 @@
 // color at a time (switching colors costs real time), and already
 // knows - from arranging plates by eye in Bambu Studio - which items,
 // solo or mixed, fill a 256x256mm plate well. Nothing in this
-// codebase can derive that from geometry, so PRINT_PLATE_RECIPES
-// below is a small, hand-maintained list of the plate layouts Steve
-// already uses. Update it whenever a real layout changes; no other
-// code needs to change when you do.
+// codebase can derive that from geometry, so PRINT_PLATE_GROUPS below
+// is a small, hand-maintained list of what Steve knows. Update it
+// whenever a real layout changes; no other code needs to change when
+// you do.
+//
+// 2026-09-17, second pass: replaced the original named-recipe list
+// (a plain item=>qty map per recipe) with this capacity-based model,
+// after the first version confused the display (a "batch" summary
+// and a separate full-totals list that silently overlapped - Steve
+// couldn't tell the two apart) and turned out not to fit Tape Gun
+// Holder/Add-On, which Steve orders a la carte in uneven ratios
+// rather than a fixed pairing. Every item now just gets ONE number -
+// its solo capacity, i.e. how many of just that item fit alone on a
+// plate - and print_plate_pack_group() below turns a color's queue
+// into a flat list of plates (full or trailing-partial), the same
+// way Steve would fill them by hand: keep adding units until the
+// plate's full, start a new one, and whatever's left when the queue
+// runs out is still its own (partial) plate, not a hidden leftover
+// pile. This also directly fixes the display confusion: every unit
+// in the queue appears in exactly one plate line, never twice.
+//
+// The one exception is Circle Cutter Holder + Oval Cutter Holder,
+// which Steve confirmed DOES mix on one plate (his one example of "a
+// genuinely mixed" plate) - so those two share a group below, and the
+// same capacity-based packer naturally produces a solo-circle plate,
+// a solo-oval plate, or a mixed one, whichever the queue supports.
+// Tape Gun Holder and Tape Gun Add-On, by contrast, are each their
+// own single-item group - no automatic mixing between them, since
+// Steve's own numbers (5 solo holders, 8 solo add-ons, "odd number
+// combos" since they're ordered a la carte) don't reduce to a simple
+// fixed ratio, and a proportional/footprint guess at how to mix them
+// didn't reproduce how Steve actually arranges a plate by eye (see
+// the design doc's git history / this file's build history for the
+// abandoned attempt). Combining a leftover Holder or Add-On with
+// something else on one physical plate stays Steve's manual call,
+// same as it always was for any two items with no confirmed group.
 //
 // Requires merch_items.php's FILAMENT_COLOR_ITEMS to already be
 // defined - require this file after pricing.php (same order
 // merch_items.php's other consumers already use).
 // ============================================================
 
-// ---- Plate recipes -------------------------------------------
-// Each entry: display label => [item name => qty needed to fill that
-// plate]. List order is priority/matching order - put your most-used
-// or most-valuable combos first, since a color's queue is matched
-// against these in order and ties go to whichever comes first.
+// ---- Plate groups -------------------------------------------
+// Each entry: group label => [item name => solo capacity], where
+// "solo capacity" is how many of JUST that item fit alone on one
+// plate. Items listed together in the SAME group are allowed to
+// share one plate (in any mix that fits); items in different groups
+// never mix automatically. A single-item group is just "this item's
+// solo capacity" - most items are that simple.
 //
-// Confirmed by Steve 2026-09-17 (replacing the earlier screenshot
-// guesses same day) - real plate counts from Bambu Studio.
-const PRINT_PLATE_RECIPES = [
-    'Circle / Oval combo' => [
-        'Circle Cutter Holder' => 1,
-        'Oval Cutter Holder' => 1,
-    ],
-    'Oval Cutter Holder (solo)' => [
+// Confirmed by Steve 2026-09-17.
+const PRINT_PLATE_GROUPS = [
+    'Circle / Oval Cutter Holder' => [
+        'Circle Cutter Holder' => 2,
         'Oval Cutter Holder' => 2,
     ],
-    'Rectangle Cutter Holder (solo)' => [
+    'Rectangle Cutter Holder' => [
         'Rectangle Cutter Holder' => 2,
     ],
-    'Tape Gun Holder (solo)' => [
-        'Tape Gun Holder' => 3,
-    ],
-    'Tool Holder Stand (solo)' => [
-        'Tool Holder Stand' => 2,
-    ],
-    'Hearts Cutter Holder (solo)' => [
+    'Hearts Cutter Holder' => [
         'Hearts Cutter Holder' => 3,
     ],
-    'Circle Cutter Holder (solo)' => [
-        'Circle Cutter Holder' => 2,
+    'Tool Holder Stand' => [
+        'Tool Holder Stand' => 2,
+    ],
+    'Tape Gun Holder' => [
+        'Tape Gun Holder' => 5,
+    ],
+    'Tape Gun Add-On' => [
+        'Tape Gun Add-On' => 8,
     ],
 ];
 
@@ -86,6 +116,125 @@ const PRINT_PLATE_EXCLUDED_COLORS = [
     'Stars & Stripes (+$7)',
 ];
 
+/** Least common multiple of two positive integers. */
+function print_plate_lcm(int $a, int $b): int
+{
+    return intdiv($a * $b, print_plate_gcd($a, $b));
+}
+
+/** Greatest common divisor (Euclid's algorithm). */
+function print_plate_gcd(int $a, int $b): int
+{
+    while ($b !== 0) {
+        [$a, $b] = [$b, $a % $b];
+    }
+    return $a === 0 ? 1 : abs($a);
+}
+
+/**
+ * Pack one group's queued units into plates.
+ *
+ * $capacities: item name => solo capacity (positive int).
+ * $queues: item name => list of ['orderId'=>, 'customerName'=>,
+ * 'qty'=>int] (FIFO - order the rows were queued in; this function
+ * consumes from the front of each item's list as it fills plates, so
+ * pass a fresh copy if the caller still needs the original).
+ *
+ * Returns a list of plates in fill order:
+ *   [ ['items' => [item => ['qty'=>int, 'orders'=>[
+ *         ['orderId'=>, 'customerName'=>, 'qty'=>int], ...
+ *       ]]], 'fillFraction' => float (0..1, 1.0 = full) ], ... ]
+ *
+ * Every unit passed in ends up in exactly one plate's 'items' - full
+ * plates first, with at most one trailing partial plate per group
+ * (whatever didn't divide evenly). Greedy best-fit-decreasing: on
+ * each plate, repeatedly adds the largest unit that still fits in
+ * the remaining budget, so a multi-item group (like Circle/Oval)
+ * fills plates as completely as the queue allows before starting a
+ * new one - this is a planning aid, not a promise of the exact
+ * physical arrangement Steve will actually lay out in Bambu Studio.
+ */
+function print_plate_pack_group(array $capacities, array $queues): array
+{
+    $lcm = 1;
+    foreach ($capacities as $cap) {
+        $lcm = print_plate_lcm($lcm, max(1, (int) $cap));
+    }
+    $unit = [];
+    foreach ($capacities as $item => $cap) {
+        $unit[$item] = intdiv($lcm, max(1, (int) $cap));
+    }
+
+    $availableQty = function (array $queue): int {
+        $sum = 0;
+        foreach ($queue as $o) {
+            $sum += $o['qty'];
+        }
+        return $sum;
+    };
+
+    $plates = [];
+    while (true) {
+        $remainingTotal = 0;
+        foreach ($queues as $q) {
+            $remainingTotal += $availableQty($q);
+        }
+        if ($remainingTotal <= 0) {
+            break;
+        }
+
+        $budget = $lcm;
+        $plateItems = [];
+        while (true) {
+            $chosen = null;
+            $chosenUnit = -1;
+            foreach ($capacities as $item => $cap) {
+                if ($availableQty($queues[$item] ?? []) <= 0) {
+                    continue;
+                }
+                if ($unit[$item] <= $budget && $unit[$item] > $chosenUnit) {
+                    $chosen = $item;
+                    $chosenUnit = $unit[$item];
+                }
+            }
+            if ($chosen === null) {
+                break; // nothing left fits in the remaining budget
+            }
+            // Take exactly one unit of $chosen from the front of its queue.
+            $front = &$queues[$chosen][0];
+            $front['qty'] -= 1;
+            if (!isset($plateItems[$chosen])) {
+                $plateItems[$chosen] = ['qty' => 0, 'orders' => []];
+            }
+            $plateItems[$chosen]['qty'] += 1;
+            $lastIdx = count($plateItems[$chosen]['orders']) - 1;
+            if ($lastIdx >= 0 && $plateItems[$chosen]['orders'][$lastIdx]['orderId'] === $front['orderId']) {
+                $plateItems[$chosen]['orders'][$lastIdx]['qty'] += 1;
+            } else {
+                $plateItems[$chosen]['orders'][] = [
+                    'orderId' => $front['orderId'],
+                    'customerName' => $front['customerName'],
+                    'qty' => 1,
+                ];
+            }
+            if ($front['qty'] <= 0) {
+                array_shift($queues[$chosen]);
+            }
+            unset($front);
+            $budget -= $chosenUnit;
+        }
+        if (empty($plateItems)) {
+            break; // safety net - shouldn't happen given remainingTotal > 0
+        }
+        $plates[] = [
+            'items' => $plateItems,
+            'fillFraction' => ($lcm - $budget) / $lcm,
+        ];
+    }
+
+    return $plates;
+}
+
 /**
  * Build the print-plate grouped view from a list of Needs-Creating
  * queue rows.
@@ -96,38 +245,38 @@ const PRINT_PLATE_EXCLUDED_COLORS = [
  * ourmerch.php's own "needs-creating" view filters rows (paid+Ship,
  * or any-payment-state Pickup; not cancelled). Only items in
  * FILAMENT_COLOR_ITEMS are considered here - shirts/hats and any
- * excluded color (see above) are silently skipped, since they don't
- * belong in a print-plate batching view.
+ * excluded color (see PRINT_PLATE_EXCLUDED_COLORS) are silently
+ * skipped, since they don't belong in a print-plate batching view.
+ * An item not listed in PRINT_PLATE_GROUPS is also skipped (nothing
+ * to pack it against) - add it to a group above to include it.
  *
  * Returns an array of per-color groups, sorted by
  * PRINT_PLATE_COLOR_PRIORITY (unlisted colors last, alphabetically
  * among themselves):
  *   [
  *     'color' => string,
- *     'batches' => [
- *         ['recipe' => label, 'plates' => int, 'items' => [item=>qty consumed]],
- *         ...
- *     ],
- *     'items' => [
- *         item => ['qty' => int, 'orders' => [ the original row, ... ]],
+ *     'plateGroups' => [
+ *         ['group' => label, 'plates' => [ see print_plate_pack_group() ]],
  *         ...
  *     ],
  *   ]
  *
- * 'batches' is a planning summary layered on top - it does NOT
- * remove anything from 'items'. 'items' is still the full, complete
- * list of what's actually in the queue for that color (same shape of
- * information packing_slips.php's existing "By Color" section
- * already shows), so Steve can always see every order line
- * regardless of whether it happened to complete a recipe. This is
- * the read-only "first cut" per Steve (2026-09-17): no attempt is
- * made to attribute which specific order's units went into which
- * batch - that level of bookkeeping isn't needed for a planning view,
- * and keeps this simple to build and to trust.
+ * Groups with nothing queued for that color are omitted. Read-only
+ * "first cut" per Steve (2026-09-17): this only plans, it doesn't
+ * check anything off.
  */
 function print_plate_group_queue(array $rows): array
 {
-    $byColor = []; // color => item => ['qty'=>int, 'orders'=>[...]]
+    // color => group label => item => list of ['orderId','customerName','qty']
+    $byColorGroup = [];
+    // item => which group it belongs to, for a fast lookup below.
+    $itemToGroup = [];
+    foreach (PRINT_PLATE_GROUPS as $groupLabel => $capacities) {
+        foreach (array_keys($capacities) as $item) {
+            $itemToGroup[$item] = $groupLabel;
+        }
+    }
+
     foreach ($rows as $row) {
         $item = $row['item'] ?? '';
         $color = $row['color'] ?? '';
@@ -141,48 +290,34 @@ function print_plate_group_queue(array $rows): array
         if (in_array($color, PRINT_PLATE_EXCLUDED_COLORS, true)) {
             continue;
         }
-        if (!isset($byColor[$color][$item])) {
-            $byColor[$color][$item] = ['qty' => 0, 'orders' => []];
+        $groupLabel = $itemToGroup[$item] ?? null;
+        if ($groupLabel === null) {
+            continue; // item isn't in any configured group - nothing to pack it against
         }
-        $byColor[$color][$item]['qty'] += $qty;
-        $byColor[$color][$item]['orders'][] = $row;
+        $byColorGroup[$color][$groupLabel][$item][] = [
+            'orderId' => $row['orderId'] ?? '',
+            'customerName' => $row['customerName'] ?? '',
+            'qty' => $qty,
+        ];
     }
 
     $result = [];
-    foreach ($byColor as $color => $itemPools) {
-        $available = [];
-        foreach ($itemPools as $item => $pool) {
-            $available[$item] = $pool['qty'];
-        }
-
-        $batches = [];
-        foreach (PRINT_PLATE_RECIPES as $label => $recipe) {
-            $platesPossible = null;
-            foreach ($recipe as $item => $needed) {
-                $have = $available[$item] ?? 0;
-                $canMake = $needed > 0 ? intdiv($have, $needed) : 0;
-                $platesPossible = ($platesPossible === null) ? $canMake : min($platesPossible, $canMake);
-            }
-            if ($platesPossible === null || $platesPossible < 1) {
+    foreach ($byColorGroup as $color => $groups) {
+        $plateGroups = [];
+        foreach (PRINT_PLATE_GROUPS as $groupLabel => $capacities) {
+            if (empty($groups[$groupLabel])) {
                 continue;
             }
-            $consumed = [];
-            foreach ($recipe as $item => $needed) {
-                $available[$item] -= $needed * $platesPossible;
-                $consumed[$item] = $needed * $platesPossible;
+            $queues = [];
+            foreach (array_keys($capacities) as $item) {
+                $queues[$item] = $groups[$groupLabel][$item] ?? [];
             }
-            $batches[] = [
-                'recipe' => $label,
-                'plates' => $platesPossible,
-                'items' => $consumed,
-            ];
+            $plates = print_plate_pack_group($capacities, $queues);
+            if (!empty($plates)) {
+                $plateGroups[] = ['group' => $groupLabel, 'plates' => $plates];
+            }
         }
-
-        $result[$color] = [
-            'color' => $color,
-            'batches' => $batches,
-            'items' => $itemPools,
-        ];
+        $result[$color] = ['color' => $color, 'plateGroups' => $plateGroups];
     }
 
     uksort($result, function ($a, $b) {
