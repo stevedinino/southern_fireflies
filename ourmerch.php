@@ -350,8 +350,9 @@ $merchEditCatalog = [
           // see #merch-print-plate-pane below and print_plates.php.
           // Read-only first cut, per Steve 2026-09-17 - doesn't check
           // anything off, just groups the same Needs Creating queue by
-          // color and packs it against Steve's own known per-item plate
-          // capacities (print_plates.php's PRINT_PLATE_GROUPS).
+          // color and packs it against Steve's own known plate combos
+          // and per-item capacities (print_plates.php's
+          // PRINT_PLATE_TEMPLATES / PRINT_PLATE_SOLO_CAPACITY).
           echo '<button type="button" id="merch-print-plate-btn" class="btn" style="padding:4px 12px; font-size:0.85em;">Sort by Print Plate</button>';
           // 2026-08-23: independent of the named views above (which
           // never show a cancelled row, full stop - nothing to act on
@@ -682,12 +683,24 @@ $merchEditCatalog = [
       // (Claude outputs/print-plate-batch-sort-design-20260917.md)
       // for why this stays read-only for the first cut.
       //
-      // 2026-09-17, second pass: rewritten for print_plates.php's
-      // capacity-based model (PRINT_PLATE_GROUPS) after the original
-      // "batch summary + separate full item list" layout below turned
-      // out to double-render the same units and confused Steve. Every
-      // unit now appears exactly once, as part of exactly one plate
-      // line (full or partial) - no separate leftover list.
+      // 2026-09-17, second pass: rewritten for a capacity-based model
+      // after the original "batch summary + separate full item list"
+      // layout below turned out to double-render the same units and
+      // confused Steve. Every unit now appears exactly once, as part
+      // of exactly one plate line (full or partial) - no separate
+      // leftover list. This display shape has held through the later
+      // passes below.
+      //
+      // 2026-09-18: print_plates.php now also (a) matches Steve's
+      // confirmed cross-item combos before falling back to per-item
+      // solo capacity, and (b) when a plate can't fit every order
+      // wanting that item, prefers whichever order(s) would actually
+      // be completed (nothing else outstanding shop-wide) over ones
+      // that would stay incomplete regardless - see
+      // print_plate_consume_units() in print_plates.php. $printPlateRows
+      // (collected above, unfiltered by item type) is passed through
+      // as-is so that logic can see an order's shirts/hats too, not
+      // just its filament pieces.
       $printPlateGroups = print_plate_group_queue($printPlateRows);
       ?>
       <div id="merch-print-plate-pane" class="merch-table-pane" style="display:none; padding:16px;">
@@ -695,7 +708,7 @@ $merchEditCatalog = [
           <p style="text-align:center; color:#666;">Nothing here right now &mdash; either Needs Creating is empty, or everything left is a shirt/hat or a Stars &amp; Stripes order, neither of which go through this view.</p>
         <?php else: ?>
           <p style="color:#666; font-size:0.85em; margin-top:0;">
-            Read-only planning view: the same Needs Creating queue, grouped by color (most-ordered colors first), then by item group, and packed into plates using the solo/shared capacities in <code>print_plates.php</code>. Every order line appears in exactly one plate below, full or partial &mdash; nothing is hidden or double-counted. A partial plate is a candidate for combining by hand with something else in that color, same as always. Doesn't check anything off &mdash; use the normal table for that.
+            Read-only planning view: the same Needs Creating queue, grouped by color (most-ordered colors first), then matched against your confirmed plate combos and per-item capacities in <code>print_plates.php</code>. Every order line appears in exactly one plate below, full or partial &mdash; nothing is hidden or double-counted. When a plate can't fit everyone waiting on an item, whichever order(s) that would fully complete get priority over ones that would stay incomplete either way. A partial plate is still a candidate for combining by hand with something else in that color. Doesn't check anything off &mdash; use the normal table for that.
           </p>
           <?php foreach ($printPlateGroups as $group): ?>
             <div class="print-plate-color-group">
