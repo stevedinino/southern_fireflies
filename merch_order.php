@@ -1,5 +1,16 @@
 <?php
-// Build: 2026-09-14-A
+// Build: 2026-09-22-A
+// 2026-09-22 (production incident): every live order was failing with
+// "Unable to write to file" as soon as Qty Created was added to the live
+// merchandise.csv's header (same straight-to-the-live-CSV pattern
+// Retreat/Cancelled/OrderGroupID used before it) - this script's $values
+// array didn't have a matching key for it, and the header-driven row
+// builder below fails the whole submission on any header column it
+// doesn't recognize, by design (see that loop's own comment, and Finding
+// 1 from the 2026-08-19 code review that it exists to prevent). Fixed by
+// adding 'Qty Created' => '' alongside Invoice Date/Created/Fulfilled/
+// Cancelled below - see that line's comment for why blank is correct.
+//
 // 2026-08-29 (code review Finding 3): OrderID assignment below now goes
 // through id_sequence.php's persistent counter instead of a bare
 // max(existing rows)+1 - see that file's header comment for why a
@@ -387,6 +398,21 @@ foreach ($pricedLines as $line) {
         'Created' => '',      // set later from the admin page
         'Fulfilled' => '',    // set later from the admin page
         'Cancelled' => '',    // set later from the admin page (2026-08-23)
+        // 2026-09-22: Qty Created - per-line partial-completion count,
+        // added straight to the live merchandise.csv (same pattern as
+        // Retreat/Cancelled/OrderGroupID before it - see the
+        // MERCH_CSV_HEADER comment in pricing.php). Always blank on a
+        // brand-new order, exactly like Invoice Date/Created/Fulfilled/
+        // Cancelled above - it's only ever filled in later, from
+        // ourmerch.php's print-plate completion checkboxes (see
+        // merch_update_apply_qty_created_deltas() in merch_update.php).
+        // Unlike OrderGroupID, this key can't be left out: the live file
+        // already has the column as of this fix, and the header-driven
+        // loop below fails the whole submission (Finding-1-style, by
+        // design) on any header column $values doesn't recognize - which
+        // is exactly what was happening to every live order until this
+        // key was added.
+        'Qty Created' => '',
         'Timestamp' => $timestamp,
         'IP' => $ip,
         // 2026-09-14: ties every line in one list submission together
