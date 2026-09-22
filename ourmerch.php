@@ -451,7 +451,24 @@ $merchEditCatalog = [
               // line with 1 already done only needs 3 more slots on a
               // plate, not 4.
               $rowQtyCreated = $qtyCreatedIndex !== false ? (int) trim($data[$qtyCreatedIndex] ?? '0') : 0;
-              $rowQtyRemaining = max(0, $rowQuantity - $rowQtyCreated);
+              // 2026-09-22 (bug fix): a row that's already fully Created
+              // is 0 remaining, full stop - regardless of what Qty
+              // Created happens to say. Every row written before Qty
+              // Created existed (2026-09-20) - including every already-
+              // Fulfilled/shipped order in the file - has Qty Created
+              // permanently blank/0, since nothing ever backfilled it for
+              // history. Without this check, $rowQuantity - $rowQtyCreated
+              // stayed equal to the full original Quantity for every one
+              // of those rows forever, so old Fulfilled orders (Fulfilled
+              // always implies Created - see merch_update.php's "Fulfilled
+              // -> backfills/matches Created" cascade) kept reappearing in
+              // the print-plate queue as if never printed. Going forward
+              // this is a no-op: merch_update.php's Qty Created delta
+              // handler stamps Created the moment Qty Created reaches
+              // Quantity, so a row tracked entirely through the new
+              // mechanism never has Created=true with room left anyway -
+              // this only matters for the legacy rows that predate it.
+              $rowQtyRemaining = $rowIsCreated ? 0 : max(0, $rowQuantity - $rowQtyCreated);
               // 2026-09-17: same "needs creating" test as the
               // needs-creating case in applyView() below (Ship rows
               // need paid, Pickup rows don't), plus never cancelled -
@@ -460,7 +477,10 @@ $merchEditCatalog = [
               // extended to this separate pane). 2026-09-20: swapped the
               // old "!$rowIsCreated" gate for "$rowQtyRemaining > 0" -
               // the more precise test now that a row can be partially
-              // printed without Created being stamped yet at all.
+              // printed without Created being stamped yet at all
+              // ($rowQtyRemaining itself now folds the old Created gate
+              // back in above, so this condition doesn't need its own
+              // separate !$rowIsCreated/!$rowIsFulfilled check).
               if ($rowQtyRemaining > 0 && ($rowIsShipping ? $rowIsPaid : true) && !$rowIsCancelled) {
                   $printPlateRows[] = [
                       'item' => $rowItem,

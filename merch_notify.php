@@ -244,6 +244,27 @@ function merch_send_invoice(array $pricing, string $name, string $email, bool $i
     $accountNoteHtml = $accountNoteText !== '' ? " &mdash; {$accountNoteText}" : '';
     $accountNoteFlat = $accountNoteText !== '' ? " - {$accountNoteText}" : '';
 
+    // 2026-09-22 (Steve): a growing number of customers would rather mail
+    // a check than deal with Venmo/PayPal. Printed-items only, same as
+    // the account-split logic above - this is Steve's own mailing
+    // address, not the retreat's (see CHECK_*_PRINTED in config.php).
+    // Follows the exact $last4Html/$last4Text pattern: empty when not
+    // applicable so the templates render exactly as before.
+    $checkNoteHtml = '';
+    $checkNoteText = '';
+    if ($isPrinted && defined('CHECK_PAYABLE_TO_PRINTED') && CHECK_PAYABLE_TO_PRINTED) {
+        $checkNoteHtml = merch_load_string('emails/invoice-check-note.html', [
+            'payableTo' => htmlspecialchars(CHECK_PAYABLE_TO_PRINTED, ENT_QUOTES, 'UTF-8'),
+            'addressLine' => htmlspecialchars(CHECK_ADDRESS_LINE_PRINTED, ENT_QUOTES, 'UTF-8'),
+            'cityStateZip' => htmlspecialchars(CHECK_CITY_STATE_ZIP_PRINTED, ENT_QUOTES, 'UTF-8'),
+        ]);
+        $checkNoteText = merch_load_string('emails/invoice-check-note.text', [
+            'payableTo' => CHECK_PAYABLE_TO_PRINTED,
+            'addressLine' => CHECK_ADDRESS_LINE_PRINTED,
+            'cityStateZip' => CHECK_CITY_STATE_ZIP_PRINTED,
+        ]) . "\n\n";
+    }
+
     try {
         $mail = merch_mailer();
         $mail->addAddress($email, $name);
@@ -264,6 +285,7 @@ function merch_send_invoice(array $pricing, string $name, string $email, bool $i
             'venmoHandle' => htmlspecialchars($venmoHandle, ENT_QUOTES, 'UTF-8'),
             'paypalEmail' => htmlspecialchars($paypalEmail, ENT_QUOTES, 'UTF-8'),
             'accountNote' => $accountNoteHtml,
+            'checkNoteHtml' => $checkNoteHtml,
         ]);
 
         $mail->AltBody = merch_load_string('emails/invoice-body.text', [
@@ -277,6 +299,7 @@ function merch_send_invoice(array $pricing, string $name, string $email, bool $i
             'venmoHandle' => $venmoHandle,
             'paypalEmail' => $paypalEmail,
             'accountNote' => $accountNoteFlat,
+            'checkNoteText' => $checkNoteText,
         ]);
 
         $mail->send();
@@ -415,6 +438,25 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
         ]) . "\n\n";
     }
 
+    // 2026-09-22 (Steve): same mail-a-check option as the invoice email
+    // (see merch_send_invoice() above) - printed items only, reusing
+    // the CHECK_*_PRINTED constants from config.php so the address only
+    // lives in one place.
+    $checkNoteHtml = '';
+    $checkNoteText = '';
+    if ($isPrinted && defined('CHECK_PAYABLE_TO_PRINTED') && CHECK_PAYABLE_TO_PRINTED) {
+        $checkNoteHtml = merch_load_string('emails/invoice-check-note.html', [
+            'payableTo' => htmlspecialchars(CHECK_PAYABLE_TO_PRINTED, ENT_QUOTES, 'UTF-8'),
+            'addressLine' => htmlspecialchars(CHECK_ADDRESS_LINE_PRINTED, ENT_QUOTES, 'UTF-8'),
+            'cityStateZip' => htmlspecialchars(CHECK_CITY_STATE_ZIP_PRINTED, ENT_QUOTES, 'UTF-8'),
+        ]);
+        $checkNoteText = merch_load_string('emails/invoice-check-note.text', [
+            'payableTo' => CHECK_PAYABLE_TO_PRINTED,
+            'addressLine' => CHECK_ADDRESS_LINE_PRINTED,
+            'cityStateZip' => CHECK_CITY_STATE_ZIP_PRINTED,
+        ]) . "\n\n";
+    }
+
     try {
         $mail = merch_mailer();
         $mail->addAddress($email, $name);
@@ -429,11 +471,13 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
             'name' => $safeName,
             'lineItemsHtml' => $lineItemsHtml,
             'payPalNoteHtml' => $payPalNoteHtml,
+            'checkNoteHtml' => $checkNoteHtml,
         ]);
         $mail->AltBody = merch_load_string('emails/payment-reminder.text', [
             'name' => $name,
             'lineItemsText' => $lineItemsText,
             'payPalNoteText' => $payPalNoteText,
+            'checkNoteText' => $checkNoteText,
         ]);
         $mail->send();
         return ['sent' => true, 'error' => ''];

@@ -1,0 +1,4 @@
+Prefer to mail a check instead? Make it out to {{payableTo}} and send it to:
+{{payableTo}}
+{{addressLine}}
+{{cityStateZip}}
