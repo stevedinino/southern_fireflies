@@ -1,0 +1,1 @@
+<p>Prefer to mail a check instead? Make it out to <strong>{{payableTo}}</strong> and send it to:<br/>{{payableTo}}<br/>{{addressLine}}<br/>{{cityStateZip}}</p>
