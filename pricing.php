@@ -278,12 +278,18 @@ const OVERSIZE_SURCHARGE_SIZES = ['3XL', '4XL', '5XL'];
 // appended at the end so nothing that reads an early column by position
 // (there's exactly one such spot, merch_order.php's own bootstrap scan of
 // column 0 for OrderID) is affected.
+// 2026-09-22: Qty Created was added the same way (straight to the live
+// CSV) but, unlike Retreat/Cancelled/OrderGroupID, its matching
+// merch_order.php $values key was missed at the time - every live order
+// failed to save ("Unable to write to file") until that key was added.
+// Listed here now too so a from-scratch file starts with the real
+// current schema.
 const MERCH_CSV_HEADER = [
     'OrderID', 'Name', 'Email', 'Phone', 'Item', 'Quantity', 'Color',
     'Original Color', 'Size', 'Sleeve', 'Notes', 'Fulfillment', 'Address',
     'City', 'State', 'Zip', 'Price', 'Tax', 'Shipping', 'Invoice Date',
     'Pymt Date', 'Created', 'Fulfilled', 'Timestamp', 'IP', 'Retreat',
-    'Cancelled', 'OrderGroupID',
+    'Cancelled', 'OrderGroupID', 'Qty Created',
 ];
 
 // ------------------------------------------------------------
