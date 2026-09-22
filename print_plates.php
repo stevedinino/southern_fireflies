@@ -53,20 +53,43 @@
 // one trailing partial, so it still always shows up as its own plate
 // line instead of vanishing into a leftover pile.
 //
-// 2026-09-18, fourth pass (current): added order-completion
-// preference. Steve: "I lean toward completing orders so I can ship -
-// if I have a choice of printing 3 things and only 2 fit, I'll print
-// the two that complete an order every time. If they're all mixed and
-// won't complete an order then it doesn't matter." This only matters
-// when a plate (a combo instance or a solo-capacity chunk) has more
-// candidate orders wanting that item than it can hold - which of them
-// gets consumed onto the EARLIER plate vs. pushed to a later one.
-// print_plate_consume_units() now picks, unit by unit, whichever
-// order is closest to being fully done (fewest needs-creating pieces
-// left shop-wide, not just in this print-plate view - a shirt or hat
-// still outstanding counts too, since the order can't ship until
-// everything on it is Created) and only falls back to plain
-// arrival/FIFO order when two orders are equally close - matching
+// 2026-09-18, fourth pass: added order-completion preference. Steve:
+// "I lean toward completing orders so I can ship - if I have a choice
+// of printing 3 things and only 2 fit, I'll print the two that complete
+// an order every time. If they're all mixed and won't complete an
+// order then it doesn't matter." This only matters when a plate (a
+// combo instance or a solo-capacity chunk) has more candidate orders
+// wanting that item than it can hold - which of them gets consumed onto
+// the EARLIER plate vs. pushed to a later one. The first version of
+// this picked, unit by unit, whichever order had fewest needs-creating
+// pieces left shop-wide - a proxy for "would this finish the order,"
+// recomputed after every single unit taken. See the next entry for
+// where that proxy went wrong.
+//
+// 2026-09-20, fifth pass (current): fixed a real case of the above.
+// Steve, looking at a live example - one order needing 2 of the same
+// item/color, another needing 1, capacity 2 per plate: "I lean toward
+// trying to finish orders if at all possible, but in this case the
+// logic doesn't see that given three same-color items it could have
+// grouped tools for the same person together." What happened: the old
+// per-unit comparison took the smaller order's 1 unit first (fewer
+// pieces left shop-wide OVERALL - not because taking that 1 unit
+// specifically finished anything the other order's 2 units wouldn't
+// have), then re-ran the same comparison for the second unit with the
+// first order already gone from contention - fragmenting the 2-unit
+// order across two plates even though both arrangements finish exactly
+// one order after the first plate. print_plate_consume_units() now
+// decides per PLATE-FILL CALL, not per unit: it only prefers an order
+// when taking that order's FULL remaining request right now would
+// actually zero out its shop-wide remaining count (a real completion,
+// not just a smaller current count); among orders that are equally real
+// completions (or equally not), it prefers the LARGER request first, so
+// a multi-unit order gets consolidated onto one plate instead of being
+// fragmented to make room for a smaller one - matching "it could have
+// grouped tools for the same person together." An order's own request
+// is still split across two plates when capacity genuinely forces it
+// (its remaining qty is bigger than what's left on this plate), and the
+// original arrival/FIFO order still breaks any remaining tie - matching
 // "if it doesn't matter, don't touch the ordering."
 //
 // Requires merch_items.php's FILAMENT_COLOR_ITEMS to already be
@@ -180,27 +203,46 @@ function print_plate_available(array $queue): int
  * that order SHOP-WIDE (every item/color, not just this print-plate
  * view) - mutated here too, decremented by whatever's taken, so a
  * later call (same order, maybe a different item entirely) sees the
- * up-to-date count. Selection order (2026-09-18, per Steve): among
- * the orders currently waiting on this item, always take from
- * whichever has the fewest pieces left everywhere else first - i.e.
- * prefer finishing an order over an equally-convenient unit from an
- * order that's still going to be incomplete regardless. Entries
- * missing from $orderRemaining (shouldn't normally happen - it's
- * built from the same rows) sort last, never preferred. Ties fall
- * back to queue position (earliest-queued first), same as every
- * earlier build - Steve: "if they're all mixed and won't complete an
- * order then it doesn't matter to me."
+ * up-to-date count.
+ *
+ * Selection order (2026-09-20, per Steve - see the build-history
+ * comment above for the case that prompted this): for each unit still
+ * needed this call, prefer drawing from whichever queue entry, in
+ * order -
+ *   1) would have ITS OWN FULL remaining qty zero out that order's
+ *      shop-wide remaining count if taken right now (a real
+ *      completion - not just "currently has fewer pieces left," which
+ *      doesn't actually mean taking it finishes anything);
+ *   2) failing a tie there, has the LARGER remaining qty - so a
+ *      multi-unit order gets consolidated onto this plate instead of
+ *      fragmenting to make room for a smaller one;
+ *   3) failing a tie there too, whichever is earliest in the queue
+ *      (arrival/FIFO order) - unchanged from every earlier build.
+ * Entries missing from $orderRemaining (shouldn't normally happen -
+ * it's built from the same rows) are treated as never a real
+ * completion, so they fall to rule 2/3 same as any tie.
  */
 function print_plate_consume_units(array &$queue, int $n, array &$orderRemaining): array
 {
     $consumed = [];
     while ($n > 0 && !empty($queue)) {
         $bestIdx = 0;
-        $bestRemaining = $orderRemaining[$queue[0]['orderId']] ?? PHP_INT_MAX;
+        $bestKey = null;
         foreach ($queue as $idx => $entry) {
-            $r = $orderRemaining[$entry['orderId']] ?? PHP_INT_MAX;
-            if ($r < $bestRemaining) {
-                $bestRemaining = $r;
+            $remaining = $orderRemaining[$entry['orderId']] ?? null;
+            $wouldComplete = $remaining !== null
+                && $entry['qty'] <= $n
+                && ($remaining - $entry['qty']) <= 0;
+            // Sort key, lowest wins: completions (0) before non-
+            // completions (1); within that, larger qty first (negated,
+            // so a plain ascending comparison still picks it); $idx
+            // last, as an explicit FIFO tie-break (PHP's foreach order
+            // already matches queue order, but spelling it out here
+            // means this doesn't depend on array comparison stopping
+            // at the first differing element by luck).
+            $key = [$wouldComplete ? 0 : 1, -$entry['qty'], $idx];
+            if ($bestKey === null || $key < $bestKey) {
+                $bestKey = $key;
                 $bestIdx = $idx;
             }
         }

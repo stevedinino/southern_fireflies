@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-29-A
+// Build: 2026-09-20-A
 // Marks a single order's status, called via fetch() from ourmerch.php's
 // checkboxes. Same admin session gate as the rest of the admin pages -
 // this is not a public endpoint.
@@ -59,6 +59,30 @@
 // $clearOnlyFields below - since a row that's already been paid
 // against might not match whatever the corrected total turns out to
 // be, and that mismatch needs Steve's own judgment, not a button.
+//
+// 2026-09-20: Qty Created is a FIFTH kind of field - a per-order DELTA
+// against a numeric running count, for print_plates.php's "Sort by
+// Print Plate" checkboxes. Steve: "If I have a multi tool order (4 tape
+// guns, for instance) and I have printed 1 but still need to create the
+// other three, there's no way to tell the site I've done 1 of 4." A
+// plate can span several orders at once (see print_plates.php), so
+// checking one plate off needs to bump several different orders' Qty
+// Created by different amounts in one request - not the single
+// orderId/checked shape every other field above uses. $_POST['deltas']
+// carries that as JSON: {"<orderId>": <signed int>, ...}. Each delta is
+// added to that row's current Qty Created, clamped to [0, Quantity].
+// Reaching Quantity stamps today's date into Created, same "blank vs.
+// today" pattern as every other done-marker in this file - so a fully
+// printed multi-unit row drops out of Needs Creating exactly the same
+// way a single-unit row always has, no separate code path needed
+// anywhere else. Dropping back below Quantity clears Created again,
+// but ONLY if Fulfilled is still blank - once something's shipped,
+// un-creating it from here would be a real data-integrity mess, not a
+// harmless undo (matching the existing "you can't ship before you
+// create" cascade rule elsewhere in this file). A row with
+// Quantity <= 1 never reaches this field in practice (ourmerch.php only
+// renders the print-plate checkboxes for multi-unit lines), but nothing
+// here depends on that - it works the same either way.
 
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php';
@@ -87,6 +111,15 @@ merch_require_csrf_json();
 session_write_close();
 
 $csvFile = __DIR__ . '/merchandise.csv';
+
+// 2026-09-20: Qty Created's per-order-delta shape doesn't fit the
+// single orderId/checked parsing just below at all - branch it off
+// first and exit, before any of that runs. See the file-level comment
+// above and merch_update_apply_qty_created_deltas() further down.
+if (isset($_POST['field']) && trim($_POST['field']) === 'Qty Created') {
+    merch_update_apply_qty_created_deltas($csvFile);
+    exit;
+}
 
 // 2026-08-31: orderId now accepts a comma-separated list, not just one
 // ID - see the batched path near the bottom of this file for why
@@ -423,3 +456,169 @@ echo json_encode([
     'results' => $results,
     'build' => '2026-08-31-A',
 ]);
+
+// 2026-09-20: handles the Qty Created field's per-order-delta shape -
+// see the file-level comment above for why this doesn't fit
+// $applyToRow()'s single orderId/checked model. Called (and the whole
+// request ended) before any of the code above it ever runs, so this
+// function does its own complete open/lock/read/write/unlock rather
+// than sharing $handle/$rows with the rest of the file.
+//
+// $_POST['deltas'] is a JSON object, {"<orderId>": <signed int>, ...} -
+// print_plates.php's plate breakdown ("this plate used 2 of Dale's, 1
+// of Cindy's") turns directly into this shape client-side, so checking
+// ONE plate off can touch several orders' Qty Created in a single
+// request/backup/rewrite instead of one round-trip per order.
+//
+// Each order's delta is added to its current Qty Created and clamped to
+// [0, Quantity]. Reaching Quantity stamps Created with today's date if
+// it was blank (a fully-printed multi-unit row then drops out of Needs
+// Creating exactly like any other Created row always has). Dropping
+// back below Quantity clears Created again - but only when Fulfilled is
+// still blank; an order already marked Fulfilled is refused outright
+// (nothing about it is touched) rather than left with Fulfilled set but
+// Created cleared, which nothing else in this codebase expects to see.
+//
+// Every order in the batch is attempted independently, same as the
+// existing multi-ID path above - one bad/not-found/refused ID doesn't
+// stop the others, and the response reports per-ID results so the
+// caller (print_plates.php's checkbox handler) can tell the person
+// exactly which one needs a manual look.
+function merch_update_apply_qty_created_deltas(string $csvFile): void
+{
+    $deltasRaw = isset($_POST['deltas']) ? (string) $_POST['deltas'] : '';
+    $deltas = json_decode($deltasRaw, true);
+    if (!is_array($deltas) || empty($deltas)) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'Invalid request.']);
+        return;
+    }
+    // Same allowlist spirit as the rest of this file - only real
+    // digit-string order IDs with real integer deltas, never anything
+    // looser, even though this endpoint is already session-gated.
+    foreach ($deltas as $orderId => $delta) {
+        if (!ctype_digit((string) $orderId) || !is_int($delta)) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Invalid request.']);
+            return;
+        }
+    }
+
+    $handle = fopen($csvFile, 'c+');
+    if (!$handle) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => 'Could not open file.']);
+        return;
+    }
+    if (!flock($handle, LOCK_EX)) {
+        fclose($handle);
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => 'Could not lock file - try again.']);
+        return;
+    }
+
+    $rows = [];
+    while (($row = fgetcsv($handle)) !== false) {
+        $rows[] = $row;
+    }
+    if (empty($rows)) {
+        flock($handle, LOCK_UN);
+        fclose($handle);
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => 'File is empty.']);
+        return;
+    }
+
+    $header = $rows[0];
+    if (isset($header[0])) {
+        $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
+    }
+    $orderIdIndex = array_search('OrderID', $header, true);
+    $quantityIndex = array_search('Quantity', $header, true);
+    $qtyCreatedIndex = array_search('Qty Created', $header, true);
+    $createdIndex = array_search('Created', $header, true);
+    $fulfilledIndex = array_search('Fulfilled', $header, true);
+    if ($orderIdIndex === false || $quantityIndex === false || $qtyCreatedIndex === false || $createdIndex === false || $fulfilledIndex === false) {
+        flock($handle, LOCK_UN);
+        fclose($handle);
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => 'Expected column not found in CSV header - has the header changed?']);
+        return;
+    }
+
+    $results = [];
+    $anyChanged = false;
+    foreach ($deltas as $orderId => $delta) {
+        $orderId = (string) $orderId;
+        $found = false;
+        foreach ($rows as $i => &$row) {
+            if ($i === 0) {
+                continue; // header
+            }
+            if (!isset($row[$orderIdIndex]) || $row[$orderIdIndex] !== $orderId) {
+                continue;
+            }
+            $found = true;
+
+            $quantity = max(1, (int) trim($row[$quantityIndex] ?? '1'));
+            $currentQtyCreated = (int) trim($row[$qtyCreatedIndex] ?? '0');
+            $newQtyCreated = max(0, min($quantity, $currentQtyCreated + $delta));
+            $createdWasSet = trim($row[$createdIndex] ?? '') !== '';
+            $fulfilledIsSet = trim($row[$fulfilledIndex] ?? '') !== '';
+
+            if ($newQtyCreated < $quantity && $createdWasSet && $fulfilledIsSet) {
+                // Would need to un-create an already-Fulfilled row -
+                // refused outright, nothing about this order touched.
+                $results[$orderId] = ['ok' => false, 'error' => 'Already marked Fulfilled - sort this one out by hand.'];
+                break;
+            }
+
+            $row[$qtyCreatedIndex] = (string) $newQtyCreated;
+            $newCreatedValue = $createdWasSet ? trim($row[$createdIndex]) : '';
+            if ($newQtyCreated >= $quantity) {
+                if (!$createdWasSet) {
+                    $newCreatedValue = date('Y-m-d');
+                    $row[$createdIndex] = $newCreatedValue;
+                }
+            } elseif ($createdWasSet) {
+                // Dropping back below Quantity un-completes the row -
+                // Fulfilled is confirmed blank above, so this is safe.
+                $newCreatedValue = '';
+                $row[$createdIndex] = '';
+            }
+
+            $anyChanged = true;
+            $results[$orderId] = [
+                'ok' => true,
+                'qtyCreated' => $newQtyCreated,
+                'quantity' => $quantity,
+                'createdValue' => $newCreatedValue,
+            ];
+            break;
+        }
+        unset($row);
+
+        if (!$found) {
+            error_log("merch_update.php: OrderID {$orderId} not found for field 'Qty Created' in batch [" . implode(',', array_keys($deltas)) . '] (rows read: ' . count($rows) . ')');
+            $results[$orderId] = ['ok' => false, 'error' => 'Order not found - the page may be out of date, try refreshing.'];
+        }
+    }
+
+    if ($anyChanged) {
+        merch_backup_csv($csvFile, __DIR__ . '/backups');
+        rewind($handle);
+        ftruncate($handle, 0);
+        foreach ($rows as $row) {
+            fputcsv($handle, $row, ',', '"', '\\');
+        }
+        fflush($handle);
+    }
+    flock($handle, LOCK_UN);
+    fclose($handle);
+
+    echo json_encode([
+        'ok' => true,
+        'results' => $results,
+        'build' => '2026-09-20-A',
+    ]);
+}
