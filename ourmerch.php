@@ -1,9 +1,9 @@
 <?php
-// Build: 2026-09-05-A
+// Build: 2026-09-20-B
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
-require __DIR__ . '/print_plates.php'; // 2026-09-17: for print_plate_group_queue() - powers the read-only "Sort by Print Plate" toggle below
+require __DIR__ . '/print_plates.php'; // 2026-09-17: for print_plate_group_queue() - powers the "Sort by Print Plate" toggle below (checkbox, Needs Creating only, as of 2026-09-20)
 
 // 2026-08-20 (Steve): working an order means glancing back and forth
 // between a handful of fields, but they're spread across the CSV's 25
@@ -93,10 +93,6 @@ $merchEditCatalog = [
     }
     .merch-view-btn.active {
       background: #333;
-    }
-    #merch-print-plate-btn.active {
-      background: #333;
-      color: #fff;
     }
     /* Click affordance for the editable Color cell - same idea as a
        plain-text "click to edit" field, so it reads as interactive next
@@ -218,6 +214,27 @@ $merchEditCatalog = [
       font-size: 0.88em;
       margin-top: 2px;
     }
+    /* 2026-09-20 (Steve, item #5): "A Print button to get a hard copy
+       would also be useful." Scoped to just the print-plate pane rather
+       than the whole admin page - the JS below adds this body class
+       right before calling window.print() (and removes it on
+       afterprint), so a plain Ctrl+P on the rest of the page is
+       unaffected. The per-plate checkboxes print too, on purpose - a
+       paper copy Steve can physically tick off at the printer is a
+       reasonable bonus, not just a reference sheet. */
+    @media print {
+      .no-print {
+        display: none !important;
+      }
+      body.merch-printing-plates > .content-wrapper > *:not(#merch-print-plate-pane) {
+        display: none !important;
+      }
+      body.merch-printing-plates #merch-print-plate-pane {
+        display: block !important;
+        max-height: none !important;
+        overflow: visible !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -274,6 +291,12 @@ $merchEditCatalog = [
       // the same as "nothing is cancelled" everywhere this is checked -
       // the feature is inert until the column exists, never an error.
       $cancelledIndex = array_search('Cancelled', $header, true);
+      // 2026-09-20: Qty Created - per-line partial-completion count (see
+      // merch_update.php's Qty Created header comment). Missing entirely
+      // (a merchandise.csv that hasn't been migrated yet) behaves the
+      // same as "nothing printed yet" everywhere it's read below - same
+      // optional-column tolerance as every other column here.
+      $qtyCreatedIndex = array_search('Qty Created', $header, true);
 
       // Table render order: MERCH_ADMIN_COLUMN_ORDER's columns first (in
       // that order), then every other column the CSV actually has, in
@@ -348,12 +371,24 @@ $merchEditCatalog = [
           // shows/hides existing rows; this groups/aggregates them
           // instead), so it's a separate toggle with its own pane -
           // see #merch-print-plate-pane below and print_plates.php.
-          // Read-only first cut, per Steve 2026-09-17 - doesn't check
-          // anything off, just groups the same Needs Creating queue by
-          // color and packs it against Steve's own known plate combos
-          // and per-item capacities (print_plates.php's
-          // PRINT_PLATE_TEMPLATES / PRINT_PLATE_SOLO_CAPACITY).
-          echo '<button type="button" id="merch-print-plate-btn" class="btn" style="padding:4px 12px; font-size:0.85em;">Sort by Print Plate</button>';
+          // Groups the same Needs Creating queue by color and packs it
+          // against Steve's own known plate combos and per-item
+          // capacities (print_plates.php's PRINT_PLATE_TEMPLATES /
+          // PRINT_PLATE_SOLO_CAPACITY); 2026-09-20 it also carries
+          // per-plate completion checkboxes (see the pane markup below).
+          //
+          // 2026-09-20 (Steve): "unlike any of the other buttons - you
+          // can click it from any view... It should really be a checkbox
+          // that only appears when Needs Creating is clicked." Rebuilt
+          // as a hidden-by-default checkbox+label, same pattern as "Show
+          // cancelled"/"Pickup at Retreat only" right below - except
+          // this one's own visibility is ALSO gated on the current
+          // named view (see the JS applyView() changes further down),
+          // since it only makes sense once Needs Creating is selected.
+          // Starts hidden via inline style; JS removes/restores that the
+          // moment the buttons/view logic wires up, so there's no flash
+          // of a checkbox that doesn't apply to the default "All" view.
+          echo '<label id="merch-print-plate-label" style="display:none; margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-print-plate-toggle" /> Sort by Print Plate</label>';
           // 2026-08-23: independent of the named views above (which
           // never show a cancelled row, full stop - nothing to act on
           // there) - this is a manual override for browsing/auditing,
@@ -407,17 +442,30 @@ $merchEditCatalog = [
                   ? merch_shipment_key($data[$nameIndex] ?? '', $data[$zipIndex] ?? '')
                   : '';
               $rowShipmentReady = $shipmentAllCreated[$rowShipmentKey] ?? true;
+              // 2026-09-20: how many of this line are still outstanding,
+              // not yet printed - Quantity minus whatever Qty Created
+              // already has, clamped at 0 so a fully-caught-up row (or
+              // one that somehow over-reports) never goes negative. This
+              // is what actually feeds the print-plate queue below now,
+              // not the raw order Quantity - a partially-printed 4-unit
+              // line with 1 already done only needs 3 more slots on a
+              // plate, not 4.
+              $rowQtyCreated = $qtyCreatedIndex !== false ? (int) trim($data[$qtyCreatedIndex] ?? '0') : 0;
+              $rowQtyRemaining = max(0, $rowQuantity - $rowQtyCreated);
               // 2026-09-17: same "needs creating" test as the
               // needs-creating case in applyView() below (Ship rows
               // need paid, Pickup rows don't), plus never cancelled -
               // matching every named view's default (Show Cancelled is
               // a manual override for the flat table only, not
-              // extended to this separate pane).
-              if (!$rowIsCreated && ($rowIsShipping ? $rowIsPaid : true) && !$rowIsCancelled) {
+              // extended to this separate pane). 2026-09-20: swapped the
+              // old "!$rowIsCreated" gate for "$rowQtyRemaining > 0" -
+              // the more precise test now that a row can be partially
+              // printed without Created being stamped yet at all.
+              if ($rowQtyRemaining > 0 && ($rowIsShipping ? $rowIsPaid : true) && !$rowIsCancelled) {
                   $printPlateRows[] = [
                       'item' => $rowItem,
                       'color' => $colorIndex !== false ? trim($data[$colorIndex] ?? '') : '',
-                      'qty' => $rowQuantity,
+                      'qty' => $rowQtyRemaining,
                       'orderId' => $orderId,
                       'customerName' => $nameIndex !== false ? trim($data[$nameIndex] ?? '') : '',
                   ];
@@ -673,15 +721,18 @@ $merchEditCatalog = [
       }
 
       // 2026-09-17: "Sort by Print Plate" pane - hidden by default
-      // (toggled by the button in the filter bar above; see the JS
-      // near the bottom of this file), pre-rendered here rather than
-      // built client-side since the grouping/matching logic
+      // (toggled by the checkbox in the filter bar above, and only
+      // shown at all under the Needs Creating view - see the JS near
+      // the bottom of this file), pre-rendered here rather than built
+      // client-side since the grouping/matching logic
       // (print_plate_group_queue(), print_plates.php) is PHP, and
       // $printPlateRows was already collected in the row loop above.
-      // Read-only: no checkboxes, no writes, nothing wired to
-      // merch_update.php - see the design doc
-      // (Claude outputs/print-plate-batch-sort-design-20260917.md)
-      // for why this stays read-only for the first cut.
+      // Was read-only for the first cut (see the design doc,
+      // Claude outputs/print-plate-batch-sort-design-20260917.md, for
+      // why); 2026-09-20 added per-plate completion checkboxes wired to
+      // merch_update.php's new Qty Created delta endpoint - see the
+      // plate-rendering loop below and merch_update.php's own header
+      // comment for the full mechanism.
       //
       // 2026-09-17, second pass: rewritten for a capacity-based model
       // after the original "batch summary + separate full item list"
@@ -708,7 +759,8 @@ $merchEditCatalog = [
           <p style="text-align:center; color:#666;">Nothing here right now &mdash; either Needs Creating is empty, or everything left is a shirt/hat or a Stars &amp; Stripes order, neither of which go through this view.</p>
         <?php else: ?>
           <p style="color:#666; font-size:0.85em; margin-top:0;">
-            Read-only planning view: the same Needs Creating queue, grouped by color (most-ordered colors first), then matched against your confirmed plate combos and per-item capacities in <code>print_plates.php</code>. Every order line appears in exactly one plate below, full or partial &mdash; nothing is hidden or double-counted. When a plate can't fit everyone waiting on an item, whichever order(s) that would fully complete get priority over ones that would stay incomplete either way. A partial plate is still a candidate for combining by hand with something else in that color. Doesn't check anything off &mdash; use the normal table for that.
+            The same Needs Creating queue, grouped by color (most-ordered colors first), then matched against your confirmed plate combos and per-item capacities in <code>print_plates.php</code>. Every order line appears in exactly one plate below, full or partial &mdash; nothing is hidden or double-counted. When a plate can't fit everyone waiting on an item, whichever order(s) that would fully complete get priority over ones that would stay incomplete either way. A partial plate is still a candidate for combining by hand with something else in that color. Check a plate off once it's printed &mdash; that's recorded per order, so a multi-unit line that's only partly done just needs the rest on a later plate.
+            <button type="button" id="merch-print-plate-print-btn" class="btn no-print" style="padding:2px 10px; font-size:0.85em; margin-left:8px;">Print this list</button>
           </p>
           <?php foreach ($printPlateGroups as $group): ?>
             <div class="print-plate-color-group">
@@ -723,18 +775,36 @@ $merchEditCatalog = [
                       $fillPct = (int) round($plate['fillFraction'] * 100);
                       $itemBits = [];
                       $orderBits = [];
+                      // 2026-09-20 (Steve, item #4): "Checkboxes to mark
+                      // items as 'complete' are needed in the Sort by
+                      // Print Plate view." One checkbox per plate,
+                      // carrying exactly what this plate consumed from
+                      // each order (summed across every item on the
+                      // plate, in case a combo plate pulls from the same
+                      // order twice) as its Qty Created delta - see
+                      // merch_update_apply_qty_created_deltas() in
+                      // merch_update.php. Checking it posts those deltas
+                      // and reloads; the plate then simply isn't
+                      // regenerated next time (its orders' remaining
+                      // quantity dropped, possibly to 0) rather than
+                      // sitting there struck through.
+                      $plateDeltas = [];
                       foreach ($plate['items'] as $itemName => $data) {
                           $itemBits[] = (int) $data['qty'] . '&times; ' . htmlspecialchars($itemName);
                           foreach ($data['orders'] as $o) {
                               $orderBits[] = '#' . htmlspecialchars($o['orderId']) . ' ' . htmlspecialchars($o['customerName']) . ' (' . (int) $o['qty'] . ')';
+                              $plateDeltas[$o['orderId']] = ($plateDeltas[$o['orderId']] ?? 0) + (int) $o['qty'];
                           }
                       }
                       ?>
                       <li class="<?= $isFull ? '' : 'print-plate-partial' ?>">
+                        <label style="display:block; cursor:pointer;">
+                        <input type="checkbox" class="print-plate-complete-toggle" data-deltas="<?= htmlspecialchars(json_encode($plateDeltas), ENT_QUOTES) ?>" />
                         <strong>Plate <?= $plateIndex + 1 ?></strong>
                         &mdash; <?= implode(', ', $itemBits) ?>
                         <span class="print-plate-plate-fill"><?= $isFull ? '(full)' : '(' . $fillPct . '% full)' ?></span>
                         <span class="print-plate-plate-orders"><?= implode(', ', $orderBits) ?></span>
+                        </label>
                       </li>
                     <?php endforeach; ?>
                   </ul>
@@ -747,12 +817,20 @@ $merchEditCatalog = [
 
       <div class="button-container" style="text-align:center; margin-top:20px;">
         <p style="margin:0;">
-          <!-- Same click does two things: the normal navigation downloads
-               the Shippo CSV (Content-Disposition: attachment, so the tab
-               never actually navigates away), and the onclick pops the
-               packing checklist - covering the identical paid/Ship/not-
-               yet-Fulfilled batch - open in a new tab alongside it. -->
-          <a href="shippo_export.php" onclick="window.open('packing_slips.php', '_blank'); return true;" style="color: var(--accent);">Download Shippo Export (paid, unshipped orders) &rarr;</a>
+          <!-- 2026-09-20 (Steve, item #6): these used to be one click -
+               the Shippo CSV download also popped the pack list open in
+               a new tab, whether or not you actually wanted the CSV yet.
+               "I find myself clicking the link and then deleting the
+               .csv file because I'm just working on printing and
+               packing but I'm not ready to purchase labels yet." Split
+               into two independent links, same paid/Ship/not-yet-
+               Fulfilled batch either way (packing_slips.php and
+               shippo_export.php already compute that set the same way -
+               see Finding 10, 2026-08-19 code review) - pick whichever
+               one you actually need right now. -->
+          <a href="shippo_export.php" style="color: var(--accent);">Download Shippo Export (paid, unshipped orders) &rarr;</a>
+          &nbsp;&mdash;&nbsp;
+          <a href="packing_slips.php" target="_blank" style="color: var(--accent);">Pack List (paid, unshipped orders) &rarr;</a>
           &nbsp;&mdash;&nbsp;
           <!-- 2026-08-25: companion to the link above, for the Pickup at
                retreat side - see pickup_slips.php's header comment for why
@@ -767,7 +845,7 @@ $merchEditCatalog = [
                tab, same as the Pickup Checklist link above. -->
           <a href="merch_reminders.php" target="_blank" style="color: var(--accent);">Send Payment Reminders &rarr;</a>
           &nbsp;&mdash;&nbsp;
-          <span style="color:#bbb; font-size:0.75em;">Build 2026-08-29-B</span>
+          <span style="color:#bbb; font-size:0.75em;">Build 2026-09-20-B</span>
         </p>
       </div>
     </div>
@@ -1387,12 +1465,46 @@ $merchEditCatalog = [
       applyView(currentView);
     });
 
+    // 2026-09-20 (Steve, item #2): "unlike any of the other buttons -
+    // you can click it from any view... It should really be a checkbox
+    // that only appears when Needs Creating is clicked." Declared here
+    // (before applyView() runs for the first time below) since
+    // applyView() itself now reaches into these on every view change -
+    // toggling the checkbox's own label visible/hidden, and forcing the
+    // checkbox off (and the pane closed, table pane restored) the
+    // instant you leave Needs Creating, so it can never be left
+    // checked-but-invisible on some other view.
+    const printPlateLabel = document.getElementById('merch-print-plate-label');
+    const printPlateToggle = document.getElementById('merch-print-plate-toggle');
+    const printPlatePane = document.getElementById('merch-print-plate-pane');
+    const merchTablePane = document.getElementById('merch-table-pane');
+    function updatePrintPlatePaneVisibility() {
+      const shown = !!(printPlateToggle && printPlateToggle.checked);
+      if (printPlatePane) printPlatePane.style.display = shown ? '' : 'none';
+      if (merchTablePane) merchTablePane.style.display = shown ? 'none' : '';
+    }
+    if (printPlateToggle) {
+      printPlateToggle.addEventListener('change', updatePrintPlatePaneVisibility);
+    }
+
     function applyView(view) {
       currentView = view;
       sessionStorage.setItem('merchAdminView', view);
       viewButtons.forEach((btn) => {
         btn.classList.toggle('active', btn.dataset.view === view);
       });
+      // Only Needs Creating ever shows the "Sort by Print Plate"
+      // checkbox at all; switching to any other view hides the label
+      // and forces the checkbox (and its pane) closed, same as if
+      // you'd manually unchecked it.
+      if (printPlateLabel) {
+        const isNeedsCreating = view === 'needs-creating';
+        printPlateLabel.style.display = isNeedsCreating ? '' : 'none';
+        if (!isNeedsCreating && printPlateToggle) {
+          printPlateToggle.checked = false;
+        }
+        updatePrintPlatePaneVisibility();
+      }
       document.querySelectorAll('table tr[data-fulfilled]').forEach((tr) => {
         const created = tr.dataset.created === '1';
         const fulfilled = tr.dataset.fulfilled === '1';
@@ -1486,24 +1598,68 @@ $merchEditCatalog = [
     // the table and buttons above actually exist to apply it to.
     applyView(currentView);
 
-    // 2026-09-17: "Sort by Print Plate" - deliberately NOT another
-    // data-view case in applyView() above. That switch shows/hides
-    // EXISTING rows; this swaps the whole table for a separate,
-    // pre-rendered, grouped/aggregated pane (#merch-print-plate-pane,
-    // built server-side by print_plate_group_queue() since the
-    // matching logic is PHP, not JS). Toggling it off returns to
-    // whatever named view/checkboxes were already active - it doesn't
-    // touch currentView, showCancelled, or pickupOnly at all.
-    const printPlateBtn = document.getElementById('merch-print-plate-btn');
-    const printPlatePane = document.getElementById('merch-print-plate-pane');
-    const merchTablePane = document.getElementById('merch-table-pane');
-    if (printPlateBtn && printPlatePane && merchTablePane) {
-      let printPlateShown = false;
-      printPlateBtn.addEventListener('click', () => {
-        printPlateShown = !printPlateShown;
-        printPlateBtn.classList.toggle('active', printPlateShown);
-        printPlatePane.style.display = printPlateShown ? '' : 'none';
-        merchTablePane.style.display = printPlateShown ? 'none' : '';
+    // 2026-09-20 (Steve, item #4): per-plate "mark complete" checkboxes
+    // - see the PHP loop above for how each one's data-deltas (this
+    // plate's per-order unit counts) is built. Checking one posts those
+    // as signed deltas to merch_update.php's Qty Created endpoint and
+    // reloads - same "reload on success" pattern as Un-invoice/Item
+    // Edit above, since a completed plate's orders may drop out of the
+    // Needs Creating queue entirely and every plate below it can shift
+    // as a result. Unchecking sends the same deltas negated, so a
+    // mis-click can be undone right up until the reload actually fires.
+    document.querySelectorAll('.print-plate-complete-toggle').forEach((box) => {
+      box.addEventListener('change', () => {
+        let deltaMap;
+        try {
+          deltaMap = JSON.parse(box.dataset.deltas || '{}');
+        } catch (e) {
+          deltaMap = {};
+        }
+        const sign = box.checked ? 1 : -1;
+        const deltas = {};
+        Object.keys(deltaMap).forEach((orderId) => {
+          deltas[orderId] = deltaMap[orderId] * sign;
+        });
+        const previousChecked = !box.checked;
+
+        box.disabled = true;
+        fetch('merch_update.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `field=${encodeURIComponent('Qty Created')}&deltas=${encodeURIComponent(JSON.stringify(deltas))}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.ok) {
+              location.reload();
+            } else {
+              alert('Could not save: ' + (data.error || 'unknown error'));
+              box.checked = previousChecked;
+              box.disabled = false;
+            }
+          })
+          .catch(() => {
+            alert('Could not save - check your connection and try again.');
+            box.checked = previousChecked;
+            box.disabled = false;
+          });
+      });
+    });
+
+    // 2026-09-20 (Steve, item #5): "A Print button to get a hard copy
+    // would also be useful." Scoped to just this pane via the
+    // merch-printing-plates body class + the @media print rules near
+    // the top of this file - toggled back off on afterprint so a plain
+    // Ctrl+P anywhere else on the page later in the same tab isn't left
+    // affected by a stale class.
+    const printPlatePrintBtn = document.getElementById('merch-print-plate-print-btn');
+    if (printPlatePrintBtn) {
+      printPlatePrintBtn.addEventListener('click', () => {
+        document.body.classList.add('merch-printing-plates');
+        window.print();
+      });
+      window.addEventListener('afterprint', () => {
+        document.body.classList.remove('merch-printing-plates');
       });
     }
   </script>
