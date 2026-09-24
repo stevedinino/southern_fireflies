@@ -143,6 +143,11 @@
 // the Add-On combo get first claim on Oval stock.
 //
 // Confirmed by Steve (2026-09-17 combo; 2026-09-18 the other three).
+
+// 9-24-2026: Added by Steve
+// Added new print plate combinations for Hearts + Oval and Hearts + Circle
+// so those kits map correctly to the required cutter holders when generating
+// plate print configs.
 const PRINT_PLATE_TEMPLATES = [
     'Circle / Oval combo' => [
         'Circle Cutter Holder' => 1,
@@ -155,6 +160,14 @@ const PRINT_PLATE_TEMPLATES = [
     'Hearts + Rectangle combo' => [
         'Hearts Cutter Holder' => 1,
         'Rectangle Cutter Holder' => 1,
+    ],
+    'Hearts + Oval combo' => [
+        'Hearts Cutter Holder' => 1,
+        'Oval Cutter Holder' => 1,
+    ],
+    'Hearts + Circle combo' => [
+        'Hearts Cutter Holder' => 1,
+        'Circle Cutter Holder' => 1,
     ],
     'Oval + Tape Gun Add-On combo' => [
         'Oval Cutter Holder' => 1,
