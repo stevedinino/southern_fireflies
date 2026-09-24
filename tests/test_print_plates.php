@@ -1,9 +1,10 @@
 <?php
-// Build: 2026-09-20-A
+// Build: 2026-09-24-A
 // ============================================================
 // Direct tests for print_plates.php's plate-packing logic - the
-// consumption-order fix from 2026-09-20 (see print_plates.php's own
-// header comment for the full story) plus a regression check that
+// consumption-order fix from 2026-09-20, the OrderGroupID completion
+// fix from 2026-09-24 (see print_plates.php's own header comment for
+// the full story on each), plus a regression check that
 // capacity-forced splits still work the way they always have. Run
 // from anywhere:
 //
@@ -83,6 +84,26 @@ $summariesC = plateSummaries(print_plate_group_queue($rowsC));
 expect('capacity-forced split: 3 plates', count($summariesC), 3);
 expect('capacity-forced split: plate 1 full', $summariesC[0] ?? '', '2x Oval Cutter Holder - Solo Order(2)');
 expect('capacity-forced split: plate 3 partial', $summariesC[2] ?? '', '1x Oval Cutter Holder - Solo Order(1)');
+
+// ---- A multi-item order (same OrderGroupID, different OrderIDs)
+// shouldn't be treated as "complete" the instant just ONE of its rows
+// is taken - that's not a real completion, and letting it act like one
+// wrongly lets a lone row win the FIFO tiebreak over genuinely-
+// standalone orders, scattering the group across plates instead of
+// keeping it together (2026-09-24, Steve's real example: a 3-line
+// order that never once got paired with itself). Interleaved with two
+// unrelated single-item orders (Ellen, Fiona) specifically so the old
+// per-row keying and the new per-group keying disagree on the result -
+// see this test's comment for the by-hand trace of both. ----
+$rowsD = [
+    ['item' => 'Oval Cutter Holder', 'color' => '#14 Sky Blue', 'qty' => 1, 'orderId' => 'D1', 'customerName' => 'Dale Monnier', 'orderGroupId' => 'G1'],
+    ['item' => 'Oval Cutter Holder', 'color' => '#14 Sky Blue', 'qty' => 1, 'orderId' => 'E1', 'customerName' => 'Ellen Ashby', 'orderGroupId' => ''],
+    ['item' => 'Oval Cutter Holder', 'color' => '#14 Sky Blue', 'qty' => 1, 'orderId' => 'D2', 'customerName' => 'Dale Monnier', 'orderGroupId' => 'G1'],
+    ['item' => 'Oval Cutter Holder', 'color' => '#14 Sky Blue', 'qty' => 1, 'orderId' => 'F1', 'customerName' => 'Fiona Reyes', 'orderGroupId' => ''],
+];
+$summariesD = plateSummaries(print_plate_group_queue($rowsD));
+expect('order-group fix: plate 1 is the two genuinely-standalone orders', $summariesD[0] ?? '', '2x Oval Cutter Holder - Ellen Ashby(1), Fiona Reyes(1)');
+expect('order-group fix: plate 2 is Dale\'s own two-line order, together', $summariesD[1] ?? '', '2x Oval Cutter Holder - Dale Monnier(1), Dale Monnier(1)');
 
 // ---- Verdict ---------------------------------------------------------
 if ($failures) {

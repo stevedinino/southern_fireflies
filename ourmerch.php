@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-24-A
+// Build: 2026-09-24-B
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -297,6 +297,13 @@ $merchEditCatalog = [
       // same as "nothing printed yet" everywhere it's read below - same
       // optional-column tolerance as every other column here.
       $qtyCreatedIndex = array_search('Qty Created', $header, true);
+      // 2026-09-24: OrderGroupID - which lines belong to the same
+      // multi-item purchase (see print_plate_group_queue()'s own
+      // header comment for why the print-plate queue needs this).
+      // Same optional-column tolerance as everywhere else here -
+      // missing entirely just means every row is its own group, same
+      // as it behaved before this column existed.
+      $orderGroupIdIndex = array_search('OrderGroupID', $header, true);
 
       // Table render order: MERCH_ADMIN_COLUMN_ORDER's columns first (in
       // that order), then every other column the CSV actually has, in
@@ -504,6 +511,11 @@ $merchEditCatalog = [
                       'qty' => $rowQtyRemaining,
                       'orderId' => $orderId,
                       'customerName' => $nameIndex !== false ? trim($data[$nameIndex] ?? '') : '',
+                      // 2026-09-24: see print_plate_group_queue()'s header
+                      // comment - lets the order-completion preference
+                      // recognize a multi-item order as one unit instead
+                      // of treating each of its lines as its own order.
+                      'orderGroupId' => $orderGroupIdIndex !== false ? trim($data[$orderGroupIdIndex] ?? '') : '',
                   ];
               }
               echo '<tr class="' . ($rowQuantity > 1 ? 'merch-row-multi' : '') . '" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '" data-cancelled="' . ($rowIsCancelled ? '1' : '0') . '" data-quantity="' . $rowQuantity . '">';
