@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-20-B
+// Build: 2026-09-24-A
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -405,6 +405,22 @@ $merchEditCatalog = [
           // like shipments do. Off by default so the page's default view
           // is unchanged for everyone else.
           echo '<label style="margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-pickup-only" /> Pickup at Retreat only</label>';
+          // 2026-09-24 (Steve): "I've deployed everything, but the fix
+          // isn't showing up live." Root-caused to PHP OPcache on the
+          // host serving stale compiled bytecode even after a
+          // successfully-deployed file change (see
+          // admin_opcache_reset.php's own header comment for the full
+          // story). This button is the one-click fix for that specific
+          // situation - a plain POST form (not a fetch() call) so it
+          // works exactly like clear.php: no JS dependency, full-page
+          // navigation to a small confirmation screen. Right-aligned
+          // and visually muted (small, gray) since this is a diagnostic
+          // tool for Steve, not a day-to-day filter like the buttons/
+          // checkboxes above it.
+          echo '<form method="POST" action="admin_opcache_reset.php" style="display:inline; float:right;">';
+          echo '<input type="hidden" name="csrf_token" value="' . htmlspecialchars(merch_csrf_token(), ENT_QUOTES, 'UTF-8') . '" />';
+          echo '<button type="submit" class="btn" style="padding:4px 10px; font-size:0.8em; background:#888;" title="If a deployed fix isn\'t showing up live, this clears the server\'s PHP cache.">Clear PHP Cache</button>';
+          echo '</form>';
           echo '</div>';
           echo '<div class="merch-table-pane" id="merch-table-pane"><table style="width:100%; border-collapse: collapse;">';
           echo '<tr>';
