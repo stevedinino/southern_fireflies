@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-18-A
+// Build: 2026-09-24-A
 // ============================================================
 // Print-plate batching config + matching logic for ourmerch.php's
 // "Sort by Print Plate" toggle (Needs Creating view, read-only first
@@ -91,6 +91,40 @@
 // (its remaining qty is bigger than what's left on this plate), and the
 // original arrival/FIFO order still breaks any remaining tie - matching
 // "if it doesn't matter, don't touch the ordering."
+//
+// 2026-09-24, sixth pass: fixed what "an order" means for the
+// completion preference. Steve, looking at a live example - one
+// customer with a multi-item order (1 Hearts + 2 Rectangle, all one
+// OrderGroupID) split across two combo plates and a solo plate, paired
+// with two entirely different customers instead of with herself:
+// "putting two Sally [sic] Brooks pieces on a plate would not complete
+// the order - she still needs a third item." He was right - the bug
+// was real, just not a deploy/cache problem. print_plate_consume_units()
+// was keying $orderRemaining by raw OrderID, and a multi-item order
+// (see merch_edit_line.php's OrderGroupID feature, 2026-09-14) writes
+// ONE ROW PER ITEM, each with its own OrderID. So a customer's 3-line
+// order looked, to the old code, like three unrelated 1-line "orders"
+// that each "complete" the instant their own single row is taken - the
+// exact same completion signal a genuinely-standalone single-item
+// order gets. That's not a real completion: taking just the Hearts row
+// doesn't let Steve ship anything while 2 Rectangles are still
+// outstanding on the same purchase. Worse, it actively worked against
+// keeping her stuff together: her Hearts row won the completion
+// tiebreak over a real single-item order sharing that plate, using up
+// the "prefer this" slot on a piece that wasn't actually going to
+// finish anything.
+//
+// Fix: completion is now tracked per ORDER GROUP, not per row. Rows
+// that share a non-blank OrderGroupID are treated as one unit for
+// $orderRemaining - only zeroes out (a real completion) once every
+// line in that group has been taken. A row with no OrderGroupID (every
+// order written before 2026-09-14, or any single-item order since)
+// is its own group of one, same as before - this changes nothing for
+// the common case, only for genuine multi-item orders. Consumption and
+// the per-plate display are untouched - each plate still lists the
+// specific OrderIDs/quantities taken, which is what the Qty Created
+// checkboxes below operate on; only which candidate gets chosen, and
+// whether it's flagged a "real completion," changed.
 //
 // Requires merch_items.php's FILAMENT_COLOR_ITEMS to already be
 // defined - require this file after pricing.php (same order
@@ -199,11 +233,17 @@ function print_plate_available(array $queue): int
  * that happen to span two orders returns two entries. Caller must
  * ensure $n <= print_plate_available($queue) first.
  *
- * $orderRemaining: orderId => total needs-creating pieces left for
- * that order SHOP-WIDE (every item/color, not just this print-plate
- * view) - mutated here too, decremented by whatever's taken, so a
- * later call (same order, maybe a different item entirely) sees the
- * up-to-date count.
+ * $orderRemaining: completionKey => total needs-creating pieces left
+ * for that ORDER GROUP shop-wide (every item/color, not just this
+ * print-plate view) - mutated here too, decremented by whatever's
+ * taken, so a later call (same group, maybe a different item/order
+ * line entirely) sees the up-to-date count. completionKey (2026-09-24)
+ * is 'g:<OrderGroupID>' for a multi-item order's lines, or
+ * 'o:<OrderID>' for a row with no group - see each queue entry's own
+ * 'completionKey', set by print_plate_group_queue() below. Taking a
+ * row only ever zeroes out its GROUP's count, not necessarily that
+ * row's own OrderID - see this file's 2026-09-24 build-history entry
+ * for why per-row was wrong for a multi-item order.
  *
  * Selection order (2026-09-20, per Steve - see the build-history
  * comment above for the case that prompted this): for each unit still
@@ -229,7 +269,7 @@ function print_plate_consume_units(array &$queue, int $n, array &$orderRemaining
         $bestIdx = 0;
         $bestKey = null;
         foreach ($queue as $idx => $entry) {
-            $remaining = $orderRemaining[$entry['orderId']] ?? null;
+            $remaining = $orderRemaining[$entry['completionKey']] ?? null;
             $wouldComplete = $remaining !== null
                 && $entry['qty'] <= $n
                 && ($remaining - $entry['qty']) <= 0;
@@ -248,12 +288,13 @@ function print_plate_consume_units(array &$queue, int $n, array &$orderRemaining
         }
         $orderId = $queue[$bestIdx]['orderId'];
         $customerName = $queue[$bestIdx]['customerName'];
+        $completionKey = $queue[$bestIdx]['completionKey'];
         $take = min($n, $queue[$bestIdx]['qty']);
 
         $queue[$bestIdx]['qty'] -= $take;
         $n -= $take;
-        if (isset($orderRemaining[$orderId])) {
-            $orderRemaining[$orderId] -= $take;
+        if (isset($orderRemaining[$completionKey])) {
+            $orderRemaining[$completionKey] -= $take;
         }
         if ($queue[$bestIdx]['qty'] <= 0) {
             array_splice($queue, $bestIdx, 1);
@@ -274,14 +315,17 @@ function print_plate_consume_units(array &$queue, int $n, array &$orderRemaining
  * queue rows.
  *
  * $rows: array of ['item'=>string, 'color'=>string, 'qty'=>int,
- * 'orderId'=>string, 'customerName'=>string] - one entry per
- * not-yet-created order line, already filtered the same way
- * ourmerch.php's own "needs-creating" view filters rows (paid+Ship,
- * or any-payment-state Pickup; not cancelled). Pass EVERY
+ * 'orderId'=>string, 'customerName'=>string, 'orderGroupId'=>string]
+ * - one entry per not-yet-created order line, already filtered the
+ * same way ourmerch.php's own "needs-creating" view filters rows
+ * (paid+Ship, or any-payment-state Pickup; not cancelled). Pass EVERY
  * needs-creating row here, including shirts/hats and any excluded
  * color - they're filtered out below for the plate grouping itself,
  * but they still count toward whether an order is "done" for the
  * order-completion preference (see print_plate_consume_units()).
+ * 'orderGroupId' may be '' (no group - every row before 2026-09-14, or
+ * any single-item order since); it's how multi-item orders are told
+ * apart from several unrelated single-item ones (2026-09-24 fix).
  *
  * Only items in FILAMENT_COLOR_ITEMS with a PRINT_PLATE_SOLO_CAPACITY
  * entry, in a non-excluded color, actually get grouped into plates.
@@ -313,23 +357,38 @@ function print_plate_consume_units(array &$queue, int $n, array &$orderRemaining
  */
 function print_plate_group_queue(array $rows): array
 {
-    // orderId => total needs-creating pieces left, shop-wide (every
-    // item/color) - built from the FULL $rows before any filtering,
-    // so a still-outstanding shirt correctly keeps an order from
-    // looking "almost done" here. See print_plate_consume_units().
+    // 2026-09-24: a multi-item order writes one row per item, each
+    // with its own OrderID but a shared OrderGroupID - so "which order
+    // is this row part of, for completion purposes" is the GROUP, not
+    // the row's own ID. A row with no group is its own group of one
+    // (unchanged behavior for every pre-2026-09-14 row and every
+    // single-item order since). Prefixed ('g:'/'o:') so a numeric
+    // OrderGroupID can never collide with an OrderID that happens to
+    // share the same digits.
+    $completionKeyFor = function (array $row): string {
+        $groupId = $row['orderGroupId'] ?? '';
+        return $groupId !== '' ? ('g:' . $groupId) : ('o:' . ($row['orderId'] ?? ''));
+    };
+
+    // completionKey => total needs-creating pieces left for that GROUP,
+    // shop-wide (every item/color) - built from the FULL $rows before
+    // any filtering, so a still-outstanding shirt correctly keeps an
+    // order (or order group) from looking "almost done" here. See
+    // print_plate_consume_units().
     $orderRemaining = [];
     foreach ($rows as $row) {
         $qty = (int) ($row['qty'] ?? 1);
         if ($qty < 1) {
             continue;
         }
-        $orderId = $row['orderId'] ?? '';
-        $orderRemaining[$orderId] = ($orderRemaining[$orderId] ?? 0) + $qty;
+        $key = $completionKeyFor($row);
+        $orderRemaining[$key] = ($orderRemaining[$key] ?? 0) + $qty;
     }
 
-    // color => item => queue of ['orderId','customerName','qty']
-    // (order here is arrival/FIFO order - the tie-break of last
-    // resort once order-completion is accounted for).
+    // color => item => queue of ['orderId','customerName','qty',
+    // 'completionKey'] (order here is arrival/FIFO order - the
+    // tie-break of last resort once order-completion is accounted
+    // for).
     $byColorItem = [];
     foreach ($rows as $row) {
         $item = $row['item'] ?? '';
@@ -351,6 +410,7 @@ function print_plate_group_queue(array $rows): array
             'orderId' => $row['orderId'] ?? '',
             'customerName' => $row['customerName'] ?? '',
             'qty' => $qty,
+            'completionKey' => $completionKeyFor($row),
         ];
     }
 
