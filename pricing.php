@@ -786,6 +786,11 @@ function merch_group_calculate(array $items, bool $isShipping, bool $isPrinted):
             'quantity' => $qty,
             'unitPrice' => $unitPrice,
             'lineSubtotal' => $lineSubtotal,
+            // 2026-09-25 (Steve): customers asked which color each tool
+            // on their invoice was. Carried through so merch_send_invoice()
+            // can print it without every caller re-zipping $items by
+            // index (as merch_invoice.php's pickup path has to).
+            'color' => trim((string)($it['color'] ?? '')),
         ];
 
         $subtotal += $lineSubtotal;

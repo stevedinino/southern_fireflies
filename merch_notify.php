@@ -190,8 +190,17 @@ function merch_send_invoice(array $pricing, string $name, string $email, bool $i
     $lineItemsText = '';
     foreach ($pricing['lines'] as $line) {
         $qtyLabel = $line['quantity'] > 1 ? " (x{$line['quantity']})" : '';
-        $lineItemsHtml .= '<li>' . htmlspecialchars($line['item'], ENT_QUOTES, 'UTF-8') . $qtyLabel . ': ' . $money($line['lineSubtotal']) . '</li>';
-        $lineItemsText .= '- ' . $line['item'] . $qtyLabel . ': ' . $money($line['lineSubtotal']) . "\n";
+        // 2026-09-25 (Steve): several customers asked which color each
+        // tool was. Same " - <color>" shape the pickup invoice document
+        // already uses. Blank colors (older rows) and the "no color
+        // choice" placeholder are left off rather than printed.
+        $lineColor = trim((string)($line['color'] ?? ''));
+        if (stripos($lineColor, 'Not applicable') === 0) {
+            $lineColor = '';
+        }
+        $colorLabel = $lineColor !== '' ? ' - ' . $lineColor : '';
+        $lineItemsHtml .= '<li>' . htmlspecialchars($line['item'], ENT_QUOTES, 'UTF-8') . $qtyLabel . htmlspecialchars($colorLabel, ENT_QUOTES, 'UTF-8') . ': ' . $money($line['lineSubtotal']) . '</li>';
+        $lineItemsText .= '- ' . $line['item'] . $qtyLabel . $colorLabel . ': ' . $money($line['lineSubtotal']) . "\n";
     }
 
     // Bundle discount line (2026-08-21, Tape Gun Add-On launch) - shown
