@@ -1,4 +1,4 @@
-<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; require __DIR__ . '/events/events_helpers.php'; $merchPickupEvents = events_upcoming(); // Build: 2026-09-16-A ?>
+<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; require __DIR__ . '/events/events_helpers.php'; $merchPickupEvents = events_upcoming(); // Build: 2026-09-25-A ?>
 <?php
 // 2026-08-25 (Steve): the pickup dropdown below used to just say "I'll
 // pick it up at a retreat" with no way to say WHICH one - fine when
@@ -607,6 +607,16 @@
              whenever the list or Fulfillment choice changes - see
              refreshListPricing() below. -->
         <div id="list-estimate" class="merch-estimate" aria-live="polite"></div>
+
+        <!-- 2026-09-25 (Steve): confirmation and invoice emails were
+             landing in customers' spam/junk folders, and customers then
+             wondered whether the request had gone through. A plain note
+             right above the Submit button; the sender address comes from
+             config.php's MAIL_FROM_ADDRESS so it can never drift from
+             what the emails are actually sent from. Static text, so it
+             sits outside #list-estimate (which JS rewrites on every list
+             change). -->
+        <p class="merch-estimate-note" id="list-spam-note">Heads up: we'll email you a confirmation of this request, and your invoice later on. Those emails sometimes land in spam or junk folders, so if you don't see them, please check there<?= defined('MAIL_FROM_ADDRESS') ? ' for messages from <strong>' . htmlspecialchars(MAIL_FROM_ADDRESS, ENT_QUOTES, 'UTF-8') . '</strong>' : '' ?>.</p>
 
         <!-- Lets a customer close this modal to add/browse more items
              without submitting - separate from the small "x" close

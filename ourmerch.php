@@ -516,6 +516,19 @@ $merchEditCatalog = [
                       // recognize a multi-item order as one unit instead
                       // of treating each of its lines as its own order.
                       'orderGroupId' => $orderGroupIdIndex !== false ? trim($data[$orderGroupIdIndex] ?? '') : '',
+                      // 2026-09-25 (Steve: Shelly Brooks / Wendy Staples /
+                      // Jean McFadden split across plates): the same
+                      // Name+Zip shipment key the Needs Shipping view uses,
+                      // so a customer's separate submissions (blank
+                      // OrderGroupID, like Wendy's Circle and Oval) still
+                      // count as one order for completion and keep-together
+                      // planning. Blank name = no identity signal, so no
+                      // key (falls back to OrderGroupID/OrderID). Prefixed
+                      // by fulfillment so a Ship order and a Pickup order
+                      // from the same person aren't treated as one.
+                      'shipmentKey' => ($nameIndex !== false && trim($data[$nameIndex] ?? '') !== '' && $rowShipmentKey !== '')
+                          ? (($rowIsShipping ? 'ship:' : 'pickup:') . $rowShipmentKey)
+                          : '',
                   ];
               }
               echo '<tr class="' . ($rowQuantity > 1 ? 'merch-row-multi' : '') . '" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '" data-cancelled="' . ($rowIsCancelled ? '1' : '0') . '" data-quantity="' . $rowQuantity . '">';
