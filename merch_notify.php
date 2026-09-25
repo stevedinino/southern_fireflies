@@ -175,6 +175,33 @@ function merch_mailer(): PHPMailer
 }
 
 /**
+ * 2026-09-25 (Steve): Zelle as one more way to pay for printed items -
+ * his own Zelle ID, which is his phone number (ZELLE_ID_PRINTED in
+ * config.php, server copy edited by hand since config.php never
+ * deploys). Printed items only, same as the check option and the
+ * account split: Janet's shirt/hat payments never included it. Returns
+ * ['html' => ..., 'text' => ...] - both empty when this isn't a printed
+ * order or the constant isn't defined on this server yet, so the
+ * templates render exactly as before until it is. The text version
+ * carries its own trailing blank line, same convention as the
+ * last4/check notes (merch_load_string() trims trailing whitespace).
+ */
+function merch_zelle_note(bool $isPrinted): array
+{
+    if (!$isPrinted || !defined('ZELLE_ID_PRINTED') || !ZELLE_ID_PRINTED) {
+        return ['html' => '', 'text' => ''];
+    }
+    return [
+        'html' => merch_load_string('emails/invoice-zelle-note.html', [
+            'zelleId' => htmlspecialchars(ZELLE_ID_PRINTED, ENT_QUOTES, 'UTF-8'),
+        ]),
+        'text' => merch_load_string('emails/invoice-zelle-note.text', [
+            'zelleId' => ZELLE_ID_PRINTED,
+        ]) . "\n\n",
+    ];
+}
+
+/**
  * The real itemized invoice, in Steve's own copy/tone. Handles both a
  * single order line and several combined lines transparently, since
  * $pricing['lines'] is always an array (of 1 or more).
@@ -274,6 +301,8 @@ function merch_send_invoice(array $pricing, string $name, string $email, bool $i
         ]) . "\n\n";
     }
 
+    $zelleNote = merch_zelle_note($isPrinted);
+
     try {
         $mail = merch_mailer();
         $mail->addAddress($email, $name);
@@ -294,6 +323,7 @@ function merch_send_invoice(array $pricing, string $name, string $email, bool $i
             'venmoHandle' => htmlspecialchars($venmoHandle, ENT_QUOTES, 'UTF-8'),
             'paypalEmail' => htmlspecialchars($paypalEmail, ENT_QUOTES, 'UTF-8'),
             'accountNote' => $accountNoteHtml,
+            'zelleNoteHtml' => $zelleNote['html'],
             'checkNoteHtml' => $checkNoteHtml,
         ]);
 
@@ -308,6 +338,7 @@ function merch_send_invoice(array $pricing, string $name, string $email, bool $i
             'venmoHandle' => $venmoHandle,
             'paypalEmail' => $paypalEmail,
             'accountNote' => $accountNoteFlat,
+            'zelleNoteText' => $zelleNote['text'],
             'checkNoteText' => $checkNoteText,
         ]);
 
@@ -466,6 +497,8 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
         ]) . "\n\n";
     }
 
+    $zelleNote = merch_zelle_note($isPrinted);
+
     try {
         $mail = merch_mailer();
         $mail->addAddress($email, $name);
@@ -480,12 +513,14 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
             'name' => $safeName,
             'lineItemsHtml' => $lineItemsHtml,
             'payPalNoteHtml' => $payPalNoteHtml,
+            'zelleNoteHtml' => $zelleNote['html'],
             'checkNoteHtml' => $checkNoteHtml,
         ]);
         $mail->AltBody = merch_load_string('emails/payment-reminder.text', [
             'name' => $name,
             'lineItemsText' => $lineItemsText,
             'payPalNoteText' => $payPalNoteText,
+            'zelleNoteText' => $zelleNote['text'],
             'checkNoteText' => $checkNoteText,
         ]);
         $mail->send();

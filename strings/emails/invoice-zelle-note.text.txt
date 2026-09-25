@@ -1,0 +1,1 @@
+Prefer Zelle? Send it to {{zelleId}} (my phone number).
