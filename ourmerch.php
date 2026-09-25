@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-24-B
+// Build: 2026-09-25-A
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -757,6 +757,14 @@ $merchEditCatalog = [
                           echo ' <span style="display:inline-block; padding:1px 6px; font-size:0.7em; background:#eef; color:#448; border-radius:3px; vertical-align:middle;">Pickup</span>';
                       }
                       echo '</td>';
+                  } elseif ($col === 'Qty Created') {
+                      // 2026-09-25: a hook for the Created checkbox's
+                      // change handler below - merch_update.php now keeps
+                      // this column in step with Created (Created checked
+                      // = Quantity, unchecked = 0), and the handler
+                      // refreshes this cell from the response so it never
+                      // shows a stale count until the next page load.
+                      echo '<td class="merch-qty-created-cell" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" style="padding:6px; border-bottom:1px solid #eee;">' . htmlspecialchars($cell) . '</td>';
                   } else {
                       echo '<td style="padding:6px; border-bottom:1px solid #eee;">' . htmlspecialchars($cell) . '</td>';
                   }
@@ -951,6 +959,12 @@ $merchEditCatalog = [
               updateStatusSpan(orderId, field, data.value);
               if (data.cascadeField) {
                 updateStatusSpan(orderId, data.cascadeField, data.cascadeValue);
+              }
+              // 2026-09-25: Created/Fulfilled now also rewrite Qty Created
+              // server-side (see merch_update.php) - mirror that here.
+              if (data.qtyCreated !== null && data.qtyCreated !== undefined) {
+                const qcCell = document.querySelector(`.merch-qty-created-cell[data-order-id="${CSS.escape(orderId)}"]`);
+                if (qcCell) qcCell.textContent = String(data.qtyCreated);
               }
             } else {
               alert('Could not save: ' + (data.error || 'unknown error'));

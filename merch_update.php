@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-20-A
+// Build: 2026-09-25-A
 // Marks a single order's status, called via fetch() from ourmerch.php's
 // checkboxes. Same admin session gate as the rest of the admin pages -
 // this is not a public endpoint.
@@ -229,6 +229,13 @@ $itemIndex = $isValueField ? array_search('Item', $header, true) : null;
 // Only needed for a clear-only field - the column that must be blank
 // before the clear is allowed to proceed (see $clearOnlyFields above).
 $clearGuardIndex = $isClearOnlyField ? array_search($clearOnlyFields[$field], $header, true) : null;
+// 2026-09-25: needed by $applyToRow to keep Qty Created in step with the
+// Created checkbox (see the comment there). Both optional - a CSV
+// missing either column just skips the sync, same tolerance as
+// ourmerch.php has for every other optional column.
+$qtyCreatedIndex = array_search('Qty Created', $header, true);
+$quantityIndex = array_search('Quantity', $header, true);
+$createdColIndex = array_search('Created', $header, true);
 
 if ($fieldIndex === false || $orderIdIndex === false || ($cascadeField !== null && $cascadeIndex === false) || ($isValueField && $itemIndex === false) || ($isClearOnlyField && $clearGuardIndex === false)) {
     flock($handle, LOCK_UN);
@@ -254,7 +261,10 @@ $applyToRow = function (array &$row) use (
     $submittedValue,
     $checked,
     $cascadeIndex,
-    $fieldIndex
+    $fieldIndex,
+    $qtyCreatedIndex,
+    $quantityIndex,
+    $createdColIndex
 ): array {
     if ($isClearOnlyField && $clearGuardIndex !== null && trim($row[$clearGuardIndex] ?? '') !== '') {
         return ['ok' => false, 'error' => "Can't un-invoice - this order already shows a " . $clearOnlyFields[$field] . '. Sort out the payment by hand first.'];
@@ -306,7 +316,40 @@ $applyToRow = function (array &$row) use (
         $newValue = '';
     }
     $row[$fieldIndex] = $newValue;
-    return ['ok' => true, 'value' => $newValue, 'cascadeValue' => $cascadeValue];
+
+    // 2026-09-25 (Steve): "if I mistakenly mark something as 'created',
+    // and then uncheck that box, it does not clear (or decrement) the
+    // Qty Created column... when there's a value in that column those
+    // items don't show up in the Needs Creating view." Created and Qty
+    // Created are two views of ONE fact (how many of this line have been
+    // made), and this endpoint used to write only Created - so ticking
+    // Created on a 4-unit line left Qty Created at 0 (the print-plate
+    // queue still offered all 4), and, worse, a line ticked through the
+    // print-plate pane and then un-ticked here kept Qty Created =
+    // Quantity forever, so the plate queue thought nothing was left
+    // to make. Fix: this is now the ONE place that keeps them together -
+    // Created checked (directly, or via Fulfilled's cascade) means
+    // Qty Created = Quantity; Created unchecked means Qty Created = 0.
+    // Fulfilled being un-checked doesn't touch either, same as its
+    // existing "only clears its own column" rule. The print-plate delta
+    // endpoint below already maintains the same invariant from its side
+    // (Created is stamped exactly when Qty Created reaches Quantity).
+    $qtyCreatedValue = null;
+    $createdChanged = ($field === 'Created') || ($field === 'Fulfilled' && $checked);
+    if ($createdChanged && $qtyCreatedIndex !== false && $quantityIndex !== false && $createdColIndex !== false) {
+        $createdNow = trim($row[$createdColIndex] ?? '') !== '';
+        $rowQuantity = max(1, (int) trim($row[$quantityIndex] ?? '1'));
+        $qtyCreatedValue = $createdNow ? $rowQuantity : 0;
+        // Pad first: a short row (older CSV lines written before this
+        // column existed) would otherwise get the value written at the
+        // wrong offset.
+        while (count($row) <= $qtyCreatedIndex) {
+            $row[] = '';
+        }
+        $row[$qtyCreatedIndex] = (string) $qtyCreatedValue;
+    }
+
+    return ['ok' => true, 'value' => $newValue, 'cascadeValue' => $cascadeValue, 'qtyCreated' => $qtyCreatedValue];
 };
 
 if (count($orderIds) === 1) {
@@ -317,6 +360,7 @@ if (count($orderIds) === 1) {
     $found = false;
     $newValue = '';
     $cascadeValue = null;
+    $qtyCreatedResult = null;
     foreach ($rows as $i => &$row) {
         if ($i === 0) {
             continue; // header
@@ -332,6 +376,7 @@ if (count($orderIds) === 1) {
             }
             $newValue = $result['value'];
             $cascadeValue = $result['cascadeValue'];
+            $qtyCreatedResult = $result['qtyCreated'];
             $found = true;
             break;
         }
@@ -374,7 +419,8 @@ if (count($orderIds) === 1) {
         'value' => $newValue,
         'cascadeField' => $cascadeField,
         'cascadeValue' => $cascadeValue,
-        'build' => '2026-08-31-A',
+        'qtyCreated' => $qtyCreatedResult,
+        'build' => '2026-09-25-A',
     ]);
     exit;
 }
@@ -433,6 +479,7 @@ foreach ($orderIds as $oneOrderId) {
         'value' => $result['value'],
         'cascadeField' => $cascadeField,
         'cascadeValue' => $result['cascadeValue'],
+        'qtyCreated' => $result['qtyCreated'],
     ];
 }
 
