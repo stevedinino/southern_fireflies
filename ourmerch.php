@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-25-A
+// Build: 2026-09-26-A
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -1558,8 +1558,26 @@ $merchEditCatalog = [
       if (printPlatePane) printPlatePane.style.display = shown ? '' : 'none';
       if (merchTablePane) merchTablePane.style.display = shown ? 'none' : '';
     }
+    // 2026-09-26 (Steve): "When I'm in the Sort by Print Plate view and I
+    // click a checkbox, it reloads the page and takes me out of that view."
+    // The named view (merchAdminView) always survived a reload, but this
+    // checkbox lived only in the page, so every reload reset it to off.
+    // Persisted the same way as the other view controls: sessionStorage,
+    // so it survives the same-tab reload after a plate is checked off but
+    // doesn't linger into another day/tab. Restored just before the first
+    // applyView() below; applyView() still forces it off (and clears this
+    // saved value) whenever the view isn't Needs Creating, so it can never
+    // come back checked on a view where it doesn't apply.
+    function savePrintPlateState() {
+      try {
+        sessionStorage.setItem('merchAdminPrintPlate', printPlateToggle && printPlateToggle.checked ? '1' : '0');
+      } catch (e) { /* storage unavailable - just won't be remembered */ }
+    }
     if (printPlateToggle) {
-      printPlateToggle.addEventListener('change', updatePrintPlatePaneVisibility);
+      printPlateToggle.addEventListener('change', () => {
+        updatePrintPlatePaneVisibility();
+        savePrintPlateState();
+      });
     }
 
     function applyView(view) {
@@ -1577,6 +1595,7 @@ $merchEditCatalog = [
         printPlateLabel.style.display = isNeedsCreating ? '' : 'none';
         if (!isNeedsCreating && printPlateToggle) {
           printPlateToggle.checked = false;
+          savePrintPlateState();
         }
         updatePrintPlatePaneVisibility();
       }
@@ -1671,7 +1690,25 @@ $merchEditCatalog = [
 
     // Apply whatever view was restored (or the 'all' default) now that
     // the table and buttons above actually exist to apply it to.
+    // 2026-09-26: bring back the Sort by Print Plate checkbox first (only
+    // meaningful on Needs Creating - applyView() clears it on any other
+    // view), and, right after, the scroll position saved by the plate
+    // checkbox handler below so a reload after checking off a plate
+    // leaves you where you were instead of back at the top.
+    try {
+      if (printPlateToggle && currentView === 'needs-creating' && sessionStorage.getItem('merchAdminPrintPlate') === '1') {
+        printPlateToggle.checked = true;
+      }
+    } catch (e) { /* storage unavailable - checkbox just starts off */ }
     applyView(currentView);
+    try {
+      const savedScroll = JSON.parse(sessionStorage.getItem('merchAdminPlateScroll') || 'null');
+      sessionStorage.removeItem('merchAdminPlateScroll');
+      if (savedScroll && printPlateToggle && printPlateToggle.checked) {
+        if (printPlatePane) printPlatePane.scrollTop = savedScroll.pane || 0;
+        window.scrollTo(0, savedScroll.page || 0);
+      }
+    } catch (e) { /* nothing saved, or storage unavailable */ }
 
     // 2026-09-20 (Steve, item #4): per-plate "mark complete" checkboxes
     // - see the PHP loop above for how each one's data-deltas (this
@@ -1706,6 +1743,14 @@ $merchEditCatalog = [
           .then((r) => r.json())
           .then((data) => {
             if (data.ok) {
+              // 2026-09-26: remember where you were in the plate list -
+              // see the restore next to the first applyView() call above.
+              try {
+                sessionStorage.setItem('merchAdminPlateScroll', JSON.stringify({
+                  page: window.scrollY,
+                  pane: printPlatePane ? printPlatePane.scrollTop : 0
+                }));
+              } catch (e) { /* storage unavailable - reload just starts at the top */ }
               location.reload();
             } else {
               alert('Could not save: ' + (data.error || 'unknown error'));
