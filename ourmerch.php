@@ -1,5 +1,13 @@
 <?php
-// Build: 2026-09-26-A
+// 2026-09-26: the build stamp is now a real variable, printed in the page
+// footer (bottom of this page), instead of a comment plus a hand-typed
+// footer label that had been stuck at "2026-09-20-B" while this file's own
+// stamp moved on - which made a successful deploy look like a failed one.
+// Because it's executed code, the footer shows the version PHP is actually
+// RUNNING: if the footer is old after a deploy, it's stale OPcache (use
+// Clear PHP Cache), not a failed upload. Bump this on every change,
+// YYYY-MM-DD-[Letter], and it's the only place to bump.
+$merchBuild = '2026-09-26-C';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -908,13 +916,19 @@ $merchEditCatalog = [
           &nbsp;&mdash;&nbsp;
           <a href="export_emails.php" style="color: var(--accent);">Download Customer Emails &rarr;</a>
           &nbsp;&mdash;&nbsp;
+          <!-- 2026-09-26 (Steve, for Janet): the shirts and hats still to
+               be made, as a CSV she can open in Excel - see
+               merch_export_shirts_hats.php's header comment for exactly
+               which rows/columns it includes. -->
+          <a href="merch_export_shirts_hats.php" style="color: var(--accent);">Download Shirts &amp; Hats to Make (for Janet) &rarr;</a>
+          &nbsp;&mdash;&nbsp;
           <!-- 2026-08-29: bulk payment-reminder feature - preview-then-
                confirm list of invoiced-but-unpaid Ship customers (see
                merch_reminders.php's header comment). Opens in its own
                tab, same as the Pickup Checklist link above. -->
           <a href="merch_reminders.php" target="_blank" style="color: var(--accent);">Send Payment Reminders &rarr;</a>
           &nbsp;&mdash;&nbsp;
-          <span style="color:#bbb; font-size:0.75em;">Build 2026-09-20-B</span>
+          <span style="color:#bbb; font-size:0.75em;">Build <?= htmlspecialchars($merchBuild, ENT_QUOTES, 'UTF-8') ?></span>
         </p>
       </div>
     </div>
