@@ -71,7 +71,15 @@
  */
 function merch_reminder_required_columns(): array
 {
-    return ['OrderID', 'Item', 'Quantity', 'Name', 'Fulfillment', 'Email', 'Invoice Date', 'Pymt Date', 'Cancelled'];
+    // 2026-09-28: Size/Sleeve/Color added so a group's rows can be
+    // re-priced through merch_group_calculate() (same shape
+    // merch_invoice.php feeds it) - see merch_reminder_group_pricing()
+    // below. None of the three are in the $required subset either file
+    // passes to merch_csv_column_map(), so a CSV missing one (it
+    // shouldn't - every live row has always had these) degrades the
+    // same optional way Item/Quantity/Name/Cancelled already do here,
+    // rather than hard-failing the whole reminder page over it.
+    return ['OrderID', 'Item', 'Quantity', 'Name', 'Fulfillment', 'Email', 'Invoice Date', 'Pymt Date', 'Cancelled', 'Size', 'Sleeve', 'Color', 'Timestamp'];
 }
 
 /**
@@ -89,27 +97,31 @@ function merch_reminder_min_age_days(): int
 }
 
 /**
- * Parses an Invoice Date cell into a whole number of days since then
- * (as of right now), or null if the value is blank or can't be parsed
- * at all. Tries the app's own native format first (Y-m-d, written by
+ * Parses an Invoice Date cell into a DateTime (midnight, no time
+ * component), or null if blank or unparseable. Tries the app's own
+ * native format first (Y-m-d, written by
  * merch_invoice_stamp_invoice_date() in merch_invoice.php) and falls
  * back to a loose strtotime() parse for any row saved in a different
  * shape - e.g. from the CSV having been opened/saved in Excel at some
  * point, which is known to reformat dates on this file (M/D/YYYY and
- * M/D/YYYY H:MM have both been observed). A row whose date genuinely
- * can't be parsed is treated as NOT old enough (fails closed) rather
- * than guessed at, since this only gates an email send.
+ * M/D/YYYY H:MM have both been observed).
+ *
+ * Extracted 2026-09-28 from what used to be
+ * merch_reminder_invoice_age_days()'s own inline parsing, so
+ * merch_reminder_normalize_date() (below - used for grouping) can
+ * share the exact same tolerant parse instead of a second copy of it
+ * slowly drifting out of sync.
  */
-function merch_reminder_invoice_age_days(string $invoiceDate): ?int
+function merch_reminder_parse_date(string $raw): ?DateTime
 {
-    $invoiceDate = trim($invoiceDate);
-    if ($invoiceDate === '') {
+    $raw = trim($raw);
+    if ($raw === '') {
         return null;
     }
 
-    $parsed = DateTime::createFromFormat('Y-m-d', $invoiceDate);
-    if ($parsed === false || $parsed->format('Y-m-d') !== $invoiceDate) {
-        $timestamp = strtotime($invoiceDate);
+    $parsed = DateTime::createFromFormat('Y-m-d', $raw);
+    if ($parsed === false || $parsed->format('Y-m-d') !== $raw) {
+        $timestamp = strtotime($raw);
         if ($timestamp === false) {
             return null;
         }
@@ -117,9 +129,68 @@ function merch_reminder_invoice_age_days(string $invoiceDate): ?int
     }
 
     $parsed->setTime(0, 0, 0);
+    return $parsed;
+}
+
+/**
+ * Whole number of days between an Invoice Date cell and right now, or
+ * null if the value is blank or can't be parsed at all. A row whose
+ * date genuinely can't be parsed is treated as NOT old enough (fails
+ * closed) rather than guessed at, since this only gates an email send.
+ */
+function merch_reminder_invoice_age_days(string $invoiceDate): ?int
+{
+    $parsed = merch_reminder_parse_date($invoiceDate);
+    if ($parsed === null) {
+        return null;
+    }
     $today = new DateTime('today');
     $diff = $today->diff($parsed);
     return $diff->invert === 1 ? $diff->days : 0;
+}
+
+/**
+ * Same parse as merch_reminder_invoice_age_days(), but returns a
+ * canonical Y-m-d string instead of an age - used as part of the
+ * reminder-grouping key (2026-09-28) so two Invoice Date cells that
+ * are the same calendar day but different SAVED formats (7/26/2026 vs
+ * 2026-07-26 - both appear in the live file, see the format comment
+ * above) still land in the same group instead of splitting into two.
+ * Returns null on the same blank/unparseable cases
+ * merch_reminder_parse_date() does.
+ */
+function merch_reminder_normalize_date(string $raw): ?string
+{
+    $parsed = merch_reminder_parse_date($raw);
+    return $parsed !== null ? $parsed->format('Y-m-d') : null;
+}
+
+/**
+ * Tolerant parse of a Timestamp cell (order-submission time, NOT
+ * Invoice Date) into a DateTime, or null if blank/unparseable. Every
+ * row merch_order.php writes today uses 'Y-m-d H:i:s', but older rows
+ * predate that and were saved as 'n/j/Y' or 'n/j/Y G:i' (no leading
+ * zeros - PHP's date() never pads them, and Excel doesn't either when
+ * it's touched the file) - tried in order, falling back to strtotime()
+ * for anything else. Used only by
+ * merch_reminder_find_possibly_abandoned() below, where a timestamp
+ * that can't be parsed just means that row can't be compared (treated
+ * as null, not "now"), never a hard failure.
+ */
+function merch_reminder_parse_timestamp(string $raw): ?DateTime
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        return null;
+    }
+    foreach (['Y-m-d H:i:s', 'n/j/Y G:i', 'n/j/Y'] as $format) {
+        $parsed = DateTime::createFromFormat($format, $raw);
+        if ($parsed !== false) {
+            return $parsed;
+        }
+    }
+    $ts = strtotime($raw);
+    return $ts !== false ? (new DateTime())->setTimestamp($ts) : null;
 }
 
 /**
@@ -184,8 +255,135 @@ function merch_reminder_format_item_lines(array $items): array
 }
 
 /**
+ * Turns a group's raw CSV rows into merch_group_calculate()'s expected
+ * $items shape - one entry per ROW, unaggregated (unlike
+ * merch_reminder_aggregate_items() above, which merges same-item
+ * quantities purely for display). Pricing can't use the aggregated
+ * form: two rows for the same item can still carry different
+ * size/sleeve/color, which changes the unit price, so each row has to
+ * reach merch_group_calculate() as its own line - exactly how
+ * merch_invoice.php builds $items for the same function (see that
+ * file's grouping loop).
+ */
+function merch_reminder_items_for_pricing(array $groupRows, array $col): array
+{
+    return array_map(fn($row) => [
+        'item' => trim($row[$col['Item']] ?? ''),
+        'quantity' => (int) ($row[$col['Quantity']] ?? 1),
+        'size' => trim($row[$col['Size']] ?? ''),
+        'sleeve' => trim($row[$col['Sleeve']] ?? ''),
+        'color' => trim($row[$col['Color']] ?? ''),
+    ], $groupRows);
+}
+
+/**
+ * Re-prices a reminder group exactly the way merch_invoice.php priced
+ * it the first time - same merch_group_calculate() call, same
+ * $isShipping=true (reminders are Ship-only, see this file's header
+ * comment), same $isPrinted the group was already split on. 2026-09-28
+ * (Steve): "if we recalculate the invoice to put in the nudge, we need
+ * to try to constrain that invoice total to just the lines from that
+ * order" - that constraint is what merch_reminder_build_groups() /
+ * merch_reminder_group_for_anchor() enforce by grouping on Invoice
+ * Date now, not this function; this function just prices whatever
+ * rows it's handed.
+ *
+ * Returns null if any row's Item isn't recognized (same fail-closed
+ * behavior as merch_group_calculate() itself - shouldn't happen for a
+ * row that was successfully invoiced once already, but a hand-edited
+ * CSV could produce it). Returns a normal pricing array otherwise,
+ * though 'shipping' (and therefore 'total') inside it can still be
+ * null - that's the "needs a manual shipping quote" case
+ * merch_invoice.php itself would have hit, and since a manual override
+ * is only ever applied in memory for that one send (never written back
+ * to the CSV - see merch_invoice.php's $manualShipping handling),
+ * there's no way to recover what Steve actually typed in. Callers
+ * (merch_notify.php's merch_send_payment_reminder(),
+ * merch_reminders.php's preview) both treat shipping===null as "don't
+ * show a total for this one" rather than guessing at it - see the
+ * comment on $showTotal in merch_send_payment_reminder().
+ */
+function merch_reminder_group_pricing(array $groupRows, array $col, bool $isPrinted): ?array
+{
+    return merch_group_calculate(merch_reminder_items_for_pricing($groupRows, $col), true, $isPrinted);
+}
+
+/**
+ * Looks for a signal that a reminder group might already be moot: the
+ * same email address with a LATER row (any fulfillment, any item) that
+ * actually got paid. 2026-09-28 (Steve, via two real scenarios he'd
+ * seen): a customer's original request/invoice email landed in spam,
+ * so they re-submitted thinking it never went through, and the SECOND
+ * order is the one that got paid - or a customer got invoiced,
+ * realized they'd mis-ordered, and just quietly placed a new order
+ * instead of dealing with the wrong one. Either way, the OLD invoiced
+ * row sits here forever looking unpaid, when the customer likely
+ * considers the matter closed.
+ *
+ * Deliberately not a hard filter: this function only reports what it
+ * finds (Steve's call, 2026-09-28, via AskUserQuestion: flag it on the
+ * preview page and default that row's checkbox OFF, never auto-send
+ * and never silently hide it) - a later paid order is a strong hint,
+ * not proof; the old row could just as easily be a second, genuinely
+ * separate thing the customer still owes for.
+ *
+ * $afterTimestamp is the group's own latest row Timestamp (parsed) -
+ * pass null if it couldn't be parsed at all, which makes this return
+ * empty rather than risk comparing against nothing meaningful.
+ * Deliberately scans the FULL $rows array, not just eligible ones - a
+ * paid, cancelled, or Pickup row all count as "this customer moved on"
+ * signals just as much as a paid Ship row would.
+ *
+ * Returns a list of ['item'=>, 'quantity'=>, 'paidDate'=>] for display.
+ */
+function merch_reminder_find_possibly_abandoned(array $rows, array $col, string $email, ?DateTime $afterTimestamp): array
+{
+    if ($afterTimestamp === null) {
+        return [];
+    }
+
+    $found = [];
+    foreach ($rows as $row) {
+        $rowEmail = strtolower(trim($row[$col['Email']] ?? ''));
+        $paid = trim($row[$col['Pymt Date']] ?? '');
+        if ($rowEmail !== $email || $paid === '') {
+            continue;
+        }
+        $ts = merch_reminder_parse_timestamp(trim($row[$col['Timestamp']] ?? ''));
+        if ($ts === null || $ts <= $afterTimestamp) {
+            continue;
+        }
+        $found[] = [
+            'item' => trim($row[$col['Item']] ?? ''),
+            'quantity' => (int) ($row[$col['Quantity']] ?? 1),
+            'paidDate' => $paid,
+        ];
+    }
+    return $found;
+}
+
+/**
+ * Latest (parsed) Timestamp among a group's rows, or null if none of
+ * them parse - shared by merch_reminder_build_groups() below to feed
+ * merch_reminder_find_possibly_abandoned()'s $afterTimestamp.
+ */
+function merch_reminder_latest_timestamp(array $groupRows, array $col): ?DateTime
+{
+    $latest = null;
+    foreach ($groupRows as $row) {
+        $ts = merch_reminder_parse_timestamp(trim($row[$col['Timestamp']] ?? ''));
+        if ($ts !== null && ($latest === null || $ts > $latest)) {
+            $latest = $ts;
+        }
+    }
+    return $latest;
+}
+
+/**
  * Groups every eligible row into reminder groups, keyed by email +
- * printed-vs-shop account type (merch_is_printed_item(), pricing.php) -
+ * printed-vs-shop account type (merch_is_printed_item(), pricing.php)
+ * + Invoice Date (2026-09-28, normalized via
+ * merch_reminder_normalize_date() - see that function's comment) -
  * kept separate from merch_invoice.php's identity formula only in that
  * it drops the Name fallback (see this file's header comment for why).
  * Printed and shop items still group separately here for the same
@@ -193,6 +391,20 @@ function merch_reminder_format_item_lines(array $items): array
  * orders on different timelines as far as Steve's own bookkeeping
  * goes, even for the same customer, so one reminder shouldn't conflate
  * them.
+ *
+ * The Invoice Date component of the key is new as of 2026-09-28, added
+ * specifically so a real dollar total could be shown safely (see
+ * merch_reminder_group_pricing()): rows sharing one Invoice Date are
+ * exactly the set merch_invoice.php combined into ONE real invoice
+ * when Send Invoice was clicked (that button always stamps every row
+ * it combines with the same date), so re-pricing exactly that set
+ * reproduces the real total instead of risking a different bundle
+ * discount or shipping tier from blending two unrelated invoices
+ * together. The accepted edge case: two genuinely separate Send
+ * Invoice clicks for the same customer+type landing on the exact same
+ * calendar day would still merge here - rare enough (Steve invoices in
+ * daily batches, not per-customer-per-day) that it's not worth the
+ * extra machinery a stricter split would need.
  *
  * Returns a list of:
  *   [
@@ -206,6 +418,11 @@ function merch_reminder_format_item_lines(array $items): array
  *     'items'      => merch_reminder_aggregate_items() output,
  *     'invoiceDate'=> the earliest Invoice Date in the group (display only),
  *     'invoiceAgeDays' => days since that earliest Invoice Date (display only),
+ *     'pricing'    => merch_reminder_group_pricing() output - null if
+ *                      an item couldn't be priced; 'shipping'/'total'
+ *                      inside it can also independently be null (needs
+ *                      a manual quote) - see that function's comment,
+ *     'possiblyAbandoned' => merch_reminder_find_possibly_abandoned() output,
  *   ]
  * Ordered by anchorOrderId ascending, for a stable/readable preview list.
  */
@@ -222,7 +439,14 @@ function merch_reminder_build_groups(array $rows, array $col): array
     foreach ($eligible as $row) {
         $email = strtolower(trim($row[$col['Email']] ?? ''));
         $isPrinted = merch_is_printed_item(trim($row[$col['Item']] ?? ''));
-        $key = $email . '|' . ($isPrinted ? 'printed' : 'shop');
+        // Falls back to the raw trimmed string only if normalization
+        // somehow fails - it never should here, since
+        // merch_reminder_row_eligible() already required this exact
+        // cell to produce a non-null merch_reminder_invoice_age_days()
+        // result, which means merch_reminder_parse_date() already
+        // parsed it successfully.
+        $invoiceKey = merch_reminder_normalize_date(trim($row[$col['Invoice Date']] ?? '')) ?? trim($row[$col['Invoice Date']] ?? '');
+        $key = $email . '|' . ($isPrinted ? 'printed' : 'shop') . '|' . $invoiceKey;
         $groups[$key][] = $row;
     }
 
@@ -231,6 +455,8 @@ function merch_reminder_build_groups(array $rows, array $col): array
         $numericIds = array_map(fn($r) => (int) trim($r[$col['OrderID']] ?? '0'), $groupRows);
         $anchorIndex = array_search(min($numericIds), $numericIds, true);
         $anchor = $groupRows[$anchorIndex];
+        $isPrinted = merch_is_printed_item(trim($anchor[$col['Item']] ?? ''));
+        $email = strtolower(trim($anchor[$col['Email']] ?? ''));
 
         $invoiceDates = array_values(array_filter(array_map(fn($r) => trim($r[$col['Invoice Date']] ?? ''), $groupRows)));
         sort($invoiceDates);
@@ -241,10 +467,12 @@ function merch_reminder_build_groups(array $rows, array $col): array
             'orderIds' => array_map(fn($r) => trim($r[$col['OrderID']] ?? ''), $groupRows),
             'name' => trim($anchor[$col['Name']] ?? ''),
             'email' => trim($anchor[$col['Email']] ?? ''),
-            'isPrinted' => merch_is_printed_item(trim($anchor[$col['Item']] ?? '')),
+            'isPrinted' => $isPrinted,
             'items' => merch_reminder_aggregate_items($groupRows, $col),
             'invoiceDate' => $earliestInvoiceDate,
             'invoiceAgeDays' => $earliestInvoiceDate !== '' ? merch_reminder_invoice_age_days($earliestInvoiceDate) : null,
+            'pricing' => merch_reminder_group_pricing($groupRows, $col, $isPrinted),
+            'possiblyAbandoned' => merch_reminder_find_possibly_abandoned($rows, $col, $email, merch_reminder_latest_timestamp($groupRows, $col)),
         ];
     }
 
@@ -262,6 +490,12 @@ function merch_reminder_build_groups(array $rows, array $col): array
  * was rendered) - the send endpoint treats that as "skip it," not an
  * error, since the page having gone slightly stale between preview and
  * send is an expected race, not a bug.
+ *
+ * 2026-09-28: now also scopes the match to the anchor's own
+ * (normalized) Invoice Date, same as merch_reminder_build_groups() -
+ * see that function's comment for why. Keeps the re-derived group at
+ * send time identical in shape to whatever the preview page showed for
+ * this anchor, rather than the two drifting apart.
  */
 function merch_reminder_group_for_anchor(array $rows, array $col, string $anchorOrderId): ?array
 {
@@ -278,6 +512,7 @@ function merch_reminder_group_for_anchor(array $rows, array $col, string $anchor
 
     $anchorEmail = strtolower(trim($anchor[$col['Email']] ?? ''));
     $anchorIsPrinted = merch_is_printed_item(trim($anchor[$col['Item']] ?? ''));
+    $anchorInvoiceKey = merch_reminder_normalize_date(trim($anchor[$col['Invoice Date']] ?? '')) ?? trim($anchor[$col['Invoice Date']] ?? '');
 
     $groupRows = [];
     foreach ($rows as $row) {
@@ -285,7 +520,10 @@ function merch_reminder_group_for_anchor(array $rows, array $col, string $anchor
             continue;
         }
         $email = strtolower(trim($row[$col['Email']] ?? ''));
-        if ($email === $anchorEmail && merch_is_printed_item(trim($row[$col['Item']] ?? '')) === $anchorIsPrinted) {
+        $invoiceKey = merch_reminder_normalize_date(trim($row[$col['Invoice Date']] ?? '')) ?? trim($row[$col['Invoice Date']] ?? '');
+        if ($email === $anchorEmail
+            && merch_is_printed_item(trim($row[$col['Item']] ?? '')) === $anchorIsPrinted
+            && $invoiceKey === $anchorInvoiceKey) {
             $groupRows[] = $row;
         }
     }
@@ -296,5 +534,6 @@ function merch_reminder_group_for_anchor(array $rows, array $col, string $anchor
         'email' => trim($anchor[$col['Email']] ?? ''),
         'isPrinted' => $anchorIsPrinted,
         'items' => merch_reminder_aggregate_items($groupRows, $col),
+        'pricing' => merch_reminder_group_pricing($groupRows, $col, $anchorIsPrinted),
     ];
 }

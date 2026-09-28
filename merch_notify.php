@@ -57,12 +57,17 @@ use PHPMailer\PHPMailer\Exception;
  * knows to check ourmerch.php for new requests to process.
  *
  * $items is every line in this submission: an array of
- * ['item' => string, 'quantity' => int]. A single-item list (still the
- * common case) gets the same one-line wording this always had
- * ("Thanks for your X request!"); two or more items get a distinct
- * "here's your list" template (emails/submission-ack-list.*) instead
- * of an awkward "Thanks for your X & Y & Z request!" subject line -
- * see the 2026-09-14 multi-item list comment in merch_order.php.
+ * ['item' => string, 'quantity' => int, 'color' => string]. A
+ * single-item list (still the common case) gets the same one-line
+ * wording this always had ("Thanks for your X request!"); two or more
+ * items get a distinct "here's your list" template
+ * (emails/submission-ack-list.*) instead of an awkward "Thanks for your
+ * X & Y & Z request!" subject line - see the 2026-09-14 multi-item list
+ * comment in merch_order.php.
+ *
+ * 2026-09-28 (Steve): "which color each tool was" came up here too, not
+ * just on the invoice - same " - <color>" shape, same blank/"Not
+ * applicable" suppression, as merch_send_invoice() below.
  *
  * Returns ['sent' => bool, 'error' => string].
  */
@@ -71,12 +76,21 @@ function merch_send_submission_ack(string $name, string $email, array $items): a
     $safeName = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
     $isMultiItem = count($items) > 1;
 
+    $colorLabelFor = function (array $it): string {
+        $color = trim((string)($it['color'] ?? ''));
+        if (stripos($color, 'Not applicable') === 0) {
+            $color = '';
+        }
+        return $color !== '' ? ' - ' . $color : '';
+    };
+
     $itemListHtml = '';
     $itemListText = '';
     foreach ($items as $it) {
         $qtyLabel = ((int) $it['quantity']) > 1 ? " (x{$it['quantity']})" : '';
-        $itemListHtml .= '<li>' . htmlspecialchars($it['item'], ENT_QUOTES, 'UTF-8') . $qtyLabel . '</li>';
-        $itemListText .= '- ' . $it['item'] . $qtyLabel . "\n";
+        $colorLabel = $colorLabelFor($it);
+        $itemListHtml .= '<li>' . htmlspecialchars($it['item'], ENT_QUOTES, 'UTF-8') . $qtyLabel . htmlspecialchars($colorLabel, ENT_QUOTES, 'UTF-8') . '</li>';
+        $itemListText .= '- ' . $it['item'] . $qtyLabel . $colorLabel . "\n";
     }
 
     try {
@@ -94,8 +108,11 @@ function merch_send_submission_ack(string $name, string $email, array $items): a
         } else {
             // Unchanged wording/behavior from before the list existed -
             // deliberately no quantity suffix here, matching what this
-            // subject line has always said.
-            $itemLabel = $items[0]['item'] ?? '';
+            // subject line has always said. Color is appended the same
+            // " - <color>" way as the itemized list/invoice, since this
+            // subject line is the only place a single-item ack names the
+            // item at all (the body below has no item list to put it in).
+            $itemLabel = ($items[0]['item'] ?? '') . $colorLabelFor($items[0] ?? []);
             $mail->Subject = merch_load_string('emails/submission-ack.subject', ['itemLabel' => $itemLabel]);
             $mail->Body = merch_load_string('emails/submission-ack.html', ['name' => $safeName]);
             $mail->AltBody = merch_load_string('emails/submission-ack.text', ['name' => $name]);
@@ -449,12 +466,50 @@ function merch_send_manual_followup(array $pricing, string $name, string $email)
  * $isPrinted is true - same condition merch_send_invoice() uses for
  * VENMO_LAST4_PRINTED/PAYPAL_EMAIL_PRINTED above.
  *
+ * $pricing is optional (2026-09-28) - pass
+ * merch_reminder_groups.php's merch_reminder_group_pricing() output
+ * (or the 'pricing' key merch_reminder_group_for_anchor() now returns)
+ * to have this email state a real total instead of "reply and I'll
+ * send it over." Deliberately still no dollar amount at all when
+ * $pricing is null OR $pricing['shipping'] is null (needs a manual
+ * shipping quote that was never written back to the CSV - see
+ * merch_reminder_group_pricing()'s own comment) - a wrong number here
+ * is worse than the vaguer wording this always had, so this only ever
+ * shows a total it can actually stand behind.
+ *
  * Returns ['sent' => bool, 'error' => string].
  */
-function merch_send_payment_reminder(array $itemLines, string $name, string $email, bool $isPrinted): array
+function merch_send_payment_reminder(array $itemLines, string $name, string $email, bool $isPrinted, ?array $pricing = null): array
 {
     $itemLabel = implode(' & ', $itemLines);
     $safeName = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
+
+    // 2026-09-28 (Steve): the reminder never told customers HOW to pay
+    // at all - just "reply and I'll send the total." Same
+    // isPrinted-picks-the-account split merch_send_invoice() already
+    // uses for its Venmo line above, reused here rather than duplicated -
+    // unconditional (unlike the PayPal/Zelle/Check notes below, which
+    // only apply to printed items), since every order type has a Venmo
+    // account to pay into.
+    $venmoHandle = $isPrinted ? VENMO_HANDLE_PRINTED : VENMO_HANDLE_MERCH;
+
+    // 2026-09-28 (Steve): "showing a real recomputed total" - see the
+    // $pricing doc comment above for why shipping===null (not just
+    // $pricing===null) also has to fall back to the original wording.
+    // Both branches share the exact same English except for the middle
+    // clause, so there's no separate HTML/text divergence to keep in
+    // sync beyond the one word (<strong>) - built here in PHP, same
+    // "whole conditional sentence built once, injected as one token"
+    // pattern as $accountNoteHtml/$last4Html above.
+    $showTotal = $pricing !== null && $pricing['shipping'] !== null;
+    if ($showTotal) {
+        $totalAmount = '$' . number_format((float) $pricing['total'], 2);
+        $totalOrReplyHtml = "I'd love to start working on those, but I can't until they're paid for. The total comes to <strong>{$totalAmount}</strong> (tax and shipping included).";
+        $totalOrReplyText = "I'd love to start working on those, but I can't until they're paid for. The total comes to {$totalAmount} (tax and shipping included).";
+    } else {
+        $totalOrReplyHtml = "I'd love to start working on those, but I can't until they're paid for. If you'd like a reminder of the total, just reply to this email and I'll send it right over.";
+        $totalOrReplyText = $totalOrReplyHtml;
+    }
 
     $lineItemsHtml = '';
     $lineItemsText = '';
@@ -512,6 +567,8 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
         $mail->Body = merch_load_string('emails/payment-reminder.html', [
             'name' => $safeName,
             'lineItemsHtml' => $lineItemsHtml,
+            'totalOrReplyHtml' => $totalOrReplyHtml,
+            'venmoHandle' => htmlspecialchars($venmoHandle, ENT_QUOTES, 'UTF-8'),
             'payPalNoteHtml' => $payPalNoteHtml,
             'zelleNoteHtml' => $zelleNote['html'],
             'checkNoteHtml' => $checkNoteHtml,
@@ -519,6 +576,8 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
         $mail->AltBody = merch_load_string('emails/payment-reminder.text', [
             'name' => $name,
             'lineItemsText' => $lineItemsText,
+            'totalOrReplyText' => $totalOrReplyText,
+            'venmoHandle' => $venmoHandle,
             'payPalNoteText' => $payPalNoteText,
             'zelleNoteText' => $zelleNote['text'],
             'checkNoteText' => $checkNoteText,

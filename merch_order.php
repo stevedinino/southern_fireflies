@@ -502,8 +502,10 @@ if (function_exists('fastcgi_finish_request')) {
 // "thanks, we'll follow up" - no pricing or payment info here; that
 // only ever appears in the real invoice, sent later via the button.
 // One email for the whole list, listing every item, not one per line.
+// 2026-09-28 (Steve): pass color through too, same as the invoice email
+// already does - see merch_send_submission_ack()'s handling of it.
 $ackItems = array_map(
-    fn($line) => ['item' => $line['item'], 'quantity' => $line['quantity']],
+    fn($line) => ['item' => $line['item'], 'quantity' => $line['quantity'], 'color' => $line['color']],
     $pricedLines
 );
 $ackResult = merch_send_submission_ack($name, $email, $ackItems);
