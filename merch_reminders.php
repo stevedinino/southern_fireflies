@@ -49,6 +49,7 @@ $col = merch_csv_column_map(
 $groups = merch_reminder_build_groups($loaded['rows'], $col);
 $groupCount = count($groups);
 $minAgeDays = merch_reminder_min_age_days();
+$money = fn($n) => '$' . number_format((float) $n, 2);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -100,6 +101,20 @@ $minAgeDays = merch_reminder_min_age_days();
 
   .invoice-date-note { color: #888; font-size: 0.85em; margin-top: 4px; }
 
+  .total-note { font-size: 0.9em; margin-top: 4px; }
+  .total-note .total-amount { font-weight: bold; }
+  .total-note.total-unavailable { color: #888; font-style: italic; }
+
+  .abandoned-warning {
+    margin-top: 6px;
+    padding: 6px 10px;
+    font-size: 0.85em;
+    background: #fff6e0;
+    border: 1px solid #e8cf8a;
+    color: #6b5416;
+    border-radius: 3px;
+  }
+
   .account-badge {
     display: inline-block;
     padding: 1px 6px;
@@ -136,7 +151,8 @@ $minAgeDays = merch_reminder_min_age_days();
     Generated <?= date('F j, Y g:ia') ?> &mdash; every Ship customer invoiced <?= $minAgeDays ?>+ days ago who
     still hasn't paid, one row per invoice (printed items and shop items from the same customer are kept
     separate, same as how they were invoiced). <?= $groupCount ?> group<?= $groupCount === 1 ? '' : 's' ?> shown.
-    Uncheck anyone you don't want reminded, then click Send.
+    Uncheck anyone you don't want reminded, then click Send. A row marked &#9888; had a LATER order from the
+    same email that was already paid - it may already be settled; left unchecked by default, verify before sending.
   </p>
 
   <?php if ($groupCount === 0): ?>
@@ -151,9 +167,19 @@ $minAgeDays = merch_reminder_min_age_days();
 
     <ul class="reminder-list">
       <?php foreach ($groups as $group): ?>
-        <?php $itemLines = merch_reminder_format_item_lines($group['items']); ?>
+        <?php
+          $itemLines = merch_reminder_format_item_lines($group['items']);
+          // Same $showTotal condition merch_send_payment_reminder() uses
+          // (merch_notify.php) - a null total here means the actual
+          // email will fall back to "reply and I'll send it over" too,
+          // so the preview should say the same thing rather than a
+          // number Steve can't rely on.
+          $pricing = $group['pricing'];
+          $showTotal = $pricing !== null && $pricing['shipping'] !== null;
+          $isAbandonedCandidate = !empty($group['possiblyAbandoned']);
+        ?>
         <li class="reminder-row" data-anchor-order-id="<?= htmlspecialchars($group['anchorOrderId'], ENT_QUOTES) ?>">
-          <input type="checkbox" class="reminder-check" checked data-anchor-order-id="<?= htmlspecialchars($group['anchorOrderId'], ENT_QUOTES) ?>" />
+          <input type="checkbox" class="reminder-check" <?= $isAbandonedCandidate ? '' : 'checked' ?> data-anchor-order-id="<?= htmlspecialchars($group['anchorOrderId'], ENT_QUOTES) ?>" />
           <div class="reminder-body">
             <div class="reminder-summary">
               <span class="customer-name"><?= htmlspecialchars($group['name']) ?></span>
@@ -171,6 +197,20 @@ $minAgeDays = merch_reminder_min_age_days();
             <?php if ($group['invoiceDate'] !== ''): ?>
               <div class="invoice-date-note">
                 Invoiced <?= htmlspecialchars($group['invoiceDate']) ?><?php if ($group['invoiceAgeDays'] !== null): ?> (<?= $group['invoiceAgeDays'] ?> days ago)<?php endif; ?>
+              </div>
+            <?php endif; ?>
+            <?php if ($showTotal): ?>
+              <div class="total-note">Total in this reminder: <span class="total-amount"><?= $money($pricing['total']) ?></span></div>
+            <?php else: ?>
+              <div class="total-note total-unavailable">No total shown - needs a manual shipping quote; the email will just ask them to reply for it.</div>
+            <?php endif; ?>
+            <?php if ($isAbandonedCandidate): ?>
+              <div class="abandoned-warning">
+                &#9888; May already be settled - <?= htmlspecialchars($group['email']) ?> has a later order that was paid:
+                <?php foreach ($group['possiblyAbandoned'] as $paidRow): ?>
+                  <?= htmlspecialchars($paidRow['item']) ?><?= $paidRow['quantity'] > 1 ? ' (x' . $paidRow['quantity'] . ')' : '' ?> paid <?= htmlspecialchars($paidRow['paidDate']) ?>;
+                <?php endforeach; ?>
+                verify before sending.
               </div>
             <?php endif; ?>
           </div>

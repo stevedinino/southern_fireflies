@@ -466,9 +466,20 @@ function merch_send_manual_followup(array $pricing, string $name, string $email)
  * $isPrinted is true - same condition merch_send_invoice() uses for
  * VENMO_LAST4_PRINTED/PAYPAL_EMAIL_PRINTED above.
  *
+ * $pricing is optional (2026-09-28) - pass
+ * merch_reminder_groups.php's merch_reminder_group_pricing() output
+ * (or the 'pricing' key merch_reminder_group_for_anchor() now returns)
+ * to have this email state a real total instead of "reply and I'll
+ * send it over." Deliberately still no dollar amount at all when
+ * $pricing is null OR $pricing['shipping'] is null (needs a manual
+ * shipping quote that was never written back to the CSV - see
+ * merch_reminder_group_pricing()'s own comment) - a wrong number here
+ * is worse than the vaguer wording this always had, so this only ever
+ * shows a total it can actually stand behind.
+ *
  * Returns ['sent' => bool, 'error' => string].
  */
-function merch_send_payment_reminder(array $itemLines, string $name, string $email, bool $isPrinted): array
+function merch_send_payment_reminder(array $itemLines, string $name, string $email, bool $isPrinted, ?array $pricing = null): array
 {
     $itemLabel = implode(' & ', $itemLines);
     $safeName = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
@@ -481,6 +492,24 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
     // only apply to printed items), since every order type has a Venmo
     // account to pay into.
     $venmoHandle = $isPrinted ? VENMO_HANDLE_PRINTED : VENMO_HANDLE_MERCH;
+
+    // 2026-09-28 (Steve): "showing a real recomputed total" - see the
+    // $pricing doc comment above for why shipping===null (not just
+    // $pricing===null) also has to fall back to the original wording.
+    // Both branches share the exact same English except for the middle
+    // clause, so there's no separate HTML/text divergence to keep in
+    // sync beyond the one word (<strong>) - built here in PHP, same
+    // "whole conditional sentence built once, injected as one token"
+    // pattern as $accountNoteHtml/$last4Html above.
+    $showTotal = $pricing !== null && $pricing['shipping'] !== null;
+    if ($showTotal) {
+        $totalAmount = '$' . number_format((float) $pricing['total'], 2);
+        $totalOrReplyHtml = "I'd love to start working on those, but I can't until they're paid for. The total comes to <strong>{$totalAmount}</strong> (tax and shipping included).";
+        $totalOrReplyText = "I'd love to start working on those, but I can't until they're paid for. The total comes to {$totalAmount} (tax and shipping included).";
+    } else {
+        $totalOrReplyHtml = "I'd love to start working on those, but I can't until they're paid for. If you'd like a reminder of the total, just reply to this email and I'll send it right over.";
+        $totalOrReplyText = $totalOrReplyHtml;
+    }
 
     $lineItemsHtml = '';
     $lineItemsText = '';
@@ -538,6 +567,7 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
         $mail->Body = merch_load_string('emails/payment-reminder.html', [
             'name' => $safeName,
             'lineItemsHtml' => $lineItemsHtml,
+            'totalOrReplyHtml' => $totalOrReplyHtml,
             'venmoHandle' => htmlspecialchars($venmoHandle, ENT_QUOTES, 'UTF-8'),
             'payPalNoteHtml' => $payPalNoteHtml,
             'zelleNoteHtml' => $zelleNote['html'],
@@ -546,6 +576,7 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
         $mail->AltBody = merch_load_string('emails/payment-reminder.text', [
             'name' => $name,
             'lineItemsText' => $lineItemsText,
+            'totalOrReplyText' => $totalOrReplyText,
             'venmoHandle' => $venmoHandle,
             'payPalNoteText' => $payPalNoteText,
             'zelleNoteText' => $zelleNote['text'],

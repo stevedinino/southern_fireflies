@@ -88,7 +88,13 @@ foreach ($anchorIds as $anchorId) {
     }
 
     $itemLines = merch_reminder_format_item_lines($group['items']);
-    $sendResult = merch_send_payment_reminder($itemLines, $group['name'], $group['email'], $group['isPrinted']);
+    // 2026-09-28: $group['pricing'] is merch_reminder_group_for_anchor()'s
+    // fresh re-price of exactly this anchor's Invoice-Date-scoped rows -
+    // see that function and merch_send_payment_reminder()'s own doc
+    // comment for why a null total (needs a manual shipping quote) falls
+    // back to the original "reply and I'll send it over" wording instead
+    // of guessing.
+    $sendResult = merch_send_payment_reminder($itemLines, $group['name'], $group['email'], $group['isPrinted'], $group['pricing']);
 
     $results[] = [
         'anchorOrderId' => $anchorId,
