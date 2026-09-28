@@ -11,6 +11,8 @@
   </table>
   <p style='margin-top:20px;'>Don't forget your $50 deposit via Venmo (<strong>@{{venmoHandle}}</strong>) or PayPal (<strong>{{paypalEmail}}</strong>) to hold your spot &mdash; see our
   <a href='https://southernfirefliesretreats.com/cancellation.html' style='color:#628141;'>policies page</a> for deposit and payment details.</p>
+  {{checkNoteHtml}}
+  {{zelleNoteHtml}}
   <p>We can't wait to craft with you!</p>
   <p style='color:#888; font-size:13px; margin-top:30px;'>Southern Fireflies Retreat</p>
 </div>

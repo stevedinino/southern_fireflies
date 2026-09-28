@@ -8,4 +8,4 @@ Length of stay: {{fourDay}}
 Don't forget your $50 deposit via Venmo (@{{venmoHandle}}) or PayPal ({{paypalEmail}}) to hold your spot.
 See southernfirefliesretreats.com/cancellation.html for details.
 
-We can't wait to craft with you!
+{{checkNoteText}}{{zelleNoteText}}We can't wait to craft with you!

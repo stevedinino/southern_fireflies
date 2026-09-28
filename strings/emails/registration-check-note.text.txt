@@ -1,0 +1,1 @@
+Prefer to pay by check? Bring one made out to {{payableTo}} with you to the event.
