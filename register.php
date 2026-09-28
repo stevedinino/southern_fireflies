@@ -189,6 +189,39 @@ if ($name && $address && $phone && $email && $event) {
             $notesRowHtml = $safeMessage !== '' ? "<tr><td style='padding:6px 0; font-weight:bold; vertical-align:top;'>Notes:</td><td style='padding:6px 0;'>{$safeMessage}</td></tr>" : '';
             $notesLineText = $message !== '' ? "Notes: {$message}\n" : '';
 
+            // 2026-09-28 (Steve): check + Zelle options for registration
+            // deposits, modeled on merch_notify.php's own check/Zelle
+            // notes (CHECK_PAYABLE_TO_PRINTED/ZELLE_ID_PRINTED in
+            // config.php) - own string file per note, this file only
+            // adds the conditional gate and the blank-line separator
+            // merch_load_string() trims off (same convention as
+            // merch_notify.php's $last4Text/$checkNoteText). Check is
+            // unconditional - Janet already takes these in person at
+            // events. Zelle is off by default (ZELLE_ID_REG starts
+            // empty in config.php) - the capability is ready for
+            // whenever she decides to start offering it, without
+            // needing another code change at that point.
+            $checkNoteHtml = '';
+            $checkNoteText = '';
+            if (defined('CHECK_PAYABLE_TO_REG') && CHECK_PAYABLE_TO_REG) {
+                $checkNoteHtml = merch_load_string('emails/registration-check-note.html', [
+                    'payableTo' => htmlspecialchars(CHECK_PAYABLE_TO_REG, ENT_QUOTES, 'UTF-8'),
+                ]);
+                $checkNoteText = merch_load_string('emails/registration-check-note.text', [
+                    'payableTo' => CHECK_PAYABLE_TO_REG,
+                ]) . "\n\n";
+            }
+            $zelleNoteHtml = '';
+            $zelleNoteText = '';
+            if (defined('ZELLE_ID_REG') && ZELLE_ID_REG) {
+                $zelleNoteHtml = merch_load_string('emails/registration-zelle-note.html', [
+                    'zelleId' => htmlspecialchars(ZELLE_ID_REG, ENT_QUOTES, 'UTF-8'),
+                ]);
+                $zelleNoteText = merch_load_string('emails/registration-zelle-note.text', [
+                    'zelleId' => ZELLE_ID_REG,
+                ]) . "\n\n";
+            }
+
             $mail->Body = merch_load_string('emails/registration-confirmation.html', [
                 'name' => $safeName,
                 'eventLineHtml' => $eventLineHtml,
@@ -198,6 +231,8 @@ if ($name && $address && $phone && $email && $event) {
                 'notesRowHtml' => $notesRowHtml,
                 'venmoHandle' => htmlspecialchars(VENMO_HANDLE_MERCH, ENT_QUOTES, 'UTF-8'),
                 'paypalEmail' => htmlspecialchars(PAYPAL_EMAIL_MERCH, ENT_QUOTES, 'UTF-8'),
+                'checkNoteHtml' => $checkNoteHtml,
+                'zelleNoteHtml' => $zelleNoteHtml,
             ]);
             $mail->AltBody = merch_load_string('emails/registration-confirmation.text', [
                 'name' => $name,
@@ -208,6 +243,8 @@ if ($name && $address && $phone && $email && $event) {
                 'notesLineText' => $notesLineText,
                 'venmoHandle' => VENMO_HANDLE_MERCH,
                 'paypalEmail' => PAYPAL_EMAIL_MERCH,
+                'checkNoteText' => $checkNoteText,
+                'zelleNoteText' => $zelleNoteText,
             ]);
 
             $mail->send();

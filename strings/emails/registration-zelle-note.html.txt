@@ -1,0 +1,1 @@
+<p>Prefer Zelle? Send it to <strong>{{zelleId}}</strong> (Janet's phone number).</p>

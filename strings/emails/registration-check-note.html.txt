@@ -1,0 +1,1 @@
+<p>Prefer to pay by check? Bring one made out to <strong>{{payableTo}}</strong> with you to the event.</p>
