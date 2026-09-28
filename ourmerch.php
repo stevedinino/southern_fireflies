@@ -374,8 +374,16 @@ $merchEditCatalog = [
 
       if (!empty($rows)) {
           echo '<div class="merch-filter-bar" style="margin-bottom:10px;">';
+          // 2026-09-28 (Steve): retired "Active (hide Fulfilled)" - the
+          // narrower named views (Needs Invoicing/Payment/Creating/
+          // Shipping) already cover the actual workflow steps, and this
+          // one rarely got used. The 'active' case is left in applyView()
+          // below rather than deleted outright, purely so a stale
+          // sessionStorage value from before this change (someone's tab
+          // still holding 'active' as merchAdminView) degrades to the
+          // same "show everything not fulfilled" behavior it always had,
+          // instead of silently landing on a different view.
           echo '<button type="button" class="btn merch-view-btn" data-view="all" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">All</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="active" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">Active (hide Fulfilled)</button>';
           echo '<button type="button" class="btn merch-view-btn" data-view="needs-invoicing" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">Needs Invoicing</button>';
           echo '<button type="button" class="btn merch-view-btn" data-view="needs-payment" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">Needs Payment</button>';
           echo '<button type="button" class="btn merch-view-btn" data-view="needs-creating" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">Needs Creating</button>';
