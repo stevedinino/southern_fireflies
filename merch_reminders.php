@@ -149,8 +149,8 @@ $money = fn($n) => '$' . number_format((float) $n, 2);
   <h1>Payment Reminders</h1>
   <p class="generated-note">
     Generated <?= date('F j, Y g:ia') ?> &mdash; every Ship customer invoiced <?= $minAgeDays ?>+ days ago who
-    still hasn't paid, one row per invoice (printed items and shop items from the same customer are kept
-    separate, same as how they were invoiced). <?= $groupCount ?> group<?= $groupCount === 1 ? '' : 's' ?> shown.
+    still hasn't paid for a PRINTED item, one row per invoice (shirts/hats are Janet's own follow-up, not shown
+    here). <?= $groupCount ?> group<?= $groupCount === 1 ? '' : 's' ?> shown.
     Uncheck anyone you don't want reminded, then click Send. A row marked &#9888; had a LATER order from the
     same email that was already paid - it may already be settled; left unchecked by default, verify before sending.
   </p>
@@ -185,9 +185,11 @@ $money = fn($n) => '$' . number_format((float) $n, 2);
               <span class="customer-name"><?= htmlspecialchars($group['name']) ?></span>
               &mdash;
               <span class="customer-email"><?= htmlspecialchars($group['email']) ?></span>
-              <?php if ($group['isPrinted']): ?>
-                <span class="account-badge">Printed</span>
-              <?php endif; ?>
+              <?php // 2026-09-28: dropped the "Printed" badge here - every
+                    // group on this page is a printed item now (shop items
+                    // are excluded at the eligibility gate, see
+                    // merch_reminder_row_eligible()), so a badge that could
+                    // no longer ever read otherwise was just noise. ?>
             </div>
             <div class="item-lines">
               <?php foreach ($itemLines as $line): ?>
