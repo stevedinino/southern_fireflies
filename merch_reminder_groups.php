@@ -29,6 +29,12 @@
 //                        never makes sense for them (Steve, 2026-08-29,
 //                        confirmed via AskUserQuestion: "Ship orders
 //                        only").
+//                        AND the item is a PRINTED item (2026-09-28,
+//                        per Steve) - shirts/hats are Janet's account,
+//                        not Steve's, and she handles her own unpaid
+//                        follow-up separately; this feature only ever
+//                        nudges for the printed (3D-printed tools)
+//                        side. See merch_reminder_row_eligible() below.
 //
 // Also drops merch_invoice.php's blank-email "fall back to matching by
 // Name" rule entirely (see merch_reminder_row_eligible() below) - this
@@ -51,16 +57,22 @@
 // meantime, re-deriving from the anchor OrderID naturally drops it (or
 // skips the whole group if the anchor itself is no longer eligible).
 //
-// No dollar amount appears anywhere in this feature (items only) - see
-// merch_notify.php's merch_send_payment_reminder() for why: this
-// codebase never stores a combined invoice's final total anywhere on
-// the CSV (merch_invoice_stamp_invoice_date() only ever writes Invoice
-// Date, never Price/Tax/Shipping), so any total shown in a reminder
-// would have to be recomputed from scratch and could drift from what
-// the original invoice actually said if pricing.php's rules changed in
-// between sending the two. Steve's own call (2026-08-29, via
-// AskUserQuestion): no total, just a friendly nudge naming the items,
-// with the email itself offering to resend the total on request.
+// A dollar total was added 2026-09-28 (merch_reminder_group_pricing()
+// below) by re-running merch_group_calculate() over exactly the rows
+// that share one Invoice Date (the same set merch_invoice.php combined
+// into one real invoice originally - see that function's own comment
+// for why Invoice Date is the safe grouping unit for this). It still
+// isn't shown unconditionally, though: this codebase never stores a
+// combined invoice's final total anywhere on the CSV
+// (merch_invoice_stamp_invoice_date() only ever writes Invoice Date,
+// never Price/Tax/Shipping), and a manual shipping quote Steve typed in
+// at invoice time is never written back either - so whenever the
+// recompute can't resolve a real shipping number (needs manual quote),
+// the total is left out and the email falls back to its original
+// "reply and I'll send it over" wording rather than risk showing a
+// number that doesn't match what was actually invoiced. See
+// merch_reminder_group_pricing()'s and merch_send_payment_reminder()'s
+// own comments for the full reasoning.
 // ============================================================
 
 /**
@@ -195,10 +207,21 @@ function merch_reminder_parse_timestamp(string $raw): ?DateTime
 
 /**
  * True if $row is a candidate for a payment reminder on its own -
- * Ship, invoiced at least merch_reminder_min_age_days() days ago, not
- * yet paid, has an email on file, and not cancelled. Says nothing
- * about identity/grouping; see merch_reminder_build_groups() and
- * merch_reminder_group_for_anchor() for that.
+ * Ship, a PRINTED item, invoiced at least merch_reminder_min_age_days()
+ * days ago, not yet paid, has an email on file, and not cancelled.
+ * Says nothing about identity/grouping; see merch_reminder_build_groups()
+ * and merch_reminder_group_for_anchor() for that.
+ *
+ * 2026-09-28 (Steve): "we can leave out any shirt or hat orders from
+ * this function. Janet handles those" - shirts/hats pay to Janet's
+ * account (merch_is_printed_item() false), and she chases her own
+ * unpaid customers separately; at the time this was added Steve had
+ * already hand-sent her the handful of outstanding shirt/hat lines
+ * (four, by his count) himself. This is the single eligibility gate
+ * both merch_reminder_build_groups() (preview) and
+ * merch_reminder_group_for_anchor() (send-time re-derivation) call, so
+ * excluding shop items here is enough to keep them out of the whole
+ * feature - nothing downstream needs its own copy of this check.
  */
 function merch_reminder_row_eligible(array $row, array $col): bool
 {
@@ -207,7 +230,8 @@ function merch_reminder_row_eligible(array $row, array $col): bool
     $paid = trim($row[$col['Pymt Date']] ?? '');
     $email = trim($row[$col['Email']] ?? '');
     $cancelled = $col['Cancelled'] !== false && trim($row[$col['Cancelled']] ?? '') !== '';
-    if ($fulfillment !== 'Ship' || $invoiced === '' || $paid !== '' || $email === '' || $cancelled) {
+    $isPrinted = merch_is_printed_item(trim($row[$col['Item']] ?? ''));
+    if ($fulfillment !== 'Ship' || $invoiced === '' || $paid !== '' || $email === '' || $cancelled || !$isPrinted) {
         return false;
     }
     $ageDays = merch_reminder_invoice_age_days($invoiced);
