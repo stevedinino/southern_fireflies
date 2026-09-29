@@ -131,6 +131,38 @@ const MERCH_CLASSES = [
         'sleeves' => false,
         'oversize_surcharge' => false,
     ],
+    // 2026-09-29 (Steve, new product launch): holds the Creative
+    // Memories CCS blade set used with the Circle/Oval/Rectangle/
+    // Hearts cutting templates - a recessed tray lets a blade sit
+    // uncapped and ready to use without resting loose on the
+    // workspace. Blades are NOT included, same "customer already has
+    // these" assumption as the cutting-template holders themselves.
+    // Own class rather than a cutter-holder override (different price,
+    // different weight) - the "new KIND of item" case the file header
+    // above calls out. weight_oz is a placeholder pending Steve's
+    // scale (matches Tape Gun Holder's box as the closest-sized
+    // reference) - fix in place once he weighs one; it only feeds the
+    // mailer-tier math and the Shippo per-line weight column, nothing
+    // customer-facing depends on it being exact today. "Flat rate
+    // shipping" per Steve read as "small item, standard tier" (it's
+    // printed + filament-colored, same as every other mailer_tier
+    // class here) rather than the literal shirts/hats FLAT_SHIPPING_RATE
+    // mechanism, which requires printed=false - flag if that reading's
+    // wrong.
+    'blade-holder' => [
+        'price' => 22,
+        'weight_oz' => 3, // PLACEHOLDER - needs Steve's scale, see note above
+        'printed' => true,
+        'colors' => 'filament',
+        'rainbow' => false,
+        'stars_stripes' => true,
+        'shipping' => 'mailer_tier',
+        'max_qty_per_shipment' => null,
+        'max_qty_note' => null,
+        'sizes' => false,
+        'sleeves' => false,
+        'oversize_surcharge' => false,
+    ],
     'tool-stand' => [
         'price' => 12,
         // Weight is read for the Shippo export's per-LINE Item Weight
