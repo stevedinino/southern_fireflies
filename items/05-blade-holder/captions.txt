@@ -1,0 +1,4 @@
+01-demo.mp4: Blade Holder demo video - taking the cap off a blade and setting it into the recessed tray
+02-color-options.jpg: Blade Holder - available in a variety of filament colors
+03-color-closeup.jpg: Blade Holder - closer look at two color options
+04-stars-stripes.jpg: Blade Holder - Stars & Stripes red, white, and blue print (+$7 option)

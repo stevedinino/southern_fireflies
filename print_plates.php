@@ -221,6 +221,8 @@ const PRINT_PLATE_TEMPLATES = [
 // Tape Gun Add-On caps at 8 (2026-09-17, "ordered a la carte... odd
 // number combos"); the 2026-09-18 message re-confirmed Rectangle,
 // Tool Holder Stand, Circle, and Oval all cap at 2 and Hearts at 3.
+// Blade Holder caps at 3 (Steve, 2026-09-29 launch - "for the initial
+// print plate array, I can fit three of these on a plate").
 const PRINT_PLATE_SOLO_CAPACITY = [
     'Circle Cutter Holder' => 2,
     'Oval Cutter Holder' => 2,
@@ -229,6 +231,7 @@ const PRINT_PLATE_SOLO_CAPACITY = [
     'Tool Holder Stand' => 2,
     'Tape Gun Holder' => 5,
     'Tape Gun Add-On' => 8,
+    'Blade Holder' => 3,
 ];
 
 // ---- Small pieces that may share one plate (2026-09-25) --------
