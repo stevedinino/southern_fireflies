@@ -154,8 +154,19 @@ const MERCH_CLASSES = [
         'weight_oz' => 3, // PLACEHOLDER - needs Steve's scale, see note above
         'printed' => true,
         'colors' => 'filament',
-        'rainbow' => false,
+        'rainbow' => true, // Rainbow-eligible (Steve, 2026-09-29, live-site correction)
         'stars_stripes' => true,
+        // Steve, 2026-09-29: wants Blade Holder's Stars & Stripes color to
+        // total a flat $25 ($22 base + $3), NOT base + the standard
+        // STARS_STRIPES_SURCHARGE ($7 -> $29) every other stars_stripes
+        // item uses. 'stars_stripes_surcharge' is an OPTIONAL per-class
+        // override of that global constant - see its use in
+        // merch_unit_price() and the projection in merch_items.php.
+        // Omit this key (as every other class does) to keep using the
+        // global $7. Deliberately a class attribute, not a
+        // MERCH_ITEM_OVERRIDES entry, since 'blade-holder' is already a
+        // dedicated single-item class (see the comment above this one).
+        'stars_stripes_surcharge' => 3,
         'shipping' => 'mailer_tier',
         'max_qty_per_shipment' => null,
         'max_qty_note' => null,
@@ -264,6 +275,63 @@ function merch_bundle_discount(array $qtyByItem): float
         }
         if ($sets !== null && $sets > 0) {
             $total += $sets * $bundle['discount'];
+        }
+    }
+    return $total;
+}
+
+// FULL-SET DISCOUNTS (2026-09-29, Steve - Blade Holder launch promo,
+// added same day as the item to catch orders already coming in before
+// any were invoiced): a % off once a group contains AT LEAST ONE of
+// EVERY item named in 'items' - Steve, 2026-09-30, correcting an
+// earlier misread: "they need to order at least 1 heart, 1 circle, 1
+// oval, 1 rectangle and 1 blade box," not any 5-or-more combination of
+// them. Once that gate is met, the % applies to the FULL combined
+// subtotal of this rule's items - every unit of each, not capped to
+// one apiece - same as the group naturally already contains "or more"
+// per Steve's original phrasing. Similar in shape to MERCH_BUNDLES
+// above (also a named item set) but deliberately a separate mechanism,
+// not an extension of it: MERCH_BUNDLES is a flat $ PER COMPLETE SET
+// (min qty across items, so 2-of-each earns the discount twice), which
+// is wrong here - ordering 2 Circle + 1 each of the rest is still just
+// one "did they buy the whole family" gate, not two, and the discount
+// is a % of the (bigger) subtotal, not a flat amount that should
+// itself multiply.
+//
+// Applies to the combined subtotal of just this rule's items (same
+// "own line, not silently folded into total" precedent as
+// bundleDiscount below), not the whole order - an unrelated Tool Stand
+// or shirt in the same order neither gates it nor gets discounted.
+const MERCH_FULL_SET_DISCOUNTS = [
+    [
+        'items' => ['Circle Cutter Holder', 'Oval Cutter Holder', 'Rectangle Cutter Holder', 'Hearts Cutter Holder', 'Blade Holder'],
+        'percent' => 0.10,
+    ],
+];
+
+/**
+ * Total full-set discount for a group, given item-name => combined-qty
+ * and item-name => combined-lineSubtotal (both from
+ * merch_group_calculate()). A rule qualifies only when EVERY one of its
+ * items has qty >= 1 in the group (see comment above
+ * MERCH_FULL_SET_DISCOUNTS) - unlike merch_bundle_discount(), this is a
+ * qualify/don't-qualify gate, not a "how many complete sets" count.
+ * Returns 0.0 when nothing qualifies.
+ */
+function merch_full_set_discount(array $qtyByItem, array $subtotalByItem): float
+{
+    $total = 0.0;
+    foreach (MERCH_FULL_SET_DISCOUNTS as $rule) {
+        $qualifies = true;
+        $eligibleSubtotal = 0.0;
+        foreach ($rule['items'] as $ruleItem) {
+            if ((int) ($qtyByItem[$ruleItem] ?? 0) < 1) {
+                $qualifies = false;
+            }
+            $eligibleSubtotal += (float) ($subtotalByItem[$ruleItem] ?? 0.0);
+        }
+        if ($qualifies) {
+            $total += round($eligibleSubtotal * $rule['percent'], 2);
         }
     }
     return $total;
@@ -636,7 +704,13 @@ function merch_unit_price(string $item, string $size, string $sleeve, string $co
     }
 
     if (in_array($item, STARS_STRIPES_ELIGIBLE_ITEMS, true) && $color === 'Stars & Stripes (+$7)') {
-        $price += STARS_STRIPES_SURCHARGE;
+        // Per-item surcharge if the item's class set one (e.g. Blade
+        // Holder, 2026-09-29 - see MERCH_CLASSES), else the global
+        // STARS_STRIPES_SURCHARGE every other stars_stripes item uses.
+        // STARS_STRIPES_SURCHARGES is a full name=>amount projection
+        // (merch_items.php) so this is a plain lookup, not a second
+        // surcharge rule living here.
+        $price += STARS_STRIPES_SURCHARGES[$item] ?? STARS_STRIPES_SURCHARGE;
     }
 
     return $price;
@@ -698,6 +772,12 @@ function merch_pricing_for_js(): array
         'oversizeSurcharge' => OVERSIZE_SURCHARGE,
         'rainbowSurcharge' => RAINBOW_SURCHARGE,
         'starsStripesSurcharge' => STARS_STRIPES_SURCHARGE,
+        // Per-item overrides of the above (e.g. Blade Holder - see
+        // MERCH_CLASSES' 'stars_stripes_surcharge' and merch_unit_price()).
+        // Mirrors merch.php's calculateItemSubtotal(), which must check
+        // this map before falling back to starsStripesSurcharge, same as
+        // merch_unit_price() does server-side.
+        'starsStripesSurcharges' => STARS_STRIPES_SURCHARGES,
         'taxRate' => TAX_RATE,
         'flatShippingRate' => FLAT_SHIPPING_RATE,
         'flatShippingMaxQty' => FLAT_SHIPPING_MAX_QTY,
@@ -804,6 +884,7 @@ function merch_group_calculate(array $items, bool $isShipping, bool $isPrinted):
     $boxBaseQty = 0;
     $mailerTierQty = 0;
     $qtyByItem = []; // per-item totals for the bulky-item caps
+    $subtotalByItem = []; // per-item combined lineSubtotal, for merch_full_set_discount()
 
     foreach ($items as $it) {
         $unitPrice = merch_unit_price($it['item'], $it['size'] ?? '', $it['sleeve'] ?? '', $it['color'] ?? '');
@@ -833,11 +914,15 @@ function merch_group_calculate(array $items, bool $isShipping, bool $isPrinted):
         } elseif (in_array($it['item'], MAILER_TIER_ITEMS, true)) {
             $mailerTierQty += $qty;
         }
-        // Combined per-item totals feed merch_shipment_cap_note() and
-        // merch_bundle_discount() - the per-class bulky-item caps and
-        // the cross-item bundle discounts both apply to the whole
-        // group, regardless of the per-line or tier totals.
+        // Combined per-item totals feed merch_shipment_cap_note(),
+        // merch_bundle_discount(), and merch_full_set_discount() - the
+        // per-class bulky-item caps and the cross-item discounts all
+        // apply to the whole group, regardless of the per-line or tier
+        // totals. A given item name can appear as more than one line
+        // (same item, different colors), hence the running sum rather
+        // than assuming one line per item.
         $qtyByItem[$it['item']] = ($qtyByItem[$it['item']] ?? 0) + $qty;
+        $subtotalByItem[$it['item']] = ($subtotalByItem[$it['item']] ?? 0.0) + $lineSubtotal;
     }
 
     // Bundle discount before tax (2026-08-21): a complete bundle set in
@@ -850,7 +935,14 @@ function merch_group_calculate(array $items, bool $isShipping, bool $isPrinted):
     // shrinking a number the customer would try to reconcile against
     // the per-item prices.
     $bundleDiscount = merch_bundle_discount($qtyByItem);
-    $tax = round(($subtotal - $bundleDiscount) * TAX_RATE, 2);
+    // Quantity-threshold discount (2026-09-29, Steve - see
+    // MERCH_QUANTITY_DISCOUNTS above) - a separate, independently-stacking
+    // discount from the bundle discount above (different items, different
+    // rule shape), same "own returned field, not silently folded into a
+    // number the customer can't reconcile" treatment, and same
+    // before-tax timing.
+    $fullSetDiscount = merch_full_set_discount($qtyByItem, $subtotalByItem);
+    $tax = round(($subtotal - $bundleDiscount - $fullSetDiscount) * TAX_RATE, 2);
 
     $shipping = null;
     $shippingNote = '';
@@ -872,12 +964,13 @@ function merch_group_calculate(array $items, bool $isShipping, bool $isPrinted):
         }
     }
 
-    $total = $subtotal - $bundleDiscount + $tax + ($shipping ?? 0);
+    $total = $subtotal - $bundleDiscount - $fullSetDiscount + $tax + ($shipping ?? 0);
 
     return [
         'lines' => $lines,
         'subtotal' => $subtotal,
         'bundleDiscount' => $bundleDiscount,
+        'fullSetDiscount' => $fullSetDiscount,
         'tax' => $tax,
         'shipping' => $shipping,
         'shippingNote' => $shippingNote,

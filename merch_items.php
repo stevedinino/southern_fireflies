@@ -326,6 +326,7 @@ function merch_items_parse_captions(string $path): array
     $boxBaseItems = [];
     $rainbowItems = [];
     $starsStripesItems = [];
+    $starsStripesSurcharges = [];
     $gildanColorItems = [];
     $filamentColorItems = [];
     $qtyCaps = [];
@@ -359,6 +360,13 @@ function merch_items_parse_captions(string $path): array
         }
         if (!empty($a['stars_stripes'])) {
             $starsStripesItems[] = $name;
+            // Per-item override of the global STARS_STRIPES_SURCHARGE
+            // (e.g. Blade Holder, 2026-09-29 - see MERCH_CLASSES). Every
+            // stars_stripes item gets an entry here, falling back to the
+            // global constant when its class didn't set one, so
+            // merch_unit_price()/merch_pricing_for_js() can do a plain
+            // lookup instead of re-deriving this per call.
+            $starsStripesSurcharges[$name] = $a['stars_stripes_surcharge'] ?? STARS_STRIPES_SURCHARGE;
         }
         if (($a['colors'] ?? '') === 'gildan') {
             $gildanColorItems[] = $name;
@@ -383,6 +391,7 @@ function merch_items_parse_captions(string $path): array
     define('BOX_BASE_ITEMS', $boxBaseItems);
     define('RAINBOW_ELIGIBLE_ITEMS', $rainbowItems);
     define('STARS_STRIPES_ELIGIBLE_ITEMS', $starsStripesItems);
+    define('STARS_STRIPES_SURCHARGES', $starsStripesSurcharges);
     define('GILDAN_COLOR_ITEMS', $gildanColorItems);
     define('FILAMENT_COLOR_ITEMS', $filamentColorItems);
     // item => ['max' => int, 'noteKey' => strings/ key, 'shipping' => role].

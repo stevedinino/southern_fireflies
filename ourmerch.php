@@ -1347,7 +1347,7 @@ $merchEditCatalog = [
       span.innerHTML = `
         <div style="text-align:left; font-size:0.85em; border:1px solid #ddd; border-radius:6px; padding:8px; max-width:260px;">
           <div style="margin-bottom:6px;">${itemsList}</div>
-          <div style="color:#666; margin-bottom:6px;">Subtotal ${money(data.subtotal)}${data.bundleDiscount > 0 ? ` &minus; bundle discount ${money(data.bundleDiscount)}` : ''} + tax ${money(data.tax)}</div>
+          <div style="color:#666; margin-bottom:6px;">Subtotal ${money(data.subtotal)}${data.bundleDiscount > 0 ? ` &minus; bundle discount ${money(data.bundleDiscount)}` : ''}${data.fullSetDiscount > 0 ? ` &minus; full-set discount ${money(data.fullSetDiscount)}` : ''} + tax ${money(data.tax)}</div>
           <input type="number" class="merch-manual-shipping-input" placeholder="Shipping $" min="0" step="0.01" style="width:90px; padding:4px;" />
           <button type="button" class="btn merch-manual-shipping-send" style="padding:4px 8px; font-size:0.9em;">Send</button>
           <button type="button" class="btn merch-manual-shipping-cancel" style="padding:4px 8px; font-size:0.9em; background:#888;">Cancel</button>
