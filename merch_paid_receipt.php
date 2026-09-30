@@ -198,9 +198,11 @@ $document = merch_load_string('shipping/pickup-paid-receipt-template', [
     'orderIds' => implode(', ', $groupOrderIds),
     'lineItemsText' => rtrim($lineItemsText),
     'subtotal' => $money($pricing['subtotal']),
-    'discountLineText' => !empty($pricing['bundleDiscount'])
-        ? 'Bundle discount: -' . $money($pricing['bundleDiscount']) . "\n"
-        : '',
+    // Both can apply on the same order (different items, independently
+    // stacking rules - see MERCH_QUANTITY_DISCOUNTS in pricing.php).
+    'discountLineText' =>
+        (!empty($pricing['bundleDiscount']) ? 'Bundle discount: -' . $money($pricing['bundleDiscount']) . "\n" : '')
+        . (!empty($pricing['fullSetDiscount']) ? 'Full-set discount (Circle+Oval+Rectangle+Hearts+Blade): -' . $money($pricing['fullSetDiscount']) . "\n" : ''),
     'tax' => $money($pricing['tax']),
     'total' => $money($pricing['total']),
 ]);

@@ -300,10 +300,11 @@ if ($pricing === null) {
 if ($manualShipping !== null) {
     $pricing['shipping'] = $manualShipping;
     $pricing['shippingNote'] = '';
-    // bundleDiscount (2026-08-21) is part of the total the same way it
-    // is inside merch_group_calculate() - subtotal stays the plain sum
-    // of the lines, so it must come off here too.
-    $pricing['total'] = $pricing['subtotal'] - $pricing['bundleDiscount'] + $pricing['tax'] + $pricing['shipping'];
+    // bundleDiscount (2026-08-21) and fullSetDiscount (2026-09-29) are
+    // both part of the total the same way they are inside
+    // merch_group_calculate() - subtotal stays the plain sum of the
+    // lines, so both must come off here too.
+    $pricing['total'] = $pricing['subtotal'] - $pricing['bundleDiscount'] - $pricing['fullSetDiscount'] + $pricing['tax'] + $pricing['shipping'];
 }
 
 $name = trim($anchor[$col['Name']] ?? '');
@@ -343,12 +344,15 @@ if (!$isShipping) {
         'orderIds' => implode(', ', $groupOrderIds),
         'lineItemsText' => rtrim($lineItemsText),
         'subtotal' => $money($pricing['subtotal']),
-        // Own line incl. trailing newline when a bundle applies, empty
-        // otherwise - same convention as the invoice email's
-        // discount/shipping line tokens (merch_notify.php).
-        'discountLineText' => !empty($pricing['bundleDiscount'])
-            ? 'Bundle discount: -' . $money($pricing['bundleDiscount']) . "\n"
-            : '',
+        // Own line incl. trailing newline when a bundle and/or quantity
+        // discount applies, empty otherwise - same convention as the
+        // invoice email's discount/shipping line tokens
+        // (merch_notify.php). Both can apply at once (different items,
+        // independently-stacking rules - see MERCH_QUANTITY_DISCOUNTS in
+        // pricing.php), hence concatenating rather than picking one.
+        'discountLineText' =>
+            (!empty($pricing['bundleDiscount']) ? 'Bundle discount: -' . $money($pricing['bundleDiscount']) . "\n" : '')
+            . (!empty($pricing['fullSetDiscount']) ? 'Full-set discount (Circle+Oval+Rectangle+Hearts+Blade): -' . $money($pricing['fullSetDiscount']) . "\n" : ''),
         'tax' => $money($pricing['tax']),
         'total' => $money($pricing['total']),
     ]);
@@ -415,6 +419,7 @@ if ($pricing['shipping'] === null && $isShipping) {
         'customerEmail' => $email,
         'subtotal' => $pricing['subtotal'],
         'bundleDiscount' => $pricing['bundleDiscount'],
+        'fullSetDiscount' => $pricing['fullSetDiscount'],
         'tax' => $pricing['tax'],
     ]);
     exit;

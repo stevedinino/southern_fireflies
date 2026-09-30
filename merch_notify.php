@@ -247,17 +247,25 @@ function merch_send_invoice(array $pricing, string $name, string $email, bool $i
         $lineItemsText .= '- ' . $line['item'] . $qtyLabel . $colorLabel . ': ' . $money($line['lineSubtotal']) . "\n";
     }
 
-    // Bundle discount line (2026-08-21, Tape Gun Add-On launch) - shown
-    // as its own line between the items and the tax, so the customer
-    // can reconcile every number: item prices add up, then the discount
-    // comes off, then tax is 7% of what's actually owed (see
-    // merch_group_calculate()). Empty strings when no bundle applies,
-    // so the templates render exactly as before.
+    // Discount line(s) - shown as their own line(s) between the items and
+    // the tax, so the customer can reconcile every number: item prices
+    // add up, then discounts come off, then tax is 7% of what's actually
+    // owed (see merch_group_calculate()). Empty strings when neither
+    // applies, so the templates render exactly as before.
+    //   - Bundle discount (2026-08-21, Tape Gun Add-On launch)
+    //   - Quantity discount (2026-09-29, Blade Holder launch promo - see
+    //     MERCH_QUANTITY_DISCOUNTS in pricing.php)
+    // Both can apply on the same order (different items, independently
+    // stacking rules), hence appending rather than picking one.
     $discountLineHtml = '';
     $discountLineText = '';
     if (!empty($pricing['bundleDiscount'])) {
-        $discountLineHtml = '<li>Bundle discount: &minus;' . $money($pricing['bundleDiscount']) . '</li>';
-        $discountLineText = '- Bundle discount: -' . $money($pricing['bundleDiscount']) . "\n";
+        $discountLineHtml .= '<li>Bundle discount: &minus;' . $money($pricing['bundleDiscount']) . '</li>';
+        $discountLineText .= '- Bundle discount: -' . $money($pricing['bundleDiscount']) . "\n";
+    }
+    if (!empty($pricing['fullSetDiscount'])) {
+        $discountLineHtml .= '<li>Full-set discount (Circle+Oval+Rectangle+Hearts+Blade): &minus;' . $money($pricing['fullSetDiscount']) . '</li>';
+        $discountLineText .= '- Full-set discount (Circle+Oval+Rectangle+Hearts+Blade): -' . $money($pricing['fullSetDiscount']) . "\n";
     }
 
     $venmoHandle = $isPrinted ? VENMO_HANDLE_PRINTED : VENMO_HANDLE_MERCH;

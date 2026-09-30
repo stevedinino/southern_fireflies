@@ -69,15 +69,22 @@
   <!-- Wrapped in its own .content-wrapper so this gets the exact same
        max-width + centering + side-gutter behavior as every other boxed
        block on the page, instead of running full-bleed edge to edge. -->
-  <!-- Gift certificate promo banner (2026-09-16, holiday season) - same
-       markup/string as index.php and retreat-register.php, see
-       .giftcert-banner in layout.css. Sits above the existing
-       "how this works" demand-banner so it reads as its own callout,
-       not folded into that notice box. -->
+  <!-- Merch-page promo banner (2026-09-30, Blade Holder + "buy the set"
+       launch) - this used to be the same gift-certificate banner shared
+       with index.php/retreat-register.php (pages/giftcert-banner, see
+       those files), but Steve wants THIS page promoting the bundle deal
+       instead while the other two keep advertising gift certificates -
+       so this is now its own string (pages/merch-bundle-banner), not a
+       reworded copy of the shared one. Reuses .giftcert-banner's box
+       styling (layout.css) for the same "own callout, not folded into
+       the how-this-works notice box" visual treatment - no CSS change
+       needed, just a different string and no button (nothing to link
+       to; the deal is fulfilled by the item cards on this same page).
+       The item-grid Gift Certificates card (items/ catalog, "class:
+       none") is untouched - Steve confirmed that one stays as-is. -->
   <div class="content-wrapper">
     <div class="giftcert-banner">
-      <p><?= merch_load_string('pages/giftcert-banner') ?></p>
-      <a href="gift-certificate.php" class="btn">Get a Gift Certificate</a>
+      <p><?= merch_load_string('pages/merch-bundle-banner') ?></p>
     </div>
   </div>
 
@@ -904,7 +911,11 @@
         unitPrice += cfg.rainbowSurcharge;
       }
       if (cfg.starsStripesEligibleItems.includes(item) && color === 'Stars & Stripes (+$7)') {
-        unitPrice += cfg.starsStripesSurcharge;
+        // Per-item override (e.g. Blade Holder) if the server sent one,
+        // else the global surcharge - mirrors merch_unit_price()'s
+        // STARS_STRIPES_SURCHARGES lookup in pricing.php exactly, so the
+        // live estimate matches what the customer is actually charged.
+        unitPrice += cfg.starsStripesSurcharges?.[item] ?? cfg.starsStripesSurcharge;
       }
 
       return { unitPrice, subtotal: unitPrice * quantity };
@@ -1385,6 +1396,9 @@
       let html = `<div>Subtotal: ${formatMoney(pricing.subtotal)}</div>`;
       if (pricing.bundleDiscount) {
         html += `<div>Bundle discount: &minus;${formatMoney(pricing.bundleDiscount)}</div>`;
+      }
+      if (pricing.fullSetDiscount) {
+        html += `<div>Full-set discount (Circle+Oval+Rectangle+Hearts+Blade): &minus;${formatMoney(pricing.fullSetDiscount)}</div>`;
       }
       html += `<div>Tax (7%): ${formatMoney(pricing.tax)}</div>`;
       if (pricing.shipping !== null) {
