@@ -282,26 +282,24 @@ function merch_bundle_discount(array $qtyByItem): float
 
 // FULL-SET DISCOUNTS (2026-09-29, Steve - Blade Holder launch promo,
 // added same day as the item to catch orders already coming in before
-// any were invoiced): a % off once a group contains AT LEAST ONE of
-// EVERY item named in 'items' - Steve, 2026-09-30, correcting an
-// earlier misread: "they need to order at least 1 heart, 1 circle, 1
-// oval, 1 rectangle and 1 blade box," not any 5-or-more combination of
-// them. Once that gate is met, the % applies to the FULL combined
-// subtotal of this rule's items - every unit of each, not capped to
-// one apiece - same as the group naturally already contains "or more"
-// per Steve's original phrasing. Similar in shape to MERCH_BUNDLES
-// above (also a named item set) but deliberately a separate mechanism,
-// not an extension of it: MERCH_BUNDLES is a flat $ PER COMPLETE SET
-// (min qty across items, so 2-of-each earns the discount twice), which
-// is wrong here - ordering 2 Circle + 1 each of the rest is still just
-// one "did they buy the whole family" gate, not two, and the discount
-// is a % of the (bigger) subtotal, not a flat amount that should
-// itself multiply.
-//
-// Applies to the combined subtotal of just this rule's items (same
-// "own line, not silently folded into total" precedent as
-// bundleDiscount below), not the whole order - an unrelated Tool Stand
-// or shirt in the same order neither gates it nor gets discounted.
+// any were invoiced): a % off the WHOLE ORDER once a group contains AT
+// LEAST ONE of EVERY item named in 'items' - Steve, 2026-09-30 (two
+// corrections to the original ask, in order):
+//   1. It's a gate, not a threshold - "they need to order at least 1
+//      heart, 1 circle, 1 oval, 1 rectangle and 1 blade box," not any
+//      5-or-more combination of them.
+//   2. Once that gate is met, the % is taken off the ENTIRE order's
+//      subtotal - a Tool Stand or shirt riding along in the same order
+//      DOES get discounted too, not just the 5 gating items. (Earlier
+//      it was scoped to just those 5 items' combined subtotal - Steve
+//      corrected that 2026-09-30.)
+// Similar in shape to MERCH_BUNDLES above (also a named item set) but
+// deliberately a separate mechanism, not an extension of it:
+// MERCH_BUNDLES is a flat $ PER COMPLETE SET (min qty across items, so
+// 2-of-each earns the discount twice), which is wrong here - ordering
+// 2 Circle + 1 each of the rest is still just one "did they buy the
+// whole family" gate, not two, and the discount is a % of the (whole
+// order's) subtotal, not a flat amount that should itself multiply.
 const MERCH_FULL_SET_DISCOUNTS = [
     [
         'items' => ['Circle Cutter Holder', 'Oval Cutter Holder', 'Rectangle Cutter Holder', 'Hearts Cutter Holder', 'Blade Holder'],
@@ -311,27 +309,26 @@ const MERCH_FULL_SET_DISCOUNTS = [
 
 /**
  * Total full-set discount for a group, given item-name => combined-qty
- * and item-name => combined-lineSubtotal (both from
- * merch_group_calculate()). A rule qualifies only when EVERY one of its
- * items has qty >= 1 in the group (see comment above
- * MERCH_FULL_SET_DISCOUNTS) - unlike merch_bundle_discount(), this is a
- * qualify/don't-qualify gate, not a "how many complete sets" count.
- * Returns 0.0 when nothing qualifies.
+ * (from merch_group_calculate()) and the group's plain $subtotal (the
+ * whole order, not just this rule's items - see comment above
+ * MERCH_FULL_SET_DISCOUNTS). A rule qualifies only when EVERY one of
+ * its items has qty >= 1 in the group - unlike merch_bundle_discount(),
+ * this is a qualify/don't-qualify gate, not a "how many complete sets"
+ * count. Returns 0.0 when nothing qualifies.
  */
-function merch_full_set_discount(array $qtyByItem, array $subtotalByItem): float
+function merch_full_set_discount(array $qtyByItem, float $subtotal): float
 {
     $total = 0.0;
     foreach (MERCH_FULL_SET_DISCOUNTS as $rule) {
         $qualifies = true;
-        $eligibleSubtotal = 0.0;
         foreach ($rule['items'] as $ruleItem) {
             if ((int) ($qtyByItem[$ruleItem] ?? 0) < 1) {
                 $qualifies = false;
+                break;
             }
-            $eligibleSubtotal += (float) ($subtotalByItem[$ruleItem] ?? 0.0);
         }
         if ($qualifies) {
-            $total += round($eligibleSubtotal * $rule['percent'], 2);
+            $total += round($subtotal * $rule['percent'], 2);
         }
     }
     return $total;
@@ -884,7 +881,6 @@ function merch_group_calculate(array $items, bool $isShipping, bool $isPrinted):
     $boxBaseQty = 0;
     $mailerTierQty = 0;
     $qtyByItem = []; // per-item totals for the bulky-item caps
-    $subtotalByItem = []; // per-item combined lineSubtotal, for merch_full_set_discount()
 
     foreach ($items as $it) {
         $unitPrice = merch_unit_price($it['item'], $it['size'] ?? '', $it['sleeve'] ?? '', $it['color'] ?? '');
@@ -915,14 +911,13 @@ function merch_group_calculate(array $items, bool $isShipping, bool $isPrinted):
             $mailerTierQty += $qty;
         }
         // Combined per-item totals feed merch_shipment_cap_note(),
-        // merch_bundle_discount(), and merch_full_set_discount() - the
-        // per-class bulky-item caps and the cross-item discounts all
-        // apply to the whole group, regardless of the per-line or tier
-        // totals. A given item name can appear as more than one line
-        // (same item, different colors), hence the running sum rather
-        // than assuming one line per item.
+        // merch_bundle_discount(), and merch_full_set_discount()'s own
+        // gate check - the per-class bulky-item caps and the cross-item
+        // discounts all apply to the whole group, regardless of the
+        // per-line or tier totals. A given item name can appear as more
+        // than one line (same item, different colors), hence the
+        // running sum rather than assuming one line per item.
         $qtyByItem[$it['item']] = ($qtyByItem[$it['item']] ?? 0) + $qty;
-        $subtotalByItem[$it['item']] = ($subtotalByItem[$it['item']] ?? 0.0) + $lineSubtotal;
     }
 
     // Bundle discount before tax (2026-08-21): a complete bundle set in
@@ -935,13 +930,14 @@ function merch_group_calculate(array $items, bool $isShipping, bool $isPrinted):
     // shrinking a number the customer would try to reconcile against
     // the per-item prices.
     $bundleDiscount = merch_bundle_discount($qtyByItem);
-    // Quantity-threshold discount (2026-09-29, Steve - see
-    // MERCH_QUANTITY_DISCOUNTS above) - a separate, independently-stacking
-    // discount from the bundle discount above (different items, different
-    // rule shape), same "own returned field, not silently folded into a
-    // number the customer can't reconcile" treatment, and same
-    // before-tax timing.
-    $fullSetDiscount = merch_full_set_discount($qtyByItem, $subtotalByItem);
+    // Full-set discount (2026-09-29, Steve - see MERCH_FULL_SET_DISCOUNTS
+    // above) - a separate, independently-stacking discount from the
+    // bundle discount above (different gating condition, and this one's
+    // % is taken off the WHOLE order's $subtotal once it qualifies, not
+    // just its own gating items - see that constant's comment). Same
+    // "own returned field, not silently folded into a number the
+    // customer can't reconcile" treatment, and same before-tax timing.
+    $fullSetDiscount = merch_full_set_discount($qtyByItem, $subtotal);
     $tax = round(($subtotal - $bundleDiscount - $fullSetDiscount) * TAX_RATE, 2);
 
     $shipping = null;
