@@ -7,7 +7,7 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-09-26-C';
+$merchBuild = '2026-10-02-A';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -554,14 +554,19 @@ $merchEditCatalog = [
                       continue; // $displayOrder is derived from $header, so this shouldn't happen - skip rather than warn on a missing index
                   }
                   $cell = $data[$i] ?? '';
-                  if ($col === 'Created' || $col === 'Fulfilled' || $col === 'Pymt Date' || $col === 'Cancelled') {
-                      // All four are the same pattern now: one column,
+                  if ($col === 'Created' || $col === 'Fulfilled' || $col === 'Cancelled') {
+                      // All three are the same pattern now: one column,
                       // checkbox toggles it, blank-or-date is the whole
-                      // status. Fulfilled and Pymt Date also cascade
-                      // into another column server-side (see
-                      // merch_update.php) - the shared JS handler below
-                      // updates whichever second cell that touches,
-                      // found via matching data-order-id + data-field.
+                      // status. Fulfilled also cascades into another
+                      // column server-side (see merch_update.php) - the
+                      // shared JS handler below updates whichever
+                      // second cell that touches, found via matching
+                      // data-order-id + data-field. (Pymt Date used to
+                      // be a fourth field sharing this exact branch -
+                      // see the 'Pymt Date' branch below for why it
+                      // split off 2026-09-30, and note it still falls
+                      // back to this same plain-checkbox shape for a
+                      // not-yet-invoiced row.)
                       // Cancelled (2026-08-23) has no cascade - see
                       // merch_update.php - and no gating on this end
                       // either: it can be checked/unchecked at any
@@ -600,6 +605,71 @@ $merchEditCatalog = [
                       echo '<input type="checkbox" class="merch-status-toggle" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="' . htmlspecialchars($fieldName, ENT_QUOTES) . '" aria-label="' . htmlspecialchars($fieldName . ' - order ' . $orderId, ENT_QUOTES) . '" ' . ($isChecked ? 'checked' : '') . ' />';
                       echo '<br /><span class="merch-status-date" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="' . htmlspecialchars($fieldName, ENT_QUOTES) . '" style="font-size:0.8em; color:#888;">' . htmlspecialchars($displayValue) . '</span>';
                       echo '</td>';
+                  } elseif ($col === 'Pymt Date') {
+                      // 2026-09-30: split off from the shared
+                      // Created/Fulfilled/Cancelled checkbox branch
+                      // above. Once an order's actually been invoiced,
+                      // marking it Paid is no longer a plain per-row
+                      // checkbox - see merch_mark_paid.php's header
+                      // comment for why (Steve gets ONE payment
+                      // covering a whole combined invoice, and ticking
+                      // every row in that invoice separately took as
+                      // many clicks as it had lines). This mirrors the
+                      // Invoice Date cell just below: a button while
+                      // unpaid, plain text + an undo action once paid.
+                      //
+                      // BEFORE an order's been invoiced there's no
+                      // invoice group to mark paid against yet, so this
+                      // still falls back to the ORIGINAL plain checkbox
+                      // (same markup/classes/JS handler as Created/
+                      // Fulfilled/Cancelled above) - preserves the
+                      // existing ability to mark something paid ahead
+                      // of a real invoice, and its Invoice Date
+                      // backfill cascade, exactly as before this
+                      // change (see merch_update.php).
+                      $pymtDate = trim($cell);
+                      if (!$rowIsInvoiced) {
+                          $isChecked = $pymtDate !== '';
+                          $looksLikeDate = $pymtDate !== '' && strtotime($pymtDate) !== false;
+                          $displayValue = $looksLikeDate ? $pymtDate : ($isChecked ? '(marked before this page existed)' : '');
+                          echo '<td style="padding:6px; border-bottom:1px solid #eee; text-align:center; white-space:nowrap;">';
+                          echo '<input type="checkbox" class="merch-status-toggle" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="Pymt Date" aria-label="' . htmlspecialchars('Pymt Date - order ' . $orderId, ENT_QUOTES) . '" ' . ($isChecked ? 'checked' : '') . ' />';
+                          echo '<br /><span class="merch-status-date" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="Pymt Date" style="font-size:0.8em; color:#888;">' . htmlspecialchars($displayValue) . '</span>';
+                          echo '</td>';
+                      } else {
+                          echo '<td style="padding:6px; border-bottom:1px solid #eee; text-align:center; white-space:nowrap;">';
+                          echo '<span class="merch-status-date" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="Pymt Date">';
+                          if ($pymtDate !== '') {
+                              // Same legacy-data fallback as the
+                              // not-yet-invoiced branch above (and every
+                              // other date-or-blank column) - some early
+                              // rows have a non-date "checked" marker
+                              // hand-typed before this page tracked real
+                              // dates.
+                              $pymtLooksLikeDate = strtotime($pymtDate) !== false;
+                              echo '<span style="font-size:0.85em; color:#888;">' . htmlspecialchars($pymtLooksLikeDate ? $pymtDate : '(marked before this page existed)') . '</span>';
+                              // Undo, same spirit as Un-invoice below -
+                              // just clears this ONE row's own Pymt
+                              // Date via merch_update.php's existing
+                              // checked=0 path (Pymt Date has no
+                              // clear-only gating like Invoice Date -
+                              // a normal boolean column can always be
+                              // unchecked). Never touches any other row
+                              // in the group, same "uncheck only clears
+                              // its own column" rule as everywhere else.
+                              echo ' <button type="button" class="btn merch-unpay-btn" style="padding:2px 6px; font-size:0.7em; background:#888;" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '">Unmark</button>';
+                          } elseif ($rowIsCancelled) {
+                              // No Mark Paid button on a cancelled,
+                              // already-invoiced row - matches the
+                              // server-side guard in
+                              // merch_mark_paid.php.
+                              echo '<span style="font-size:0.85em; color:#bbb;">&mdash;</span>';
+                          } else {
+                              echo '<button type="button" class="btn merch-markpaid-btn" style="padding:4px 10px; font-size:0.85em;" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '">Mark Paid</button>';
+                          }
+                          echo '</span>';
+                          echo '</td>';
+                      }
                   } elseif ($col === 'Invoice Date') {
                       // Not a checkbox - clicking this sends a real
                       // email (and may stamp several OTHER rows too, if
@@ -934,6 +1004,11 @@ $merchEditCatalog = [
                confirm list of invoiced-but-unpaid Ship customers (see
                merch_reminders.php's header comment). Opens in its own
                tab, same as the Pickup Checklist link above. -->
+          <!-- 2026-10-02 (Steve): read-only "what can I ship from what I have
+               printed, and what should I print next?" report - see
+               merch_stock.php / merch_stock_report.php header comments. -->
+          <a href="merch_stock_report.php" target="_blank" style="color: var(--accent);">Stock &amp; Print Plan &rarr;</a>
+          &nbsp;&mdash;&nbsp;
           <a href="merch_reminders.php" target="_blank" style="color: var(--accent);">Send Payment Reminders &rarr;</a>
           &nbsp;&mdash;&nbsp;
           <span style="color:#bbb; font-size:0.75em;">Build <?= htmlspecialchars($merchBuild, ENT_QUOTES, 'UTF-8') ?></span>
@@ -1514,6 +1589,84 @@ $merchEditCatalog = [
             alert('Could not un-invoice - check your connection and try again.');
             btn.disabled = false;
             btn.textContent = 'Un-invoice';
+          });
+      });
+    });
+
+    // 2026-09-30: "Mark Paid" button - mirrors Send Invoice's grouping
+    // (see merch_mark_paid.php's header comment). May stamp OTHER rows
+    // too (every other unpaid row from the same invoice - same
+    // customer, same Invoice Date as this one), so on success this
+    // reloads rather than trying to guess which cells to update in
+    // place, same as sendInvoice() above.
+    document.querySelectorAll('.merch-markpaid-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const orderId = btn.dataset.orderId;
+        if (!confirm('Mark this order paid (and any other unpaid order from the same invoice)?')) {
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Marking…';
+
+        fetch('merch_mark_paid.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `orderId=${encodeURIComponent(orderId)}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.ok) {
+              location.reload();
+            } else {
+              alert('Could not mark paid: ' + (data.error || 'unknown error'));
+              btn.disabled = false;
+              btn.textContent = 'Mark Paid';
+            }
+          })
+          .catch(() => {
+            alert('Could not mark paid - check your connection and try again.');
+            btn.disabled = false;
+            btn.textContent = 'Mark Paid';
+          });
+      });
+    });
+
+    // 2026-09-30: "Unmark" - clears just this ONE row's own Pymt Date
+    // via merch_update.php's existing checked=0 path (no clear-only
+    // gating for this field, unlike Invoice Date - a normal boolean
+    // column can always be unchecked). Never touches any other row in
+    // the group. Reload on success so the cell swaps back to a Mark
+    // Paid button, same as Un-invoice above.
+    document.querySelectorAll('.merch-unpay-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const orderId = btn.dataset.orderId;
+        if (!confirm("Clear this order's Pymt Date? This only affects this one order, not the rest of its invoice.")) {
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Clearing…';
+
+        fetch('merch_update.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `orderId=${encodeURIComponent(orderId)}&field=${encodeURIComponent('Pymt Date')}&checked=0&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.ok) {
+              location.reload();
+            } else {
+              alert('Could not clear: ' + (data.error || 'unknown error'));
+              btn.disabled = false;
+              btn.textContent = 'Unmark';
+            }
+          })
+          .catch(() => {
+            alert('Could not clear - check your connection and try again.');
+            btn.disabled = false;
+            btn.textContent = 'Unmark';
           });
       });
     });
