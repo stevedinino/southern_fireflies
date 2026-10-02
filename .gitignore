@@ -39,3 +39,8 @@ login_throttle.json
 # Same sensitivity as those CSVs - real customer names/emails/payment amounts -
 # so never committed.
 /reports/*
+
+# 2026-10-02: printed-parts inventory (merch_stock_report.php / merch_stock_upload.php) -
+# live server state replaced via the upload box, like the CSVs above. Never committed:
+# a deploy would otherwise overwrite the live inventory with whatever is checked in.
+inventory.csv
