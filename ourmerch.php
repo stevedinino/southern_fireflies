@@ -7,7 +7,7 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-10-02-A';
+$merchBuild = '2026-10-03-A';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -1017,6 +1017,19 @@ $merchEditCatalog = [
     </div>
   </div>
 
+  <!-- 2026-10-03: Mark Paid choice for Ship orders (see the click handler). -->
+  <dialog id="merch-markpaid-dialog" style="max-width:420px; border:1px solid #ccc; border-radius:8px; padding:18px 20px;">
+    <form method="dialog">
+      <p style="margin:0 0 6px; font-weight:bold;">Mark this order paid?</p>
+      <p style="margin:0 0 16px; font-size:0.9em; color:#555;">This also marks any other unpaid order from the same invoice. You can email the customer a "payment received" note, or mark it quietly.</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+        <button type="submit" value="cancel" class="btn">Cancel</button>
+        <button type="submit" value="silent" class="btn">Mark paid silently</button>
+        <button type="submit" value="email" class="btn" autofocus>Mark paid &amp; email receipt</button>
+      </div>
+    </form>
+  </dialog>
+
   <script>
     // 2026-08-23 (#2): catalog data for the Item-edit form below - see
     // the PHP that builds $merchEditCatalog near the top of this file.
@@ -1599,10 +1612,42 @@ $merchEditCatalog = [
     // customer, same Invoice Date as this one), so on success this
     // reloads rather than trying to guess which cells to update in
     // place, same as sendInvoice() above.
+    //
+    // 2026-10-03 (Steve): Ship rows now get a three-way choice - mark paid
+    // AND email a "payment received" note, mark paid silently, or cancel.
+    // confirm() can only do two choices, hence the <dialog>. Pickup rows
+    // never get the email (separate fulfilment path), so they keep the
+    // plain confirm and always post notify=0.
+    const markPaidDialog = document.getElementById('merch-markpaid-dialog');
+
+    function askMarkPaidChoice() {
+      // Resolves to 'email', 'silent' or 'cancel'.
+      return new Promise((resolve) => {
+        const finish = (choice) => {
+          markPaidDialog.removeEventListener('close', onClose);
+          resolve(choice);
+        };
+        const onClose = () => finish(markPaidDialog.returnValue || 'cancel');
+        markPaidDialog.returnValue = 'cancel';
+        markPaidDialog.addEventListener('close', onClose);
+        markPaidDialog.showModal();
+      });
+    }
+
     document.querySelectorAll('.merch-markpaid-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const orderId = btn.dataset.orderId;
-        if (!confirm('Mark this order paid (and any other unpaid order from the same invoice)?')) {
+        const tr = btn.closest('tr');
+        const isShip = !!tr && tr.dataset.shipping === '1';
+
+        let notify = '0';
+        if (isShip && markPaidDialog && typeof markPaidDialog.showModal === 'function') {
+          const choice = await askMarkPaidChoice();
+          if (choice === 'cancel') {
+            return;
+          }
+          notify = choice === 'email' ? '1' : '0';
+        } else if (!confirm('Mark this order paid (and any other unpaid order from the same invoice)?')) {
           return;
         }
 
@@ -1612,11 +1657,16 @@ $merchEditCatalog = [
         fetch('merch_mark_paid.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `orderId=${encodeURIComponent(orderId)}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
+          body: `orderId=${encodeURIComponent(orderId)}&notify=${notify}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
         })
           .then((r) => r.json())
           .then((data) => {
             if (data.ok) {
+              // Payment is saved either way; only tell Steve when a
+              // requested email did NOT go out, so he can send it by hand.
+              if (data.email && data.email.requested && data.email.status !== 'sent') {
+                alert('Marked paid, but the payment-received email was NOT sent: ' + (data.email.reason || 'unknown reason'));
+              }
               location.reload();
             } else {
               alert('Could not mark paid: ' + (data.error || 'unknown error'));
