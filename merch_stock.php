@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-02-A
+// Build: 2026-10-03-A
 // ============================================================
 // Printed-stock matching + print-next planning logic, behind
 // merch_stock_report.php (admin report) and merch_stock_upload.php
@@ -163,10 +163,83 @@ function merch_stock_resolve_color(string $raw, array $idx): array
 }
 
 /**
+ * Which way is the inventory grid laid out? Looks at the first row and the
+ * first column (ignoring the corner cell) and counts how many labels are
+ * real part names vs real site colors in each place:
+ *   'parts-down'  - parts down the first column, colors across the top
+ *   'colors-down' - colors down the first column, parts across the top
+ * Ties (including a file that recognizes nothing) are 'parts-down', the
+ * original layout, so a non-inventory file fails exactly as before.
+ * 2026-10-03 (Steve): 27 colors made 27 columns hard to manage; he wants
+ * 27 rows x 8 part columns, so either layout must work.
+ */
+function merch_stock_detect_orientation(array $rows, array $validItems, array $validColors): string
+{
+    $itemIdx = merch_stock_item_index($validItems);
+    $colorIdx = merch_stock_color_index($validColors);
+
+    $labelKind = function (string $label) use ($itemIdx, $colorIdx): string {
+        $label = trim($label);
+        if ($label === '' || strtolower($label) === 'total') {
+            return '';
+        }
+        if (isset($itemIdx[merch_stock_norm($label)])) {
+            return 'item';
+        }
+        if (merch_stock_resolve_color($label, $colorIdx)[0] !== null) {
+            return 'color';
+        }
+        return '';
+    };
+
+    $rows = array_values(array_filter($rows, fn($r) => is_array($r) && count(array_filter($r, fn($c) => trim((string) $c) !== '')) > 0));
+    if (empty($rows)) {
+        return 'parts-down';
+    }
+    $top = ['item' => 0, 'color' => 0];
+    foreach (array_slice($rows[0], 1) as $label) {
+        $k = $labelKind((string) $label);
+        if ($k !== '') {
+            $top[$k]++;
+        }
+    }
+    $side = ['item' => 0, 'color' => 0];
+    foreach (array_slice($rows, 1) as $r) {
+        $k = $labelKind((string) ($r[0] ?? ''));
+        if ($k !== '') {
+            $side[$k]++;
+        }
+    }
+    $partsDownScore = $side['item'] + $top['color'];
+    $colorsDownScore = $top['item'] + $side['color'];
+    return $colorsDownScore > $partsDownScore ? 'colors-down' : 'parts-down';
+}
+
+/** Flip a ragged row set so rows become columns (short rows padded blank). */
+function merch_stock_transpose(array $rows): array
+{
+    $width = 0;
+    foreach ($rows as $r) {
+        $width = max($width, is_array($r) ? count($r) : 0);
+    }
+    $out = [];
+    for ($c = 0; $c < $width; $c++) {
+        $line = [];
+        foreach ($rows as $r) {
+            $line[] = is_array($r) ? (string) ($r[$c] ?? '') : '';
+        }
+        $out[] = $line;
+    }
+    return $out;
+}
+
+/**
  * Parse Steve's inventory sheet exported as CSV: a grid with parts down
  * the first column and colors across the first row, e.g.
  *     Part,#15 CM Blue,#17 Teal,...,Total
  *     Blade Holder,5,1,...,13
+ * OR the flipped layout (colors down the first column, parts across the
+ * first row) - detected automatically, see merch_stock_detect_orientation().
  * (Excel's own Total row/column, blank columns and blank rows are
  * ignored.) $rows is an already-fgetcsv'd list of rows.
  *
@@ -178,13 +251,21 @@ function merch_stock_resolve_color(string $raw, array $idx): array
  *   'warnings'  other problems (non-numeric cells, unknown part names)
  *   'columnsRecognized' / 'rowsRecognized' - sanity counts, used by the
  *               upload endpoint to refuse a file that isn't an inventory
- *               grid at all.
+ *               grid at all. (Counted AFTER any flip: "columns" are always
+ *               colors and "rows" always parts.)
+ *   'orientation' 'parts-down' | 'colors-down' - which layout the file used
  */
 function merch_stock_parse_grid(array $rows, array $validItems, array $validColors): array
 {
-    $out = ['stock' => [], 'unmatched' => [], 'warnings' => [], 'columnsRecognized' => 0, 'rowsRecognized' => 0];
+    $out = ['stock' => [], 'unmatched' => [], 'warnings' => [], 'columnsRecognized' => 0, 'rowsRecognized' => 0, 'orientation' => 'parts-down'];
     $itemIdx = merch_stock_item_index($validItems);
     $colorIdx = merch_stock_color_index($validColors);
+
+    // Normalize to parts-down/colors-across, then everything below is unchanged.
+    if (merch_stock_detect_orientation($rows, $validItems, $validColors) === 'colors-down') {
+        $out['orientation'] = 'colors-down';
+        $rows = merch_stock_transpose($rows);
+    }
 
     // First non-empty row is the header.
     $header = null;
