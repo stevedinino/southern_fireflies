@@ -1,0 +1,9 @@
+<div style='font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif; color:#333; max-width:500px; margin:0 auto;'>
+  <p>Hi {{name}}!</p>
+  <p>Thanks so much - your payment has been received. Here's what we're working on for you:</p>
+  <ul>
+    {{lineItemsHtml}}
+  </ul>
+  <p>We'll start on these as soon as we can and will email you when they ship. Thank you for your support, we appreciate it!</p>
+  <p>Mr. Firefly (aka Steve)<br/>Southern Fireflies Retreats</p>
+</div>

@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-30-A
+// Build: 2026-10-03-A
 // ============================================================
 // Admin-triggered "Mark Paid" one-click group action, mirroring
 // merch_invoice.php's "Send Invoice" grouping (Steve: he gets ONE
@@ -40,6 +40,19 @@
 // Never touches Invoice Date itself, never touches Created/Fulfilled,
 // never touches a row outside this one invoice group - same
 // one-field-only discipline as every other write in merch_update.php.
+//
+// 2026-10-03 (Steve): optional "payment received" email. The click handler
+// in ourmerch.php now asks "Mark paid & email receipt / Mark paid silently
+// / Cancel" and posts notify=1 only for the first choice; anything else
+// (including a stale page that doesn't know about the flag) is silent.
+// The email goes ONCE per click, to the anchor's customer, listing the
+// Ship rows that click just marked - and only for Ship orders: Pickup at
+// retreat is a separate creation/fulfilment path and gets no email. It is
+// sent AFTER the CSV is written and the lock released (an SMTP send can
+// take up to ~10s and merch_order.php writes the same file), and a failed
+// send never undoes the payment - the response just reports it so the page
+// can say so. See merch_send_payment_received() in merch_notify.php; no
+// CC/BCC to Steve, per his request.
 // Unmarking a single row (a mistaken click) still goes through
 // merch_update.php's existing field=Pymt Date&checked=0 path - that's
 // a plain single-row clear, nothing about grouping applies to it, so it
@@ -64,6 +77,8 @@ session_write_close();
 $csvFile = __DIR__ . '/merchandise.csv';
 
 $orderId = isset($_POST['orderId']) ? trim($_POST['orderId']) : '';
+// Opt-in only: a missing/any-other value means "mark silently".
+$notify = (($_POST['notify'] ?? '') === '1');
 if ($orderId === '' || !ctype_digit($orderId)) {
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => 'Invalid request.']);
@@ -109,7 +124,7 @@ if (isset($header[0])) {
 }
 
 $col = [];
-foreach (['OrderID', 'Name', 'Email', 'Invoice Date', 'Pymt Date', 'Cancelled'] as $name) {
+foreach (['OrderID', 'Name', 'Email', 'Invoice Date', 'Pymt Date', 'Cancelled', 'Fulfillment', 'Item', 'Quantity', 'Color'] as $name) {
     $col[$name] = array_search($name, $header, true);
 }
 if ($col['OrderID'] === false || $col['Invoice Date'] === false || $col['Pymt Date'] === false) {
@@ -184,6 +199,7 @@ $groupByName = ($anchorEmail === '');
 // Invoice combine - see the file-level comment above), not yet paid,
 // and not cancelled.
 $paidOrderIds = [];
+$paidLines = []; // for the optional receipt email: one entry per row just marked
 foreach ($rows as $i => &$row) {
     if ($i === 0) {
         continue; // header
@@ -204,6 +220,12 @@ foreach ($rows as $i => &$row) {
         // single-row cascade instead of stamping "now."
         $row[$col['Pymt Date']] = $anchorInvoiceDate;
         $paidOrderIds[] = $row[$col['OrderID']];
+        $paidLines[] = [
+            'fulfillment' => $col['Fulfillment'] !== false ? trim($row[$col['Fulfillment']] ?? '') : '',
+            'item' => $col['Item'] !== false ? trim($row[$col['Item']] ?? '') : '',
+            'quantity' => $col['Quantity'] !== false ? max(1, (int) trim($row[$col['Quantity']] ?? '1')) : 1,
+            'color' => $col['Color'] !== false ? trim($row[$col['Color']] ?? '') : '',
+        ];
     }
 }
 unset($row);
@@ -233,9 +255,56 @@ fflush($handle);
 flock($handle, LOCK_UN);
 fclose($handle);
 
+// ---- Optional "payment received" email (see the file-level comment). ----
+// Everything above is done: the CSV is written and the lock released, so
+// a slow mail server can't hold up the live order form.
+$emailResult = ['requested' => $notify, 'status' => 'off', 'reason' => ''];
+if ($notify) {
+    $anchorFulfillment = $col['Fulfillment'] !== false ? trim($anchor[$col['Fulfillment']] ?? '') : '';
+    $toEmail = $col['Email'] !== false ? trim($anchor[$col['Email']] ?? '') : '';
+    $toName = $col['Name'] !== false ? trim($anchor[$col['Name']] ?? '') : '';
+    $receiptItems = [];
+    foreach ($paidLines as $l) {
+        if ($l['fulfillment'] === 'Ship') {
+            $receiptItems[] = ['item' => $l['item'], 'quantity' => $l['quantity'], 'color' => $l['color']];
+        }
+    }
+
+    if ($anchorFulfillment !== 'Ship' || empty($receiptItems)) {
+        $emailResult['status'] = 'skipped';
+        $emailResult['reason'] = 'Pickup at retreat orders do not get the payment email.';
+    } elseif ($toEmail === '' || !filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+        $emailResult['status'] = 'skipped';
+        $emailResult['reason'] = 'There is no valid email address on file for this customer.';
+    } else {
+        try {
+            $notifyFile = __DIR__ . '/merch_notify.php';
+            if (!is_file($notifyFile)) {
+                throw new RuntimeException('merch_notify.php is missing.');
+            }
+            // Only loaded when an email is actually wanted, so silent
+            // marking never depends on the mail libraries being present.
+            require_once $notifyFile;
+            $sent = merch_send_payment_received($receiptItems, $toName !== '' ? $toName : 'there', $toEmail);
+            if ($sent['sent']) {
+                $emailResult['status'] = 'sent';
+                $emailResult['to'] = $toEmail;
+            } else {
+                $emailResult['status'] = 'failed';
+                $emailResult['reason'] = $sent['error'] !== '' ? $sent['error'] : 'The mail server did not accept it.';
+            }
+        } catch (Throwable $e) {
+            error_log('merch_mark_paid payment-received email failed: ' . $e->getMessage());
+            $emailResult['status'] = 'failed';
+            $emailResult['reason'] = $e->getMessage();
+        }
+    }
+}
+
 echo json_encode([
     'ok' => true,
     'paidOrderIds' => $paidOrderIds,
     'paidDate' => $anchorInvoiceDate,
-    'build' => '2026-09-30-A',
+    'email' => $emailResult,
+    'build' => '2026-10-03-A',
 ]);

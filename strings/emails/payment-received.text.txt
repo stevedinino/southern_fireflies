@@ -1,0 +1,10 @@
+Hi {{name}}!
+
+Thanks so much - your payment has been received. Here's what we're working on for you:
+
+{{lineItemsText}}
+
+We'll start on these as soon as we can and will email you when they ship. Thank you for your support, we appreciate it!
+
+Mr. Firefly (aka Steve)
+Southern Fireflies Retreats

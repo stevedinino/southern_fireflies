@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-29-A
+// Build: 2026-10-03-A
 // ============================================================
 // Shared customer-notification logic for merch orders. Used by:
 //   - merch_order.php  (automatic, one order, right at submission)
@@ -8,6 +8,9 @@
 //   - merch_send_reminders.php (2026-08-29: bulk payment-reminder
 //     nudge for already-invoiced-but-unpaid Ship orders - see
 //     merch_send_payment_reminder() below and merch_reminder_groups.php)
+//   - merch_mark_paid.php (2026-10-03: optional "payment received" email
+//     when Steve clicks Mark Paid on a Ship order - see
+//     merch_send_payment_received() at the bottom of this file)
 // so the email copy can never drift between these paths - there is
 // exactly one place that builds each kind of email.
 //
@@ -595,6 +598,90 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
     } catch (Exception $e) {
         $err = isset($mail) ? $mail->ErrorInfo : $e->getMessage();
         error_log('Southern Fireflies payment-reminder email failed: ' . $err);
+        return ['sent' => false, 'error' => $err];
+    }
+}
+
+/**
+ * The words and line items of the "payment received" email, with no
+ * sending involved - split out so tests/test_payment_received_email.php
+ * can check exactly what a customer would read without an SMTP server.
+ * Wording is Steve's (2026-10-03), in strings/emails/payment-received.*
+ * so he can edit it without touching PHP.
+ *
+ * $items: each ['item' => string, 'quantity' => int, 'color' => string] -
+ * the same shape (and the same " - <color>" / "Not applicable"
+ * suppression) merch_send_submission_ack() uses, so the receipt names
+ * things exactly the way the original acknowledgment did. Deliberately NO
+ * dollar amount anywhere: the email only confirms payment arrived, which
+ * keeps it independent of how tax/shipping are stored, and an order with a
+ * manual shipping quote has no stored total to show anyway.
+ *
+ * Returns ['subject' => string, 'html' => string, 'text' => string].
+ */
+function merch_payment_received_content(array $items, string $name): array
+{
+    $lineItemsHtml = '';
+    $lineItemsText = '';
+    foreach ($items as $it) {
+        $qty = (int) ($it['quantity'] ?? 1);
+        $qtyLabel = $qty > 1 ? " (x{$qty})" : '';
+        $color = trim((string) ($it['color'] ?? ''));
+        if (stripos($color, 'Not applicable') === 0) {
+            $color = '';
+        }
+        $colorLabel = $color !== '' ? ' - ' . $color : '';
+        $lineItemsHtml .= '<li>' . htmlspecialchars((string) $it['item'], ENT_QUOTES, 'UTF-8') . $qtyLabel . htmlspecialchars($colorLabel, ENT_QUOTES, 'UTF-8') . '</li>';
+        $lineItemsText .= '- ' . $it['item'] . $qtyLabel . $colorLabel . "\n";
+    }
+
+    return [
+        'subject' => merch_load_string('emails/payment-received.subject'),
+        'html' => merch_load_string('emails/payment-received.html', [
+            'name' => htmlspecialchars($name, ENT_QUOTES, 'UTF-8'),
+            'lineItemsHtml' => $lineItemsHtml,
+        ]),
+        'text' => merch_load_string('emails/payment-received.text', [
+            'name' => $name,
+            'lineItemsText' => rtrim($lineItemsText),
+        ]),
+    ];
+}
+
+/**
+ * 2026-10-03 (Steve): when Mark Paid is clicked on a Ship order, let the
+ * customer know their payment arrived and that work will start - replying
+ * to "did you get my payment?" emails by hand had become a real time sink.
+ * Sent from merch_mark_paid.php only when Steve chooses "Mark paid &
+ * email receipt" in the confirmation dialog; "Mark paid silently" never
+ * reaches this function.
+ *
+ * Deliberately NO CC/BCC to Steve (his explicit request - his inbox is
+ * already full of copies): unlike the invoice and reminder emails this
+ * one goes to the customer only. If you ever want a copy, it is one
+ * addBCC() line, the same way merch_send_submission_ack() does it.
+ *
+ * Returns ['sent' => bool, 'error' => string], same as every other send
+ * function here. Callers must NOT hold the merchandise.csv lock while
+ * calling this - an SMTP send can take up to the 10s timeout above, and
+ * the live order form writes to the same file.
+ */
+function merch_send_payment_received(array $items, string $name, string $email): array
+{
+    $content = merch_payment_received_content($items, $name);
+
+    try {
+        $mail = merch_mailer();
+        $mail->addAddress($email, $name);
+        $mail->isHTML(true);
+        $mail->Subject = $content['subject'];
+        $mail->Body = $content['html'];
+        $mail->AltBody = $content['text'];
+        $mail->send();
+        return ['sent' => true, 'error' => ''];
+    } catch (Exception $e) {
+        $err = (isset($mail) && $mail->ErrorInfo !== '') ? $mail->ErrorInfo : $e->getMessage();
+        error_log('Southern Fireflies payment-received email failed: ' . $err);
         return ['sent' => false, 'error' => $err];
     }
 }
