@@ -1,9 +1,10 @@
 <?php
-// Build: 2026-10-02-A
+// Build: 2026-10-03-A
 // ============================================================
 // Admin-only endpoint behind merch_stock_report.php's "Replace inventory"
 // box. Steve keeps his printed-parts inventory in an Excel sheet (parts
-// down the side, colors across the top); he saves it as CSV and uploads
+// down the side, colors across the top - or, since 2026-10-03, the
+// flipped layout, detected automatically); he saves it as CSV and uploads
 // it here, replacing inventory.csv wholesale. inventory.csv is live
 // server state like merchandise.csv (gitignored, blocked from the web by
 // .htaccess's *.csv rule) - a deploy must never overwrite it.
@@ -117,5 +118,6 @@ echo json_encode([
     'pieces' => merch_stock_total($parsed['stock']),
     'unmatched' => $parsed['unmatched'],
     'warnings' => $parsed['warnings'],
-    'build' => '2026-10-02-A',
+    'orientation' => $parsed['orientation'],
+    'build' => '2026-10-03-A',
 ]);

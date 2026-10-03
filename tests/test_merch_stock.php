@@ -67,6 +67,37 @@ expect('grid: non-numeric cell warns', count($badCell['warnings']), 1);
 $notAGrid = merch_stock_parse_grid([['Name', 'Email'], ['Jane', 'j@x.com']], FILAMENT_COLOR_ITEMS, TEST_COLORS);
 expect('grid: a non-inventory file recognizes nothing', [$notAGrid['columnsRecognized'], $notAGrid['rowsRecognized']], [0, 0]);
 
+// ---- Flipped layout: colors down the side, parts across the top ----
+// (2026-10-03: 27 colors x 8 parts is easier to manage than 27 columns.)
+$flipped = [
+    ['Color', 'Blade Holder', 'Circles', 'Tool Stand Holder', 'Total'],
+    ['#15 CM Blue', '5', '1', '2', '8'],
+    ['#17 Teal', '1', '', '', '1'],
+    ['#9 Magenta', '', '', '1', '1'],
+    ['Copper', '', '1', '', '1'],
+    ['', '', '', '', ''],
+    ['Total', '6', '2', '3', '10'],
+];
+expect('orientation: parts-down grid detected', merch_stock_detect_orientation($grid, FILAMENT_COLOR_ITEMS, TEST_COLORS), 'parts-down');
+expect('orientation: colors-down grid detected', merch_stock_detect_orientation($flipped, FILAMENT_COLOR_ITEMS, TEST_COLORS), 'colors-down');
+$pf = merch_stock_parse_grid($flipped, FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('flipped: reports its orientation', $pf['orientation'], 'colors-down');
+expect('flipped: identical stock to the parts-down sheet', $pf['stock'], $p['stock']);
+expect('flipped: Copper still reported, with the part', [count($pf['unmatched']), $pf['unmatched'][0]['part'] ?? '', $pf['unmatched'][0]['color'] ?? ''], [1, 'Circle Cutter Holder', 'Copper']);
+expect('flipped: sanity counts are colors/parts regardless of layout', [$pf['columnsRecognized'], $pf['rowsRecognized']], [$p['columnsRecognized'], $p['rowsRecognized']]);
+expect('flipped: total pieces', merch_stock_total($pf['stock']), 10);
+
+$ragged = [['Color', 'Blade Holder', 'Hearts'], ['#17 Teal', '2'], ['#15 CM Blue', '', '3']];
+$pr = merch_stock_parse_grid($ragged, FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('flipped: short (ragged) rows are fine', [$pr['stock']['Blade Holder']['#17 Teal'] ?? null, $pr['stock']['Hearts Cutter Holder']['#15 CM Blue'] ?? null], [2, 3]);
+
+$oneColor = merch_stock_parse_grid([['x', 'Blade Holder'], ['#15 CM Blue', '4']], FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('flipped: smallest possible grid (one part, one color)', [$oneColor['orientation'], $oneColor['stock']['Blade Holder']['#15 CM Blue'] ?? null], ['colors-down', 4]);
+
+expect('non-inventory file still parts-down and recognizes nothing', [$notAGrid['orientation'], $notAGrid['columnsRecognized'], $notAGrid['rowsRecognized']], ['parts-down', 0, 0]);
+$empty = merch_stock_parse_grid([], FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('empty file: parts-down, nothing recognized', [$empty['orientation'], $empty['rowsRecognized']], ['parts-down', 0]);
+
 // ---- Shipments from merchandise.csv rows -----------------------
 $header = ['OrderID', 'Name', 'Zip', 'Item', 'Quantity', 'Color', 'Fulfillment', 'Pymt Date', 'Created', 'Fulfilled', 'Cancelled', 'Qty Created'];
 $col = array_flip($header);

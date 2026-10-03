@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-02-A
+// Build: 2026-10-03-A
 // Admin-only, READ-ONLY report: "what can I ship from what I've already
 // printed, and what should I print next?" (Steve, 2026-10-02 - see
 // merch_stock.php's header comment for the rules it follows: whole
@@ -319,7 +319,7 @@ usort($gridColors, function ($a, $b) {
   </form>
   <span id="stock-upload-msg" class="upload-msg"></span>
 </div>
-<p class="note">Layout: parts down the first column, site colors across the top (e.g. <code>#15 CM Blue</code>), counts in the cells. Excel's Total row/column and blank cells are ignored. Colors must match the site's list &mdash; anything that doesn't is reported above instead of guessed.</p>
+<p class="note">Layout: parts down the first column with site colors across the top (e.g. <code>#15 CM Blue</code>) <em>or</em> colors down the first column with parts across the top &mdash; either way works, and it's detected automatically. Counts go in the cells. Excel's Total row/column and blank cells are ignored. Colors must match the site's list &mdash; anything that doesn't is reported above instead of guessed.</p>
 
 <script>
 (function () {
