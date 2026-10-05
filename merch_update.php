@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-25-A
+// Build: 2026-10-04-A
 // Marks a single order's status, called via fetch() from ourmerch.php's
 // checkboxes. Same admin session gate as the rest of the admin pages -
 // this is not a public endpoint.
@@ -13,7 +13,8 @@
 // Two fields also CASCADE into another column, on Steve's instruction
 // (2026-07-26) that you can't be paid before being invoiced, or ship
 // something before it's created:
-//   - Pymt Date  -> backfills/matches Invoice Date
+//   - Pymt Date  -> backfills Invoice Date if blank (see the 2026-10-04
+//                   note below: it no longer MATCHES it)
 //   - Fulfilled  -> backfills/matches Created
 // "Matches" means: if the target column already has a date, the field
 // being checked is set to THAT SAME date (not today) - e.g. if
@@ -22,6 +23,16 @@
 // column is still blank, it gets backfilled with today, and the field
 // being checked matches that. Unchecking a field only clears its own
 // column - it never un-invoices or un-creates anything.
+//
+// 2026-10-04 (Steve): the "matches" half no longer applies to Pymt Date.
+// It was a stopgap from converting his hand-kept Excel sheet (dates were
+// missing) and it quietly turned Pymt Date into a copy of Invoice Date -
+// 768 of 827 paid rows - so the real day money arrived was never recorded.
+// Checking Pymt Date now stamps TODAY, always. It still backfills a BLANK
+// Invoice Date with today (a paid row must not look un-invoiced, or a later
+// Send Invoice could bill for it again) but never rewrites an existing one.
+// Existing rows are left exactly as they are. Fulfilled -> Created is
+// unchanged.
 //
 // 2026-08-18: Color joined as a second kind of editable field, for
 // customers who change their mind after ordering. It doesn't fit the
@@ -294,7 +305,14 @@ $applyToRow = function (array &$row) use (
     } elseif ($checked) {
         if ($cascadeIndex !== false && $cascadeIndex !== null) {
             $existingCascadeDate = trim($row[$cascadeIndex] ?? '');
-            if ($existingCascadeDate === '') {
+            if ($field === 'Pymt Date') {
+                // Real payment date = today; only backfill a blank
+                // Invoice Date, never touch an existing one (2026-10-04).
+                $newValue = date('Y-m-d');
+                if ($existingCascadeDate === '') {
+                    $row[$cascadeIndex] = $newValue;
+                }
+            } elseif ($existingCascadeDate === '') {
                 // Cascade target not set yet - backfill it with today,
                 // and match this field to the same date.
                 $today = date('Y-m-d');
@@ -420,7 +438,7 @@ if (count($orderIds) === 1) {
         'cascadeField' => $cascadeField,
         'cascadeValue' => $cascadeValue,
         'qtyCreated' => $qtyCreatedResult,
-        'build' => '2026-09-25-A',
+        'build' => '2026-10-04-A',
     ]);
     exit;
 }

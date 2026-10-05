@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-03-A
+// Build: 2026-10-04-A
 // ============================================================
 // Admin-triggered "Mark Paid" one-click group action, mirroring
 // merch_invoice.php's "Send Invoice" grouping (Steve: he gets ONE
@@ -28,14 +28,17 @@
 // same spirit as the email/name-fallback tolerance already documented
 // there.)
 //
-// Sets each matched row's Pymt Date to THAT ROW'S OWN Invoice Date
-// value (not today) - same "matches, doesn't backfill with today"
-// cascade rule merch_update.php already applies when Pymt Date is
-// checked on a single already-invoiced row (see that file's header
-// comment). Since every row in the group shares the anchor's Invoice
-// Date by construction, this just writes that one value across the
-// whole group - a group-marked row ends up with the exact same Pymt
-// Date it would have gotten from checking its own checkbox by hand.
+// Sets each matched row's Pymt Date to TODAY - the day Steve actually
+// records the payment. (2026-10-04, Steve: until now this copied the row's
+// own Invoice Date instead - a rule from the days when merchandise.csv was
+// being converted from his hand-kept Excel sheet and dates were missing.
+// It outlived its purpose, and it meant Pymt Date was really a second
+// copy of Invoice Date, so nothing recorded when money actually arrived;
+// the Stock & Print Plan needs the real payment date to rank how long an
+// order has been waiting. Historical rows are left exactly as they were:
+// the true dates can't be recovered.) Every row in the group gets the same
+// date, same as before. merch_update.php's single-row Pymt Date checkbox
+// stamps today too.
 //
 // Never touches Invoice Date itself, never touches Created/Fulfilled,
 // never touches a row outside this one invoice group - same
@@ -198,6 +201,7 @@ $groupByName = ($anchorEmail === '');
 // the SAME Invoice Date as the anchor (i.e. part of the same Send
 // Invoice combine - see the file-level comment above), not yet paid,
 // and not cancelled.
+$paidToday = date('Y-m-d');
 $paidOrderIds = [];
 $paidLines = []; // for the optional receipt email: one entry per row just marked
 foreach ($rows as $i => &$row) {
@@ -215,10 +219,8 @@ foreach ($rows as $i => &$row) {
         : ($email === $anchorEmail);
 
     if ($identityMatches && $invoiceDate === $anchorInvoiceDate && $pymtDate === '' && !$cancelled) {
-        // Match the anchor's own Invoice Date, not today - see the
-        // file-level comment for why this mirrors merch_update.php's
-        // single-row cascade instead of stamping "now."
-        $row[$col['Pymt Date']] = $anchorInvoiceDate;
+        // Today's date - the real payment date (see the file-level comment).
+        $row[$col['Pymt Date']] = $paidToday;
         $paidOrderIds[] = $row[$col['OrderID']];
         $paidLines[] = [
             'fulfillment' => $col['Fulfillment'] !== false ? trim($row[$col['Fulfillment']] ?? '') : '',
@@ -304,7 +306,7 @@ if ($notify) {
 echo json_encode([
     'ok' => true,
     'paidOrderIds' => $paidOrderIds,
-    'paidDate' => $anchorInvoiceDate,
+    'paidDate' => $paidToday,
     'email' => $emailResult,
-    'build' => '2026-10-03-A',
+    'build' => '2026-10-04-A',
 ]);

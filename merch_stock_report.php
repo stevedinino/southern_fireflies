@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-04-B
+// Build: 2026-10-04-C
 // Admin-only report: "what can I ship from what I've already printed, and
 // what should I print next?" (Steve, 2026-10-02 - see merch_stock.php's
 // header comment for the rules it follows: whole shipments only, paid
@@ -16,6 +16,10 @@
 // 2026-10-04 (Steve): shirt/hat orders are Janet's, so the old "waiting on a
 // shirt/hat" list is gone from this page. Such orders still can't be "ready"
 // (never ship a partial order) and still hold shelf stock; only the list is hidden.
+//
+// 2026-10-04 (Steve): "how old" means how long since the order was PAID
+// (Pymt Date, now the real payment day), not since it was placed; an
+// unpaid Pickup order falls back to its order date. See merch_stock.php.
 //
 // 2026-10-04 (Steve): oldest orders first. With a big backlog he doesn't
 // want old orders sitting while newer, cheaper ones jump the queue, so the
@@ -48,11 +52,11 @@ session_write_close();
 
 $mode = (($_GET['mode'] ?? 'closeout') === 'batch') ? 'batch' : 'closeout';
 $closeoutN = max(1, min(60, (int) ($_GET['n'] ?? 10)));
-// 'age' = oldest order first (default); 'quick' = fewest pieces missing first.
+// 'age' = longest-waiting (paid longest ago) first, the default; 'quick' = fewest pieces missing first.
 $priority = (($_GET['prio'] ?? 'age') === 'quick') ? 'quick' : 'age';
 $altPriority = $priority === 'age' ? 'quick' : 'age';
 $qs = fn(array $over) => htmlspecialchars(http_build_query(array_merge(['mode' => $mode, 'n' => $closeoutN, 'prio' => $priority], $over)), ENT_QUOTES, 'UTF-8');
-$build = '2026-10-04-B';
+$build = '2026-10-04-C';
 
 $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
@@ -112,27 +116,30 @@ $planGroups = print_plate_group_queue($planRows);
 $planStats = merch_stock_plan_stats($planGroups);
 // When each order was placed, by OrderID (for the age columns), and the
 // oldest order waiting on each color (for the batch ordering).
-$orderTs = [];
+$orderAge = []; // orderId => [age timestamp, 'paid'|'ordered']
 foreach ($shipments as $s) {
     foreach (['lines', 'other', 'madeLines'] as $k) {
         foreach ($s[$k] as $l) {
-            $orderTs[$l['orderId']] = $l['ts'] ?? null;
+            $orderAge[$l['orderId']] = [$l['ts'] ?? null, $l['basis'] ?? 'ordered'];
         }
     }
 }
-$oldestByColor = [];
+$oldestByColor = []; // color => [age timestamp, orderId] of the longest-waiting order needing it
 foreach ($planRows as $r) {
     if (ctype_digit((string) $r['orderId'])) {
         $c = $r['color'];
-        $oldestByColor[$c] = isset($oldestByColor[$c]) ? min($oldestByColor[$c], (int) $r['orderId']) : (int) $r['orderId'];
+        $cand = [$orderAge[(string) $r['orderId']][0] ?? PHP_INT_MAX, (int) $r['orderId']];
+        if (!isset($oldestByColor[$c]) || $cand < $oldestByColor[$c]) {
+            $oldestByColor[$c] = $cand;
+        }
     }
 }
 if ($mode === 'batch') {
     if ($priority === 'age') {
         // Run the color holding the longest-waiting order first; volume
         // breaks ties.
-        usort($planGroups, fn($a, $b) => [$oldestByColor[$a['color']] ?? PHP_INT_MAX, -($planStats['byColor'][$a['color']]['units'] ?? 0)]
-            <=> [$oldestByColor[$b['color']] ?? PHP_INT_MAX, -($planStats['byColor'][$b['color']]['units'] ?? 0)]);
+        usort($planGroups, fn($a, $b) => [$oldestByColor[$a['color']] ?? [PHP_INT_MAX, PHP_INT_MAX], -($planStats['byColor'][$a['color']]['units'] ?? 0)]
+            <=> [$oldestByColor[$b['color']] ?? [PHP_INT_MAX, PHP_INT_MAX], -($planStats['byColor'][$b['color']]['units'] ?? 0)]);
     } else {
         // Biggest color backlog first (the plan comes back in the plate
         // view's popularity order; for a batch run, sheer volume matters more).
@@ -164,14 +171,14 @@ $pullText = function (array $s) use ($h): string {
     }
     return implode('; ', $bits);
 };
-$ageOf = fn(array $s) => merch_stock_age_text($s['oldestTs'] ?? null);
-$oldestTextForColor = function (string $color) use ($oldestByColor, $orderTs, $h): string {
-    $id = $oldestByColor[$color] ?? null;
-    if ($id === null) {
+$ageOf = fn(array $s) => merch_stock_age_label($s['ageTs'] ?? null, $s['ageBasis'] ?? 'ordered');
+$oldestTextForColor = function (string $color) use ($oldestByColor, $orderAge, $h): string {
+    if (!isset($oldestByColor[$color])) {
         return '';
     }
-    $age = merch_stock_age_text($orderTs[(string) $id] ?? null);
-    return 'oldest waiting: #' . (int) $id . ($age !== '' ? ' &middot; ' . $h($age) : '');
+    $id = $oldestByColor[$color][1];
+    $age = merch_stock_age_label($orderAge[(string) $id][0] ?? null, $orderAge[(string) $id][1] ?? 'ordered');
+    return 'longest waiting: #' . (int) $id . ($age !== '' ? ' &middot; ' . $h($age) : '');
 };
 $lineLabel = function (array $l) use ($h): string {
     $txt = (int) $l['qty'] . '&times; ' . $h($l['item']) . ' <span class="color">' . $h($l['color']) . '</span>';
@@ -246,7 +253,7 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 <h1>Stock &amp; Print Plan</h1>
 <div class="note">
   <a href="ourmerch.php">&larr; Merchandise Requests</a> &middot;
-  Build <?= $h($build) ?> &middot; paid orders only, whole shipments only, exact color only, oldest orders first
+  Build <?= $h($build) ?> &middot; paid orders only, whole shipments only, exact color only, longest-paid first
 </div>
 
 <div class="summary">
@@ -267,15 +274,15 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 <?php endforeach; ?>
 
 <h2>1. Ready to ship from stock</h2>
-<p class="note">Orders whose <em>every</em> piece is already on your shelf, oldest first. Tick each part as you gather it &mdash; <strong>Done</strong> unlocks once every part is ticked, and nothing is changed until you click it. Done marks the parts pulled from stock as <em>Created</em> in Merchandise Requests (it doesn't mark anything shipped) and takes them off the inventory sheet, together or not at all. Parts tagged &ldquo;already made&rdquo; were Created earlier; they're listed so the whole order goes in one box.</p>
+<p class="note">Orders whose <em>every</em> piece is already on your shelf, longest-paid first. Tick each part as you gather it &mdash; <strong>Done</strong> unlocks once every part is ticked, and nothing is changed until you click it. Done marks the parts pulled from stock as <em>Created</em> in Merchandise Requests (it doesn't mark anything shipped) and takes them off the inventory sheet, together or not at all. Parts tagged &ldquo;already made&rdquo; were Created earlier; they're listed so the whole order goes in one box.</p>
 <?php if ($smallestFirstReady > count($ready)): ?>
-  <div class="hint">Handing the same stock to the <em>smallest</em> orders first would ship <?= (int) $smallestFirstReady ?> orders instead of <?= (int) count($ready) ?>. This list stays oldest-first unless you decide otherwise.</div>
+  <div class="hint">Handing the same stock to the <em>smallest</em> orders first would ship <?= (int) $smallestFirstReady ?> orders instead of <?= (int) count($ready) ?>. This list stays longest-paid-first unless you decide otherwise.</div>
 <?php endif; ?>
 <?php if (empty($ready)): ?>
   <p class="empty">No paid order can be completed entirely from what's on the shelf right now.</p>
 <?php else: ?>
   <table>
-    <tr><th>Customer</th><th>Order(s)</th><th>Ordered</th><th>Gather these, then click Done</th></tr>
+    <tr><th>Customer</th><th>Order(s)</th><th>Waiting since</th><th>Gather these, then click Done</th></tr>
     <?php foreach ($ready as $s): ?>
       <?php $pickIds = merch_stock_shipment_commit_ids($s); $pickSig = merch_stock_shipment_signature($s); ?>
       <tr class="pick" data-ids="<?= $h(implode(',', $pickIds)) ?>" data-sig="<?= $h($pickSig) ?>">
@@ -303,7 +310,7 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
   <a class="tab <?= $mode === 'closeout' ? 'on' : '' ?>" href="?<?= $qs(['mode' => 'closeout']) ?>">Close-out: finish the next orders</a>
   <a class="tab <?= $mode === 'batch' ? 'on' : '' ?>" href="?<?= $qs(['mode' => 'batch']) ?>">Batch: everything, by color</a>
   <span style="margin-left:8px;">Priority:</span>
-  <a class="tab <?= $priority === 'age' ? 'on' : '' ?>" href="?<?= $qs(['prio' => 'age']) ?>">Oldest orders first</a>
+  <a class="tab <?= $priority === 'age' ? 'on' : '' ?>" href="?<?= $qs(['prio' => 'age']) ?>">Oldest paid first</a>
   <a class="tab <?= $priority === 'quick' ? 'on' : '' ?>" href="?<?= $qs(['prio' => 'quick']) ?>">Quickest wins</a>
   <?php if ($mode === 'closeout'): ?>
     <form method="get" style="margin:0;">
@@ -318,7 +325,7 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 <?php if ($mode === 'closeout'): ?>
   <p class="note">
     <?php if ($priority === 'age'): ?>
-      The <?= (int) count($chosen) ?> <strong>oldest</strong> paid orders that could ship once printed (nothing waiting on a shirt/hat or Stars &amp; Stripes). Printing exactly the plates below ships all <?= (int) count($chosen) ?>:
+      The <?= (int) count($chosen) ?> <strong>longest-paid</strong> orders that could ship once printed (nothing waiting on a shirt/hat or Stars &amp; Stripes). Printing exactly the plates below ships all <?= (int) count($chosen) ?>:
     <?php else: ?>
       The <?= (int) count($chosen) ?> paid orders closest to done (fewest pieces still missing; ties go to pieces that share a plate with other near-done orders, then fewest colors, then oldest). Printing exactly the plates below ships all <?= (int) count($chosen) ?>:
     <?php endif; ?>
@@ -328,13 +335,13 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
       <?php if ($priority === 'age'): ?>
         For comparison, finishing the <?= (int) count($chosen) ?> <em>quickest</em> orders instead would take <?= (int) $altStats['units'] ?> pieces on <?= (int) $altStats['plates'] ?> plates across <?= (int) $altStats['colors'] ?> color(s) &mdash; but would leave older orders waiting. <a href="?<?= $qs(['prio' => 'quick']) ?>">Switch to quickest wins</a>
       <?php else: ?>
-        For comparison, finishing the <?= (int) count($chosen) ?> <em>oldest</em> orders instead would take <?= (int) $altStats['units'] ?> pieces on <?= (int) $altStats['plates'] ?> plates across <?= (int) $altStats['colors'] ?> color(s). <a href="?<?= $qs(['prio' => 'age']) ?>">Switch to oldest first</a>
+        For comparison, finishing the <?= (int) count($chosen) ?> <em>longest-paid</em> orders instead would take <?= (int) $altStats['units'] ?> pieces on <?= (int) $altStats['plates'] ?> plates across <?= (int) $altStats['colors'] ?> color(s). <a href="?<?= $qs(['prio' => 'age']) ?>">Switch to oldest paid first</a>
       <?php endif; ?>
     </div>
   <?php endif; ?>
   <?php if (!empty($chosen)): ?>
     <table>
-      <tr><th>#</th><th>Customer</th><th>Order(s)</th><th>Ordered</th><th>Still missing</th></tr>
+      <tr><th>#</th><th>Customer</th><th>Order(s)</th><th>Waiting since</th><th>Still missing</th></tr>
       <?php foreach ($chosen as $i => $s): ?>
         <tr>
           <td><?= $i + 1 ?></td>
@@ -347,7 +354,7 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
     </table>
   <?php endif; ?>
 <?php else: ?>
-  <p class="note">Every paid piece still missing after stock<?= $priority === 'age' ? ', colors ordered by the longest-waiting order they hold' : ', biggest color first' ?>: <strong><?= (int) $planStats['units'] ?> pieces on <?= (int) $planStats['plates'] ?> plates across <?= (int) $planStats['colors'] ?> colors</strong> (Stars &amp; Stripes and shirts/hats aren't in the plate plan<?= $specialCount > 0 ? '; ' . (int) $specialCount . ' order(s) need Stars &amp; Stripes by hand' : '' ?>).</p>
+  <p class="note">Every paid piece still missing after stock<?= $priority === 'age' ? ', colors ordered by the longest-paid order they hold' : ', biggest color first' ?>: <strong><?= (int) $planStats['units'] ?> pieces on <?= (int) $planStats['plates'] ?> plates across <?= (int) $planStats['colors'] ?> colors</strong> (Stars &amp; Stripes and shirts/hats aren't in the plate plan<?= $specialCount > 0 ? '; ' . (int) $specialCount . ' order(s) need Stars &amp; Stripes by hand' : '' ?>).</p>
 <?php endif; ?>
 
 <?php if (empty($planGroups)): ?>

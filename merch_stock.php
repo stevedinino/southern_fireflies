@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-04-A
+// Build: 2026-10-04-B
 // ============================================================
 // Printed-stock matching + print-next planning logic, behind
 // merch_stock_report.php (admin report) and merch_stock_upload.php
@@ -388,7 +388,16 @@ function merch_stock_load_inventory(string $path): array
  * Quantity, Color, Fulfillment, Pymt Date, Created, Fulfilled, Cancelled,
  * Qty Created, plus optionally Timestamp (when it was ordered), Size and
  * Sleeve (any may be false - same optional-column tolerance as the rest
- * of the codebase). $validItems = FILAMENT_COLOR_ITEMS (printed
+ * of the codebase).
+ *
+ * AGE (2026-10-04, Steve): "how old is an order" means how long since it
+ * was PAID, not since it was placed - someone who ordered in July and paid
+ * yesterday must not jump ahead of people who paid a week ago. Pymt Date is
+ * the real payment day for everything marked paid from 2026-10-04 on. Older
+ * rows have a Pymt Date that an old rule copied from their Invoice Date;
+ * that can't be corrected, and since invoices went out within ~2 days of
+ * ordering they rank about the same as by order date. A row with no payment
+ * date (unpaid Pickup) falls back to its order Timestamp. $validItems = FILAMENT_COLOR_ITEMS (printed
  * pieces); anything else (shirts/hats) can't be printed or stocked, so it
  * is carried as an "other" line that blocks its shipment from being
  * ready. $excludedColors = PRINT_PLATE_EXCLUDED_COLORS (Stars & Stripes:
@@ -398,7 +407,10 @@ function merch_stock_load_inventory(string $path): array
  *   'shipments'    list sorted by oldest OrderID; each:
  *       key, printKey, type ('ship'|'pickup'), name, orderIds[],
  *       minOrderId, oldestTs (unix time the oldest row was ordered, or
- *       null), lines[ [orderId,item,color,qty,made,rowQty,ts] ] (qty =
+ *       null), ageTs + ageBasis (how long it has been WAITING: the oldest
+ *       row's Pymt Date - the real day it was paid, see below - or, for a
+ *       row with no payment date (unpaid Pickup), its order Timestamp;
+ *       ageBasis is 'paid' or 'ordered'), lines[ [orderId,item,color,qty,made,rowQty,ts,basis] ] (qty =
  *       pieces still to make; made = pieces of that row already made),
  *       other[ same ], madeLines[ [orderId,item,color,size,sleeve,qty,ts] ]
  *       (rows already fully Created - physically part of the shipment
@@ -441,6 +453,11 @@ function merch_stock_build_shipments(array $rows, array $col, array $validItems,
         $name = $get($row, 'Name');
         $zip = $get($row, 'Zip');
         $rowTs = merch_stock_parse_ts($get($row, 'Timestamp'));
+        // How long this row has been waiting: since it was paid, else (no
+        // payment date - unpaid Pickup) since it was ordered.
+        $paidTs = merch_stock_parse_ts($get($row, 'Pymt Date'));
+        $ageRowTs = $paidTs ?? $rowTs;
+        $ageRowBasis = $paidTs !== null ? 'paid' : 'ordered';
         $baseKey = $name !== '' ? merch_shipment_key($name, $zip) : '';
         $key = ($isShip ? 'ship:' : 'pickup:') . ($baseKey !== '' ? $baseKey : '#' . $orderId);
 
@@ -461,6 +478,8 @@ function merch_stock_build_shipments(array $rows, array $col, array $validItems,
                 'orderIds' => [],
                 'minOrderId' => PHP_INT_MAX,
                 'oldestTs' => null,
+                'ageTs' => null,
+                'ageBasis' => 'ordered',
                 'lines' => [],
                 'other' => [],
                 'madeLines' => [],
@@ -475,6 +494,10 @@ function merch_stock_build_shipments(array $rows, array $col, array $validItems,
         if ($rowTs !== null) {
             $ships[$key]['oldestTs'] = $ships[$key]['oldestTs'] === null ? $rowTs : min($ships[$key]['oldestTs'], $rowTs);
         }
+        if ($ageRowTs !== null && ($ships[$key]['ageTs'] === null || $ageRowTs < $ships[$key]['ageTs'])) {
+            $ships[$key]['ageTs'] = $ageRowTs;
+            $ships[$key]['ageBasis'] = $ageRowBasis;
+        }
 
         if ($remaining === 0) {
             // Already printed - counts as done, nothing to plan. Kept for
@@ -482,12 +505,12 @@ function merch_stock_build_shipments(array $rows, array $col, array $validItems,
             $ships[$key]['madeLines'][] = [
                 'orderId' => $orderId, 'item' => $item, 'color' => $color,
                 'size' => $get($row, 'Size'), 'sleeve' => $get($row, 'Sleeve'),
-                'qty' => $qty, 'ts' => $rowTs,
+                'qty' => $qty, 'ts' => $ageRowTs, 'basis' => $ageRowBasis,
             ];
             continue;
         }
         $line = ['orderId' => $orderId, 'item' => $item, 'color' => $color, 'qty' => $remaining,
-                 'made' => $qty - $remaining, 'rowQty' => $qty, 'ts' => $rowTs];
+                 'made' => $qty - $remaining, 'rowQty' => $qty, 'ts' => $ageRowTs, 'basis' => $ageRowBasis];
         if (in_array($item, $validItems, true)) {
             $ships[$key]['lines'][] = $line;
             if (in_array($color, $excludedColors, true)) {
@@ -508,7 +531,7 @@ function merch_stock_build_shipments(array $rows, array $col, array $validItems,
         $s['unpaidSiblingLines'] = isset($unpaidByKey[$key]) ? 1 : 0;
         $out[] = $s;
     }
-    usort($out, fn($a, $b) => [$a['minOrderId'], $a['key']] <=> [$b['minOrderId'], $b['key']]);
+    usort($out, 'merch_stock_age_cmp');
 
     return [
         'shipments' => $out,
@@ -537,6 +560,23 @@ function merch_stock_parse_ts(string $raw): ?int
         }
     }
     return null;
+}
+
+/**
+ * Longest-waiting first: earliest age date (paid date, else order date),
+ * then lowest OrderID, then key for a stable order. A shipment with no age
+ * date at all sorts after dated ones but still by OrderID among themselves.
+ */
+function merch_stock_age_cmp(array $a, array $b): int
+{
+    return [$a['ageTs'] ?? PHP_INT_MAX, $a['minOrderId'], $a['key']] <=> [$b['ageTs'] ?? PHP_INT_MAX, $b['minOrderId'], $b['key']];
+}
+
+/** "Paid Sep 30 (4 days)" / "Ordered Sep 30 (4 days)"; '' when there's no date. */
+function merch_stock_age_label(?int $ts, string $basis, ?int $now = null): string
+{
+    $t = merch_stock_age_text($ts, $now);
+    return $t === '' ? '' : ($basis === 'paid' ? 'Paid ' : 'Ordered ') . $t;
 }
 
 /** "Aug 22 (43 days ago)" for the report; '' when there's no timestamp. */
@@ -632,7 +672,7 @@ function merch_stock_allocate(array $shipments, array $stock, string $priority =
     if ($priority === 'quick') {
         usort($pending, fn($a, $b) => [$short($a), $a['minOrderId']] <=> [$short($b), $b['minOrderId']]);
     } else {
-        usort($pending, fn($a, $b) => [$a['minOrderId'], $a['key']] <=> [$b['minOrderId'], $b['key']]);
+        usort($pending, 'merch_stock_age_cmp');
     }
 
     $reserve = function (array $s) use (&$rem): array {
@@ -725,9 +765,10 @@ function merch_stock_closeout_rank(array $partial, string $priority = 'quick'): 
 {
     $eligible = array_values(array_filter($partial, fn($s) => !$s['special'] && empty($s['other']) && $s['missingUnits'] > 0));
     if ($priority === 'age') {
-        // 2026-10-04 (Steve): with a big backlog the oldest orders must not
-        // sit while cheaper new ones jump ahead - strictly oldest first.
-        usort($eligible, fn($a, $b) => [$a['minOrderId'], $a['key']] <=> [$b['minOrderId'], $b['key']]);
+        // 2026-10-04 (Steve): with a big backlog the longest-waiting orders
+        // must not sit while cheaper new ones jump ahead - strictly oldest
+        // first, where "oldest" = paid longest ago (see merch_stock_age_cmp).
+        usort($eligible, 'merch_stock_age_cmp');
         return $eligible;
     }
 
