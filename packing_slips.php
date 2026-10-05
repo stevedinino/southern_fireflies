@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-05-A
+// Build: 2026-10-05-A
 //
 // 2026-08-28 (Steve): the "ready to pack" checkboxes below now write
 // back to Fulfilled on merchandise.csv when checked, instead of being a
@@ -534,7 +534,17 @@ function merch_qty_badge_html(int $quantity): string
             // shipment counts as failed with the same shared reason.
             return orderIds.map((orderId) => ({ orderId, ok: false, error: data.error }));
           }
-          const results = data.results || {};
+          // 2026-10-05 (Steve: "Could not save Fulfilled for order #1191"
+          // on an order that DID save): merch_update.php answers a request
+          // with exactly ONE OrderID in its single-order shape - the flat
+          // {ok, value, ...} object ourmerch.php reads - and only a
+          // request with 2+ OrderIDs gets the batch shape with a per-ID
+          // "results" map. A one-item shipment therefore had no "results"
+          // to look up, so a perfectly good save was reported as "No
+          // result returned" and the checkbox was reverted. Unnoticed
+          // until single-item orders (Blade Holder alone) became common.
+          // The flat reply IS that one order's result, so use it as such.
+          const results = data.results || (orderIds.length === 1 ? { [orderIds[0]]: data } : {});
           return orderIds.map((orderId) => ({
             orderId,
             ok: !!(results[orderId] && results[orderId].ok),
@@ -589,7 +599,7 @@ function merch_qty_badge_html(int $quantity): string
               box.checked = previousChecked;
               alert(
                 'Could not save Fulfilled for order' + (failed.length === 1 ? '' : 's') + ' '
-                + failed.map((r) => '#' + r.orderId).join(', ')
+                + failed.map((r) => '#' + r.orderId + (r.error ? ' (' + r.error + ')' : '')).join(', ')
                 + ' - please check this shipment on ourmerch.php.'
               );
             }
