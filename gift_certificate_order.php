@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-16-A
+// Build: 2026-10-04-A
 // ============================================================
 // Handles gift-certificate.php's submission: validates, mints a code
 // (giftcert.php), appends one row to gift_certificates.csv, and
@@ -38,6 +38,7 @@
 // by width/max-width, not a fixed height, same reasoning as index.php's
 // .home-logo (see that rule in layout.css).
 // ============================================================
+require __DIR__ . '/sff_timezone.php'; // Timestamp below is Eastern
 require __DIR__ . '/config.php';
 require __DIR__ . '/strings.php';
 require __DIR__ . '/giftcert.php';

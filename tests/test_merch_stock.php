@@ -353,6 +353,49 @@ $rowE = ['54', '2', '', '2026-09-30', '']; // Fulfilled already set: still never
 merch_stock_apply_created($rowE, $cols3, '2026-10-04');
 expect('created: never touches Fulfilled', $rowE[3], '2026-09-30');
 
+// ---- Age = how long since PAID (2026-10-04) -------------------------
+// Steve: "If they had submitted an order in July and paid yesterday, I
+// wouldn't move them to the top of the list over people that paid a week ago."
+$aged = merch_stock_build_shipments([
+    $r2(['OrderID' => '60', 'Name' => 'July Jane',  'Timestamp' => '7/10/2026',           'Pymt Date' => '2026-10-03']),   // ordered long ago, paid yesterday
+    $r2(['OrderID' => '70', 'Name' => 'Sept Sam',   'Timestamp' => '2026-09-25 10:00:00', 'Pymt Date' => '2026-09-26']),   // paid a week ago
+    $r2(['OrderID' => '80', 'Name' => 'Aug Abe',    'Timestamp' => '2026-08-30 10:00:00', 'Pymt Date' => '2026-08-31']),   // paid longest ago
+    $r2(['OrderID' => '90', 'Name' => 'Pat Pickup', 'Timestamp' => '2026-09-15 10:00:00', 'Pymt Date' => '', 'Fulfillment' => 'Pickup at retreat']),
+], $col2, FILAMENT_COLOR_ITEMS, []);
+$agedNames = array_map(fn($x) => $x['name'], $aged['shipments']);
+expect('age: shipments rank by PAID date, not order number or order date', $agedNames, ['Aug Abe', 'Pat Pickup', 'Sept Sam', 'July Jane']);
+$byN = [];
+foreach ($aged['shipments'] as $x) { $byN[$x['name']] = $x; }
+expect('age: paid row is dated by Pymt Date and labelled paid', [date('Y-m-d', $byN['July Jane']['ageTs']), $byN['July Jane']['ageBasis']], ['2026-10-03', 'paid']);
+expect('age: the July order date is still kept separately', date('Y-m-d', $byN['July Jane']['oldestTs']), '2026-07-10');
+expect('age: unpaid Pickup falls back to its order date', [date('Y-m-d', $byN['Pat Pickup']['ageTs']), $byN['Pat Pickup']['ageBasis']], ['2026-09-15', 'ordered']);
+expect('age: lines carry the paid date too', date('Y-m-d', $byN['July Jane']['lines'][0]['ts']), '2026-10-03');
+expect('age label: paid', merch_stock_age_label(merch_stock_parse_ts('2026-09-30'), 'paid', merch_stock_parse_ts('2026-10-04 12:00:00')), 'Paid Sep 30 (4 days)');
+expect('age label: ordered', merch_stock_age_label(merch_stock_parse_ts('2026-09-30'), 'ordered', merch_stock_parse_ts('2026-10-04 12:00:00')), 'Ordered Sep 30 (4 days)');
+expect('age label: no date', merch_stock_age_label(null, 'paid'), '');
+// A shipment's age is its longest-waiting row.
+$multi = merch_stock_build_shipments([
+    $r2(['OrderID' => '100', 'Name' => 'Mo', 'Pymt Date' => '2026-09-10']),
+    $r2(['OrderID' => '101', 'Name' => 'Mo', 'Pymt Date' => '2026-10-02', 'Item' => 'Hearts Cutter Holder']),
+], $col2, FILAMENT_COLOR_ITEMS, []);
+expect('age: a shipment is as old as its longest-paid row', date('Y-m-d', $multi['shipments'][0]['ageTs']), '2026-09-10');
+// Same paid day: lowest OrderID first. Missing dates sort last, by OrderID.
+$tie = [
+    ['key' => 'b', 'minOrderId' => 7, 'ageTs' => 100],
+    ['key' => 'a', 'minOrderId' => 5, 'ageTs' => 100],
+    ['key' => 'z', 'minOrderId' => 1, 'ageTs' => null],
+    ['key' => 'y', 'minOrderId' => 2, 'ageTs' => 50],
+];
+usort($tie, 'merch_stock_age_cmp');
+expect('age cmp: earliest date, then order number, undated last', array_map(fn($x) => $x['key'], $tie), ['y', 'a', 'b', 'z']);
+// The close-out ranking and the reserve pass both follow paid date.
+$agedShips = array_map(fn($x) => $x + ['other' => [], 'special' => false, 'printKey' => $x['key'], 'type' => 'ship', 'orderIds' => [(string) $x['minOrderId']]], [
+    ['key' => 'ship:jane', 'name' => 'July Jane', 'minOrderId' => 60, 'ageTs' => merch_stock_parse_ts('2026-10-03'), 'lines' => [['orderId' => '60', 'item' => 'Blade Holder', 'color' => '#15 CM Blue', 'qty' => 1]]],
+    ['key' => 'ship:abe', 'name' => 'Aug Abe', 'minOrderId' => 80, 'ageTs' => merch_stock_parse_ts('2026-08-31'), 'lines' => [['orderId' => '80', 'item' => 'Blade Holder', 'color' => '#17 Teal', 'qty' => 1]]],
+]);
+$agedPartial = merch_stock_allocate($agedShips, [], 'age')['partial'];
+expect('rank: close-out follows paid date even when order numbers say otherwise', array_map(fn($x) => $x['name'], merch_stock_closeout_rank($agedPartial, 'age')), ['Aug Abe', 'July Jane']);
+
 echo "\n";
 if (!empty($failures)) {
     echo count($failures) . " failure(s):\n" . implode("\n", $failures) . "\n";
