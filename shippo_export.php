@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-23-A
+// Build: 2026-10-05-A
 // Admin-only download: reads merchandise.csv, filters to orders that
 // are actually SAFE to buy a label for, and writes out a CSV in
 // Shippo's bulk-import column format (per shippo_sample_csv_v3.csv).
@@ -39,18 +39,20 @@
 // different days came out as two separate shipments even though both
 // were unshipped and going to the same address - fixed 2026-07-26.)
 //
-// Item Weight / dimensions: shipments with NO box-base item (Tool
-// Stand), no bulky-item cap exceeded (at most one Tape Gun Holder),
-// and up to MAILER_TIER_ALONE_MAX small items total
-// now get real poly-mailer weight and dimensions filled in
-// automatically - computed from ITEM_WEIGHT_OZ (real per-item-type
-// weights, derived from the class definitions in pricing.php) plus
-// MAILER_TARE_OZ for packaging, not a per-count guess table. Same
-// tier boundaries as invoicing, so this can't drift out of sync with
-// what customers were actually charged for shipping. Anything with a
-// box-base item or an exceeded cap still ships in a scavenged one-off
-// box or needs a hand-pack look, so those rows are deliberately left
-// blank for Steve to weigh/measure by hand directly in Shippo.
+// Order Weight / package dimensions (rewritten 2026-10-05, Steve):
+// merch_shipment_package() in pricing.php decides which package the
+// shipment goes in - the poly mailer (up to 5 small items, no Tool
+// Stand) or the one standard 7x5x10 box (a Tool Stand, or more items
+// than the mailer takes) - and returns the total weight (item weights
+// from ITEM_WEIGHT_OZ plus the EMPTY package: 1 oz mailer / 4 oz box)
+// and that package's dimensions. Shipments arrive in Shippo ready to
+// buy, with no per-shipment weight correction. Only what it can't
+// answer for (an item with no weight on file such as a shirt or hat,
+// two or more Tool Stands, or more than the box's full set, which needs
+// a custom box) is left
+// entirely blank - weight and all three dimensions together - for Steve
+// to size by hand in Shippo. Deliberately not the invoice shipping
+// tiers: those price what the customer pays, this describes the parcel.
 //
 // 2026-08-19: the per-row Item Weight column (previously always left
 // blank, since Order Weight above was the only total that mattered for
@@ -166,58 +168,25 @@ foreach ($groups as $groupRows) {
     $orderNumber = '#' . min($orderIds);
 
     $orderAmount = 0.0;
-    $boxBaseQty = 0;
-    $mailerTierQty = 0;
-    $qtyByItem = []; // per-item totals for the bulky-item caps (2026-08-21)
-    $mailerWeightOz = 0;
+    $qtyByItem = []; // per-item totals: bulky-item caps + package choice (merch_shipment_package)
     foreach ($groupRows as $r) {
         $orderAmount += (float)($col['Price'] !== false ? ($r[$col['Price']] ?? 0) : 0);
         $rowItem = trim($r[$col['Item']] ?? '');
         $rowQty = (int)($r[$col['Quantity']] ?? 1);
-        if (in_array($rowItem, BOX_BASE_ITEMS, true)) {
-            $boxBaseQty += $rowQty;
-        } elseif (in_array($rowItem, MAILER_TIER_ITEMS, true)) {
-            $mailerTierQty += $rowQty;
-            if (isset(ITEM_WEIGHT_OZ[$rowItem])) {
-                $mailerWeightOz += ITEM_WEIGHT_OZ[$rowItem] * $rowQty;
-            }
-        }
         $qtyByItem[$rowItem] = ($qtyByItem[$rowItem] ?? 0) + $rowQty;
     }
 
-    // Same tiers as invoicing (merch_printed_shipping() in pricing.php):
-    // a shipment with NO box-base item (Tool Stand), no bulky-item cap
-    // exceeded (merch_shipment_cap_note() - the same per-class
-    // max_qty_per_shipment rule invoicing uses, today meaning at most
-    // one Tape Gun Holder), and up to MAILER_TIER_ALONE_MAX small
-    // items total ships in one poly mailer with a real computed weight
-    // (real per-item-type weights as of 2026-08-10, not a per-count
-    // guess). Anything with a box-base item, an exceeded cap, or more
-    // small items than a mailer holds, uses a scavenged one-off box or
-    // needs its own look - Steve weighs/measures those by hand
-    // directly in Shippo, so this export deliberately leaves those
-    // blank rather than guessing.
-    //
-    // Package Height is filled in here too now (2026-08-15) - it used
-    // to stay blank along with Width/Length whenever this whole block
-    // was skipped, which was correct, but it ALSO used to stay blank
-    // even when this block DID run and filled in Weight/Width/Length.
-    // Shippo's bulk importer needs all three dimensions to create a
-    // parcel, not just weight, so a mailer shipment with two out of
-    // three dimensions filled in failed exactly the same "package
-    // dimensions incomplete" way as a fully-blank one. POLY_MAILER_HEIGHT_IN
-    // (pricing.php) is a nominal real-world estimate, not a placeholder.
-    $orderWeight = '';
-    $packageWidth = '';
-    $packageHeight = '';
-    $packageLength = '';
-    if ($boxBaseQty === 0 && merch_shipment_cap_note($qtyByItem) === null
-        && $mailerTierQty >= 1 && $mailerTierQty <= MAILER_TIER_ALONE_MAX) {
-        $orderWeight = $mailerWeightOz + MAILER_TARE_OZ;
-        $packageWidth = POLY_MAILER_WIDTH_IN;
-        $packageHeight = POLY_MAILER_HEIGHT_IN;
-        $packageLength = POLY_MAILER_LENGTH_IN;
-    }
+    // Package + weight for the whole shipment (see
+    // merch_shipment_package() in pricing.php for the rule and for when
+    // it returns 'manual'). Shippo's bulk importer needs ALL
+    // THREE dimensions to create a parcel - a partial set fails the row
+    // with "package dimensions incomplete" (seen 2026-08-15) - so the
+    // helper only ever returns every field or none.
+    $pkg = merch_shipment_package($qtyByItem);
+    $orderWeight = $pkg['weight_oz'] ?? '';
+    $packageWidth = $pkg['width'];
+    $packageHeight = $pkg['height'];
+    $packageLength = $pkg['length'];
 
     foreach ($groupRows as $row) {
         $name = trim($row[$col['Name']] ?? '');
@@ -274,11 +243,11 @@ foreach ($groups as $groupRows) {
             'oz',
             $unitPrice,
             'USD',
-            $orderWeight,   // blank unless this is a no-Tool-Stand mailer shipment (see tier check above)
+            $orderWeight,   // items + empty package, or blank for a hand-sized shipment (merch_shipment_package)
             'oz',
-            $packageWidth,  // blank unless mailer shipment
-            $packageHeight, // blank unless mailer shipment (POLY_MAILER_HEIGHT_IN when filled - see comment above)
-            $packageLength, // blank unless mailer shipment
+            $packageWidth,  // poly mailer or standard box dimensions; blank only for a hand-sized shipment
+            $packageHeight,
+            $packageLength,
             'in',
             round($orderAmount, 2),
             'USD',
