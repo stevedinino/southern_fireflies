@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-05-A
+// Build: 2026-10-05-B
 // Admin-only download: reads merchandise.csv, filters to orders that
 // are actually SAFE to buy a label for, and writes out a CSV in
 // Shippo's bulk-import column format (per shippo_sample_csv_v3.csv).
@@ -54,6 +54,18 @@
 // to size by hand in Shippo. Deliberately not the invoice shipping
 // tiers: those price what the customer pays, this describes the parcel.
 //
+// Dimensions are NOT sent (build 2026-10-05-B, found by testing with real
+// orders): when the CSV carries package dimensions, Shippo turns them
+// into a one-off "Custom dimensions" package and skips the saved package
+// templates and automation rules entirely. With the three dimension
+// columns blank and the weight still filled in, Shippo keeps our weight
+// and applies Steve's saved templates instead: "Firefly Polymailer" (the
+// default) and "Firefly Box" (automation rules: item = Tool Holder Stand,
+// or total item quantity >= 6). So the template sizes live in Shippo's
+// Settings > Packages, and the weight is the only package fact sent.
+// Steve notes the automations only ran after refreshing Shippo's orders
+// screen. Flip SHIPPO_SEND_DIMENSIONS to true to send them again.
+//
 // 2026-08-19: the per-row Item Weight column (previously always left
 // blank, since Order Weight above was the only total that mattered for
 // the automatic mailer tier) now also gets filled in per-unit from that
@@ -71,6 +83,8 @@ require __DIR__ . '/admin_guard.php'; // must come before anything else that mig
 require __DIR__ . '/pricing.php';
 require __DIR__ . '/merch_shipments.php';
 require __DIR__ . '/csv_safety.php';
+
+const SHIPPO_SEND_DIMENSIONS = false; // see the header comment: true makes Shippo use "Custom dimensions" and skip templates
 
 // Shared implementation in admin_guard.php as of 2026-08-20 (Finding
 // 11, 2026-08-19 code review) - was previously duplicated across 8 files.
@@ -187,6 +201,9 @@ foreach ($groups as $groupRows) {
     $packageWidth = $pkg['width'];
     $packageHeight = $pkg['height'];
     $packageLength = $pkg['length'];
+    if (!SHIPPO_SEND_DIMENSIONS) {
+        $packageWidth = $packageHeight = $packageLength = '';
+    }
 
     foreach ($groupRows as $row) {
         $name = trim($row[$col['Name']] ?? '');
@@ -245,7 +262,7 @@ foreach ($groups as $groupRows) {
             'USD',
             $orderWeight,   // items + empty package, or blank for a hand-sized shipment (merch_shipment_package)
             'oz',
-            $packageWidth,  // poly mailer or standard box dimensions; blank only for a hand-sized shipment
+            $packageWidth,  // blank unless SHIPPO_SEND_DIMENSIONS (Shippo's saved templates supply the size)
             $packageHeight,
             $packageLength,
             'in',
