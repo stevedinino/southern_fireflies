@@ -206,6 +206,153 @@ $groups = print_plate_group_queue(merch_stock_print_rows(array_slice($ranked, 0,
 $stats = merch_stock_plan_stats($groups);
 expect('stats: 3 CM Blue Blade Holders = 3 pieces on 1 plate', [$stats['units'], $stats['plates'], $stats['colors']], [3, 1, 1]);
 
+// ============================================================
+// 2026-10-04: oldest-first priority, ordered dates, and the pick-list
+// "Done" support (grid decrement + Created marking).
+// ============================================================
+
+// ---- Timestamps (two formats live in the Timestamp column) ----------
+expect('ts: old M/D/YYYY format', date('Y-m-d', merch_stock_parse_ts('7/5/2026')), '2026-07-05');
+expect('ts: ISO datetime', date('Y-m-d H:i:s', merch_stock_parse_ts('2026-10-03 18:26:31')), '2026-10-03 18:26:31');
+expect('ts: blank is null', merch_stock_parse_ts(''), '');
+expect('ts: garbage is null', merch_stock_parse_ts('last tuesday'), '');
+expect('ts: impossible date is null', merch_stock_parse_ts('13/45/2026'), '');
+$nowTs = merch_stock_parse_ts('2026-10-04 12:00:00');
+expect('age text: days', merch_stock_age_text(merch_stock_parse_ts('2026-08-22 17:36:00'), $nowTs), 'Aug 22 (42 days)');
+expect('age text: today', merch_stock_age_text(merch_stock_parse_ts('2026-10-04 01:00:00'), $nowTs), 'Oct 4 (today)');
+expect('age text: no timestamp', merch_stock_age_text(null, $nowTs), '');
+
+// ---- build_shipments: ordered dates + already-made lines ------------
+$hdr2 = ['OrderID', 'Name', 'Zip', 'Item', 'Quantity', 'Color', 'Size', 'Sleeve', 'Fulfillment', 'Pymt Date', 'Created', 'Fulfilled', 'Cancelled', 'Qty Created', 'Timestamp'];
+$col2 = array_flip($hdr2);
+$r2 = function (array $f) use ($hdr2): array {
+    $d = ['OrderID' => '1', 'Name' => 'Cust', 'Zip' => '29000', 'Item' => 'Blade Holder', 'Quantity' => '1', 'Color' => '#15 CM Blue', 'Size' => '', 'Sleeve' => '', 'Fulfillment' => 'Ship', 'Pymt Date' => '9/1/2026', 'Created' => '', 'Fulfilled' => '', 'Cancelled' => '', 'Qty Created' => '', 'Timestamp' => ''];
+    return array_map(fn($h) => array_merge($d, $f)[$h], $hdr2);
+};
+$b2 = merch_stock_build_shipments([
+    $r2(['OrderID' => '30', 'Name' => 'Mia', 'Timestamp' => '2026-09-20 10:00:00']),
+    $r2(['OrderID' => '31', 'Name' => 'Mia', 'Item' => 'Hearts Cutter Holder', 'Quantity' => '3', 'Qty Created' => '1', 'Timestamp' => '8/22/2026']),
+    $r2(['OrderID' => '32', 'Name' => 'Mia', 'Item' => 'Logo Shirt', 'Color' => '#70 Black', 'Size' => 'L', 'Sleeve' => 'Long', 'Created' => '9/25/2026', 'Timestamp' => '2026-09-21 09:00:00']),
+], $col2, FILAMENT_COLOR_ITEMS, []);
+$mia = $b2['shipments'][0];
+expect('ship: oldestTs is the earliest row in the shipment', date('Y-m-d', $mia['oldestTs']), '2026-08-22');
+expect('ship: partly-made line carries made / rowQty', [$mia['lines'][1]['qty'], $mia['lines'][1]['made'], $mia['lines'][1]['rowQty']], [2, 1, 3]);
+expect('ship: fully Created row is kept as a made line (for the pick-list)', [count($mia['madeLines']), $mia['madeLines'][0]['item'], $mia['madeLines'][0]['size'], $mia['madeLines'][0]['sleeve']], [1, 'Logo Shirt', 'L', 'Long']);
+expect('ship: made rows still belong to the shipment', count($mia['orderIds']), 3);
+expect('ship: made rows are NOT planned as print work', array_map(fn($l) => $l['orderId'], $mia['lines']), ['30', '31']);
+$noTs = merch_stock_build_shipments([$r2(['OrderID' => '40', 'Name' => 'Noel'])], $col2, FILAMENT_COLOR_ITEMS, []);
+expect('ship: no timestamp -> oldestTs null, nothing breaks', $noTs['shipments'][0]['oldestTs'], '');
+
+// ---- Priority: oldest-first vs quickest-wins ------------------------
+$prioShips = [
+    $sh('Old Big', 1, [['Blade Holder', '#15 CM Blue', 1], ['Oval Cutter Holder', '#17 Teal', 1], ['Hearts Cutter Holder', '#12 Purple', 1]]),
+    $sh('Mid Small', 5, [['Oval Cutter Holder', '#14 Sky Blue', 1]]),
+    $sh('New Tiny', 9, [['Tape Gun Holder', '#09 Magenta', 1]]),
+];
+$partialsAge = merch_stock_allocate($prioShips, [], 'age')['partial'];
+$partialsQuick = merch_stock_allocate($prioShips, [], 'quick')['partial'];
+expect('rank: quickest-wins puts the cheapest order first', $names(merch_stock_closeout_rank($partialsQuick, 'quick')), ['Mid Small', 'New Tiny', 'Old Big']);
+expect('rank: oldest-first puts the oldest first, however big', $names(merch_stock_closeout_rank($partialsAge, 'age')), ['Old Big', 'Mid Small', 'New Tiny']);
+expect('rank: the default stays the original quickest-wins rule', $names(merch_stock_closeout_rank($partialsQuick)), ['Mid Small', 'New Tiny', 'Old Big']);
+expect('rank: age still skips Stars & Stripes / shirt orders', $names(merch_stock_closeout_rank(merch_stock_allocate([
+    $sh('Special', 1, [['Blade Holder', 'Stars & Stripes (+$7)', 1]], [], true),
+    $sh('Shirty', 2, [['Blade Holder', '#15 CM Blue', 1]], [['orderId' => '9', 'item' => 'Logo Shirt', 'color' => '#70 Black', 'qty' => 1]]),
+    $sh('Fine', 3, [['Blade Holder', '#15 CM Blue', 1]]),
+], [], 'age')['partial'], 'age')), ['Fine']);
+// Pass B: a lone shelf piece wanted by two orders goes to the older one
+// under 'age', to the closer-to-done one under 'quick'.
+$contend = [
+    $sh('Older Far', 1, [['Blade Holder', '#15 CM Blue', 1], ['Oval Cutter Holder', '#17 Teal', 1]]),
+    $sh('Newer Near', 2, [['Blade Holder', '#15 CM Blue', 1]]),
+];
+$contendStock = ['Blade Holder' => ['#15 CM Blue' => 1]];
+// ("Newer Near" is ready outright in pass A, so make the shelf piece contested only among not-ready orders:)
+$contend2 = [
+    $sh('Older Far', 1, [['Blade Holder', '#15 CM Blue', 2], ['Oval Cutter Holder', '#17 Teal', 1]]),
+    $sh('Newer Near', 2, [['Blade Holder', '#15 CM Blue', 2]]),
+];
+$cov = fn(array $alloc) => [$alloc['partial'][0]['name'], $alloc['partial'][0]['coveredUnits'], $alloc['partial'][1]['coveredUnits']];
+expect('reserve: age gives the shelf piece to the older order first', $cov(merch_stock_allocate($contend2, $contendStock, 'age')), ['Older Far', 1, 0]);
+expect('reserve: quick gives it to the closer-to-done order first', $cov(merch_stock_allocate($contend2, $contendStock, 'quick')), ['Newer Near', 1, 0]);
+
+// ---- Done: what gets committed --------------------------------------
+$doneShip = $sh('Dot', 20, [['Blade Holder', '#15 CM Blue', 2], ['Oval Cutter Holder', '#17 Teal', 1]]);
+expect('commit ids: one entry per row being marked, sorted', merch_stock_shipment_commit_ids($doneShip), ['20', '21']);
+$sig1 = merch_stock_shipment_signature($doneShip);
+expect('signature: stable', merch_stock_shipment_signature($doneShip), $sig1);
+$changedQty = $doneShip; $changedQty['lines'][0]['qty'] = 3;
+$changedColor = $doneShip; $changedColor['lines'][1]['color'] = '#14 Sky Blue';
+$reordered = $doneShip; $reordered['lines'] = array_reverse($reordered['lines']);
+expect('signature: changes if a quantity changes', merch_stock_shipment_signature($changedQty) === $sig1 ? 'same' : 'differs', 'differs');
+expect('signature: changes if a color changes', merch_stock_shipment_signature($changedColor) === $sig1 ? 'same' : 'differs', 'differs');
+expect('signature: ignores line order', merch_stock_shipment_signature($reordered), $sig1);
+
+// ---- Done: decrement inventory (parts-down, with Excel Total row/col) ----
+$partsDown = [
+    ['Part', '#15 CM Blue', '#17 Teal', 'Copper', 'Total'],
+    ['Blade Holder', '5', '1', '', '6'],
+    ['Circles', '1', '', '1', '2'],
+    ['', '', '', '', ''],
+    ['Total', '6', '1', '1', '8'],
+];
+$d1 = merch_stock_decrement_grid($partsDown, ['Blade Holder' => ['#15 CM Blue' => 2], 'Circle Cutter Holder' => ['#15 CM Blue' => 1]], FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('dec: ok', $d1['ok'], '1');
+expect('dec: cells go down (5-2=3), zeroed cell goes blank (1-1)', [$d1['rows'][1][1], $d1['rows'][2][1]], ['3', '']);
+expect('dec: row Total cells come down too', [$d1['rows'][1][4], $d1['rows'][2][4]], ['4', '1']);
+expect('dec: column and grand Total come down too', [$d1['rows'][4][1], $d1['rows'][4][4]], ['3', '5']);
+expect('dec: untouched cells, unmatched Copper and blank rows left exactly as they were', [$d1['rows'][2][3], $d1['rows'][1][2], $d1['rows'][3], $d1['rows'][0]], ['1', '1', ['', '', '', '', ''], $partsDown[0]]);
+$re1 = merch_stock_parse_grid($d1['rows'], FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('dec: the parser reads back exactly the remaining stock', $re1['stock'], ['Blade Holder' => ['#15 CM Blue' => 3, '#17 Teal' => 1]]);
+
+$tooMany = merch_stock_decrement_grid($partsDown, ['Blade Holder' => ['#15 CM Blue' => 2, '#17 Teal' => 2]], FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('dec: not enough -> refused with a clear message, no rows returned', [$tooMany['ok'], isset($tooMany['rows']), strpos($tooMany['error'], '#17 Teal') !== false], [false, false, true]);
+$noSuch = merch_stock_decrement_grid($partsDown, ['Tape Gun Holder' => ['#15 CM Blue' => 1]], FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('dec: a part/color that was never stocked is refused', $noSuch['ok'], '');
+$ccExactly = merch_stock_decrement_grid($partsDown, ['Blade Holder' => ['#15 CM Blue' => 5, '#17 Teal' => 1]], FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('dec: taking everything is fine', [$ccExactly['ok'], $ccExactly['rows'][1][1], $ccExactly['rows'][1][2], $ccExactly['rows'][1][4]], [true, '', '', '0']);
+
+// ---- Done: decrement inventory (his new layout: colors down, parts across, BOM, no totals) ----
+$flippedInv = [
+    ["\xEF\xBB\xBF", 'Circles', 'Hearts', 'Blade Holder', 'Tool Stand Holder'],
+    ['#1 Red', '', '', '', ''],
+    ['#9 Magenta', '1', '', '', ''],
+    ['#14 Sky Blue', '1', '1', '2', ''],
+    ['#28 Copper', '1', '', '', ''],
+    ['Rainbow', '', '', '1', ''],
+];
+$d2 = merch_stock_decrement_grid($flippedInv, ['Blade Holder' => ['#14 Sky Blue' => 2, 'Rainbow (+$2)' => 1], 'Circle Cutter Holder' => ['#09 Magenta' => 1]], FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('dec/flipped: ok', $d2['ok'], '1');
+expect('dec/flipped: right cells (unpadded "#14", "#9" and bare "Rainbow" labels resolve)', [$d2['rows'][3][3], $d2['rows'][5][3], $d2['rows'][2][1]], ['', '', '']);
+expect('dec/flipped: the rest untouched, Copper included, BOM corner cell intact', [$d2['rows'][3][1], $d2['rows'][3][2], $d2['rows'][4][1], $d2['rows'][0][0]], ['1', '1', '1', "\xEF\xBB\xBF"]);
+$re2 = merch_stock_parse_grid($d2['rows'], FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('dec/flipped: parser reads back what is left', merch_stock_total($re2['stock']), 2);
+$shortRows = [['', 'Blade Holder'], ['#15 CM Blue', '2'], ['#17 Teal']]; // ragged
+$d3 = merch_stock_decrement_grid($shortRows, ['Blade Holder' => ['#15 CM Blue' => 1]], FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('dec: ragged rows are fine', [$d3['ok'], $d3['rows'][1][1]], [true, '1']);
+// Same item+color in two cells (duplicate label): take from both, in order.
+$dupe = [['Part', '#15 CM Blue', '#15 CM Blue'], ['Blade Holder', '1', '2']];
+$d4 = merch_stock_decrement_grid($dupe, ['Blade Holder' => ['#15 CM Blue' => 2]], FILAMENT_COLOR_ITEMS, TEST_COLORS);
+expect('dec: duplicate labels are drawn down together (1 + 1 of 1,2)', [$d4['ok'], $d4['rows'][1][1], $d4['rows'][1][2]], [true, '', '1']);
+expect('dec: empty file refused', merch_stock_decrement_grid([], [], FILAMENT_COLOR_ITEMS, TEST_COLORS)['ok'], '');
+
+// ---- Done: mark Created (exactly what ticking Created does) ---------
+$cols3 = array_flip(['OrderID', 'Quantity', 'Created', 'Fulfilled', 'Qty Created']);
+$rowA = ['50', '3', '', '', '1'];
+merch_stock_apply_created($rowA, $cols3, '2026-10-04');
+expect('created: stamps today, Qty Created = full Quantity, Fulfilled untouched', $rowA, ['50', '3', '2026-10-04', '', '3']);
+$rowB = ['51', '1', '2026-09-01', '', ''];
+merch_stock_apply_created($rowB, $cols3, '2026-10-04');
+expect('created: an existing Created date is kept', [$rowB[2], $rowB[4]], ['2026-09-01', '1']);
+$rowC = ['52', '2']; // short row from before the columns existed
+merch_stock_apply_created($rowC, $cols3, '2026-10-04');
+expect('created: short rows are padded so values land in the right columns', [count($rowC), $rowC[2], $rowC[3], $rowC[4]], [5, '2026-10-04', '', '2']);
+$rowD = ['53', '', '', '', ''];
+merch_stock_apply_created($rowD, $cols3, '2026-10-04');
+expect('created: blank Quantity counts as 1', $rowD[4], '1');
+$rowE = ['54', '2', '', '2026-09-30', '']; // Fulfilled already set: still never touched
+merch_stock_apply_created($rowE, $cols3, '2026-10-04');
+expect('created: never touches Fulfilled', $rowE[3], '2026-09-30');
+
 echo "\n";
 if (!empty($failures)) {
     echo count($failures) . " failure(s):\n" . implode("\n", $failures) . "\n";
