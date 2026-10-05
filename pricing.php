@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-04-A
+// Build: 2026-10-05-A
 // ============================================================
 // SINGLE SOURCE OF TRUTH for Southern Fireflies merch pricing.
 //
@@ -81,7 +81,7 @@ require_once __DIR__ . '/strings.php';
 const MERCH_CLASSES = [
     'cutter-holder' => [
         'price' => 18,
-        'weight_oz' => 2, // Circle/Oval; Rectangle overrides to 3 below
+        'weight_oz' => 1.8, // Circle/Hearts (Steve's scale, 2026-10-05); Oval and Rectangle override below
         'printed' => true,
         'colors' => 'filament',
         'rainbow' => false,
@@ -98,7 +98,7 @@ const MERCH_CLASSES = [
         // Gun Add-On launch - see the 'tape-gun-addon' class below and
         // MERCH_BUNDLES for the buy-both discount.
         'price' => 18,
-        'weight_oz' => 3,
+        'weight_oz' => 2.3, // Steve's scale, 2026-10-05
         'printed' => true,
         'colors' => 'filament',
         'rainbow' => true,
@@ -118,9 +118,7 @@ const MERCH_CLASSES = [
     // cross-item pricing, and it lives in MERCH_BUNDLES below.
     'tape-gun-addon' => [
         'price' => 10,
-        'weight_oz' => 1.5, // Steve's scale, 2026-08-21. Holder+add-on sums
-                            // to 4.5oz vs. his rough 4oz pair reading - his
-                            // scale rounds; erring high is postage-safe.
+        'weight_oz' => 1.1, // Steve's scale, 2026-10-05 (was 1.5 from 2026-08-21)
         'printed' => true,
         'colors' => 'filament',
         'rainbow' => true,
@@ -152,7 +150,7 @@ const MERCH_CLASSES = [
     // wrong.
     'blade-holder' => [
         'price' => 22,
-        'weight_oz' => 3, // PLACEHOLDER - needs Steve's scale, see note above
+        'weight_oz' => 2.3, // Steve's scale, 2026-10-05 (was a 3oz placeholder)
         'printed' => true,
         'colors' => 'filament',
         'rainbow' => true, // Rainbow-eligible (Steve, 2026-09-29, live-site correction)
@@ -177,13 +175,14 @@ const MERCH_CLASSES = [
     ],
     'tool-stand' => [
         'price' => 12,
-        // Weight is read for the Shippo export's per-LINE Item Weight
-        // column only - box_base shipments always use scavenged one-off
-        // boxes, so Order Weight/dimensions stay hand-measured by Steve
+        // Weight feeds the Shippo export's per-LINE Item Weight column
+        // and, since 2026-10-05, the Order Weight of a standard-box
+        // shipment (merch_shipment_package() below). Before that,
+        // box_base shipments were always hand-measured by Steve
         // in Shippo (see shippo_export.php). The mailer-tier weight
         // math never sums this class because it only sums
         // 'mailer_tier'-class items.
-        'weight_oz' => 8,
+        'weight_oz' => 8.1, // Steve's scale, 2026-10-05
         'printed' => true,
         'colors' => 'filament',
         'rainbow' => true,
@@ -234,7 +233,9 @@ const MERCH_CLASSES = [
 const MERCH_ITEM_OVERRIDES = [
     // Real ounces heavier than Circle/Oval (Steve's scale, 2026-08-10) -
     // the difference is real money in the mailer-tier weight math.
-    'Rectangle Cutter Holder' => ['weight_oz' => 3],
+    'Rectangle Cutter Holder' => ['weight_oz' => 2.3],
+    // Oval is a touch heavier than Circle/Hearts (Steve's scale, 2026-10-05).
+    'Oval Cutter Holder' => ['weight_oz' => 2.0],
 ];
 
 // ------------------------------------------------------------
@@ -542,7 +543,7 @@ const MAILER_TIER_WITH_BOX_BASE_EXPANDED_MAX = 4; // above MAILER_TIER_WITH_BOX_
 // together" estimate for the 4-item mixed case, since that was an
 // approximation, not a scale reading.
 const MAILER_TARE_OZ = 1;
-const POLY_MAILER_WIDTH_IN = 8.5;
+const POLY_MAILER_WIDTH_IN = 9;      // Steve's actual 9x11 mailer, 2026-10-05 (was 8.5)
 const POLY_MAILER_LENGTH_IN = 11;
 // Added 2026-08-15: Package Height used to be left blank for these
 // same mailer shipments on the theory that "poly mailers are flat, no
@@ -558,6 +559,36 @@ const POLY_MAILER_LENGTH_IN = 11;
 // is a nominal estimate, not a guess at zero - adjust this one
 // constant if it doesn't match what you're actually taping shut.
 const POLY_MAILER_HEIGHT_IN = 1;
+
+// The one standard shipping box (Steve, 2026-10-05): 7 x 5 x 10 in,
+// empty weight 4 oz. Shippo's importer wants width/height/length as
+// three separate numbers; postage only ever uses the product and the
+// longest side, so which of 7/5 is called width vs height is
+// immaterial. Same rule as the mailer: either all three dimensions go
+// out or none do (a partial set makes Shippo reject the row).
+const SHIPPING_BOX_TARE_OZ = 4;
+const SHIPPING_BOX_LENGTH_IN = 10;
+const SHIPPING_BOX_WIDTH_IN = 7;
+const SHIPPING_BOX_HEIGHT_IN = 5;
+
+// How Steve actually packs (2026-10-05) - deliberately NOT the invoice
+// tiers above (those price what the customer is charged; these decide
+// the package, and Steve gets more into the cheaper, lighter mailer than
+// the invoice tiers assume, e.g. Blade + all four cutter holders = 5).
+//   - up to MAILER_PACK_MAX small items, no Tool Stand -> poly mailer
+//   - a Tool Stand, or more small items than that      -> standard box
+//   - more than the "full set" (below) in item count or in weight ->
+//     it needs a custom box, so it is left blank for Steve to size by hand.
+// The standard box's absolute maximum is the full set, "very tight, but
+// it fits" (Steve, 2026-10-05): one each of Circle, Oval, Rectangle,
+// Hearts, Blade Holder, Tape Gun Holder, Tape Gun Add-On and Tool Stand
+// = 8 items, 21.7 oz of items. Count and weight are both checked since
+// they limit different mixes (a pile of light add-ons hits the count
+// first, a few heavy pieces hit the weight). If a part's weight or the
+// set itself changes, update these two numbers.
+const MAILER_PACK_MAX = 5;
+const SHIPPING_BOX_MAX_ITEMS = 8;
+const SHIPPING_BOX_MAX_ITEMS_OZ = 21.7;
 
 /**
  * Per-class bulky-item cap check for one shipment/group. Takes a map
@@ -631,6 +662,74 @@ function merch_printed_shipping(int $boxBaseQty, int $mailerTierQty, ?string $ca
         return ['amount' => (float) PRINTED_SHIP_RATE_BOX, 'note' => ''];
     }
     return ['amount' => null, 'note' => merch_load_string('shipping/manual-quote-too-many-circleoval', ['maxCircleOval' => MAILER_TIER_ALONE_MAX])];
+}
+
+/**
+ * Which package a shipment goes in, and what it weighs there
+ * (2026-10-05, Steve) - the Shippo export's single source of truth for
+ * Order Weight and the three package dimensions.
+ *
+ * Takes the shipment's combined quantity per item name and follows how
+ * Steve actually packs (see MAILER_PACK_MAX / SHIPPING_BOX_MAX_ITEMS):
+ *   - no Tool Stand, 1..MAILER_PACK_MAX small items -> poly mailer
+ *   - a Tool Stand, or more small items than that    -> standard box
+ * This intentionally does NOT follow merch_printed_shipping()'s invoice
+ * tiers: those are what the customer is charged, these are what goes in
+ * the parcel. Bulky-item caps (2 tape guns, ...) are invoicing rules too
+ * and don't force a hand-sized shipment here - except two or more Tool
+ * Stands, which won't fit the one standard box.
+ *
+ * Returns ['kind' => 'mailer'|'box'|'manual', 'weight_oz' => float|null,
+ * 'width'/'height'/'length' => number|'']. Weight is the items plus the
+ * empty package (MAILER_TARE_OZ / SHIPPING_BOX_TARE_OZ), to one decimal.
+ *
+ * 'manual' (weight and every dimension left blank, for Steve to measure
+ * in Shippo - never a partial set, which Shippo rejects) when we can't
+ * state a trustworthy answer: any item with no weight on file (shirts,
+ * hats, or an item added without a weight_oz), two or more Tool Stands,
+ * or more than the standard box's "full set" (SHIPPING_BOX_MAX_ITEMS items
+ * or SHIPPING_BOX_MAX_ITEMS_OZ of items) - that needs a custom box.
+ */
+function merch_shipment_package(array $qtyByItem): array
+{
+    $manual = ['kind' => 'manual', 'weight_oz' => null, 'width' => '', 'height' => '', 'length' => ''];
+
+    $boxBaseQty = 0;
+    $smallQty = 0;
+    $itemsOz = 0.0;
+    foreach ($qtyByItem as $item => $qty) {
+        $qty = (int) $qty;
+        if ($qty <= 0) {
+            continue;
+        }
+        if (!isset(ITEM_WEIGHT_OZ[$item])) {
+            return $manual; // no weight on file: any total would be a guess
+        }
+        $itemsOz += ITEM_WEIGHT_OZ[$item] * $qty;
+        if (in_array($item, BOX_BASE_ITEMS, true)) {
+            $boxBaseQty += $qty;
+        } elseif (in_array($item, MAILER_TIER_ITEMS, true)) {
+            $smallQty += $qty;
+        } else {
+            return $manual;
+        }
+    }
+
+    $total = $boxBaseQty + $smallQty;
+    if ($total === 0 || $boxBaseQty >= 2) {
+        return $manual;
+    }
+
+    if ($boxBaseQty === 0 && $smallQty <= MAILER_PACK_MAX) {
+        return ['kind' => 'mailer', 'weight_oz' => round($itemsOz + MAILER_TARE_OZ, 1),
+                'width' => POLY_MAILER_WIDTH_IN, 'height' => POLY_MAILER_HEIGHT_IN, 'length' => POLY_MAILER_LENGTH_IN];
+    }
+    // Past the standard box's full set (count or weight): custom box.
+    if ($total > SHIPPING_BOX_MAX_ITEMS || round($itemsOz, 1) > SHIPPING_BOX_MAX_ITEMS_OZ) {
+        return $manual;
+    }
+    return ['kind' => 'box', 'weight_oz' => round($itemsOz + SHIPPING_BOX_TARE_OZ, 1),
+            'width' => SHIPPING_BOX_WIDTH_IN, 'height' => SHIPPING_BOX_HEIGHT_IN, 'length' => SHIPPING_BOX_LENGTH_IN];
 }
 
 /**
