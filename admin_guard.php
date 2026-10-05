@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-29-A
+// Build: 2026-10-04-A
 // ============================================================
 // Shared "is this admin authenticated" plumbing for every admin-only
 // page/endpoint. Centralizing this after Finding 11 (2026-08-19 code
@@ -30,6 +30,7 @@
 // if set before session_start() runs, so don't call it again first.
 // ============================================================
 
+require_once __DIR__ . '/sff_timezone.php'; // dates below/after are Eastern
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/login_throttle.php';

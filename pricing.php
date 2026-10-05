@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-21-B
+// Build: 2026-10-04-A
 // ============================================================
 // SINGLE SOURCE OF TRUTH for Southern Fireflies merch pricing.
 //
@@ -31,6 +31,7 @@
 // place this ever needs to change.
 // ============================================================
 
+require_once __DIR__ . '/sff_timezone.php'; // Eastern time for any date() this page stamps
 require_once __DIR__ . '/strings.php';
 
 // ------------------------------------------------------------

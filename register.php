@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-16-A
+// Build: 2026-10-04-A
 // 2026-08-29 (code review Finding 3): RegID assignment below now goes
 // through id_sequence.php's persistent counter instead of a bare
 // max(existing rows)+1, matching the same fix just applied to
@@ -30,6 +30,7 @@
 //      merchandise.csv - this closes the same hole in registrations.csv
 //      before it bites the same way (a hand-added column silently
 //      shifting every value after it).
+require __DIR__ . '/sff_timezone.php'; // Timestamp below is Eastern
 require __DIR__ . '/config.php';
 require __DIR__ . '/strings.php';
 require __DIR__ . '/id_sequence.php';
