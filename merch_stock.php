@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-03-A
+// Build: 2026-10-04-A
 // ============================================================
 // Printed-stock matching + print-next planning logic, behind
 // merch_stock_report.php (admin report) and merch_stock_upload.php
@@ -386,8 +386,9 @@ function merch_stock_load_inventory(string $path): array
  *
  * $col maps column name => index|false for: OrderID, Name, Zip, Item,
  * Quantity, Color, Fulfillment, Pymt Date, Created, Fulfilled, Cancelled,
- * Qty Created (any may be false - same optional-column tolerance as the
- * rest of the codebase). $validItems = FILAMENT_COLOR_ITEMS (printed
+ * Qty Created, plus optionally Timestamp (when it was ordered), Size and
+ * Sleeve (any may be false - same optional-column tolerance as the rest
+ * of the codebase). $validItems = FILAMENT_COLOR_ITEMS (printed
  * pieces); anything else (shirts/hats) can't be printed or stocked, so it
  * is carried as an "other" line that blocks its shipment from being
  * ready. $excludedColors = PRINT_PLATE_EXCLUDED_COLORS (Stars & Stripes:
@@ -396,8 +397,13 @@ function merch_stock_load_inventory(string $path): array
  * Returns:
  *   'shipments'    list sorted by oldest OrderID; each:
  *       key, printKey, type ('ship'|'pickup'), name, orderIds[],
- *       minOrderId, lines[ [orderId,item,color,qty] ], other[ same ],
- *       special (bool), unpaidSiblingLines (int)
+ *       minOrderId, oldestTs (unix time the oldest row was ordered, or
+ *       null), lines[ [orderId,item,color,qty,made,rowQty,ts] ] (qty =
+ *       pieces still to make; made = pieces of that row already made),
+ *       other[ same ], madeLines[ [orderId,item,color,size,sleeve,qty,ts] ]
+ *       (rows already fully Created - physically part of the shipment
+ *       but nothing left to make or pull), special (bool),
+ *       unpaidSiblingLines (int)
  *   'unpaidPieces' / 'unpaidShipments' - printable pieces on Ship rows
  *       that were skipped for not being paid yet
  *   'awaitingShip' - shipments whose every piece is already Created but
@@ -434,6 +440,7 @@ function merch_stock_build_shipments(array $rows, array $col, array $validItems,
 
         $name = $get($row, 'Name');
         $zip = $get($row, 'Zip');
+        $rowTs = merch_stock_parse_ts($get($row, 'Timestamp'));
         $baseKey = $name !== '' ? merch_shipment_key($name, $zip) : '';
         $key = ($isShip ? 'ship:' : 'pickup:') . ($baseKey !== '' ? $baseKey : '#' . $orderId);
 
@@ -453,8 +460,10 @@ function merch_stock_build_shipments(array $rows, array $col, array $validItems,
                 'name' => $name,
                 'orderIds' => [],
                 'minOrderId' => PHP_INT_MAX,
+                'oldestTs' => null,
                 'lines' => [],
                 'other' => [],
+                'madeLines' => [],
                 'special' => false,
                 'unpaidSiblingLines' => 0,
             ];
@@ -463,11 +472,22 @@ function merch_stock_build_shipments(array $rows, array $col, array $validItems,
         if (ctype_digit($orderId)) {
             $ships[$key]['minOrderId'] = min($ships[$key]['minOrderId'], (int) $orderId);
         }
+        if ($rowTs !== null) {
+            $ships[$key]['oldestTs'] = $ships[$key]['oldestTs'] === null ? $rowTs : min($ships[$key]['oldestTs'], $rowTs);
+        }
 
         if ($remaining === 0) {
-            continue; // already printed - counts as done, nothing to plan
+            // Already printed - counts as done, nothing to plan. Kept for
+            // the pick-list so Steve gathers the WHOLE order.
+            $ships[$key]['madeLines'][] = [
+                'orderId' => $orderId, 'item' => $item, 'color' => $color,
+                'size' => $get($row, 'Size'), 'sleeve' => $get($row, 'Sleeve'),
+                'qty' => $qty, 'ts' => $rowTs,
+            ];
+            continue;
         }
-        $line = ['orderId' => $orderId, 'item' => $item, 'color' => $color, 'qty' => $remaining];
+        $line = ['orderId' => $orderId, 'item' => $item, 'color' => $color, 'qty' => $remaining,
+                 'made' => $qty - $remaining, 'rowQty' => $qty, 'ts' => $rowTs];
         if (in_array($item, $validItems, true)) {
             $ships[$key]['lines'][] = $line;
             if (in_array($color, $excludedColors, true)) {
@@ -498,6 +518,38 @@ function merch_stock_build_shipments(array $rows, array $col, array $validItems,
     ];
 }
 
+/**
+ * Parse the merchandise.csv Timestamp column into a unix time, or null.
+ * The column holds two formats: early rows are "7/5/2026" (M/D/YYYY,
+ * date only) and everything since is "2026-10-03 18:26:31".
+ */
+function merch_stock_parse_ts(string $raw): ?int
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        return null;
+    }
+    foreach (['Y-m-d H:i:s', 'Y-m-d H:i', 'Y-m-d', 'n/j/Y H:i:s', 'n/j/Y H:i', 'n/j/Y'] as $fmt) {
+        $d = DateTime::createFromFormat('!' . $fmt, $raw);
+        $errs = DateTime::getLastErrors();
+        if ($d !== false && (!$errs || ($errs['warning_count'] === 0 && $errs['error_count'] === 0))) {
+            return $d->getTimestamp();
+        }
+    }
+    return null;
+}
+
+/** "Aug 22 (43 days ago)" for the report; '' when there's no timestamp. */
+function merch_stock_age_text(?int $ts, ?int $now = null): string
+{
+    if ($ts === null) {
+        return '';
+    }
+    $now = $now ?? time();
+    $days = max(0, (int) floor(($now - $ts) / 86400));
+    return date('M j', $ts) . ' (' . ($days === 0 ? 'today' : ($days === 1 ? '1 day' : $days . ' days')) . ')';
+}
+
 /** item => color => qty needed across a shipment's lines. */
 function merch_stock_shipment_needs(array $shipment): array
 {
@@ -518,7 +570,9 @@ function merch_stock_shipment_needs(array $shipment): array
  * skipped, not allowed to hold up newer ones behind it.
  *
  * Pass B - RESERVE: whatever stock remains is handed to the shipments
- * that can't complete yet, closest-to-done first, so the "still to print"
+ * that can't complete yet - oldest order first ($priority 'age', what
+ * the report page uses) or closest-to-done first ($priority 'quick', the
+ * original rule and this function's default) - so the "still to print"
  * list reflects pieces genuinely missing. (Stock is never moved between
  * item/colors - rule 3.) Shipments waiting on shirts/hats go last.
  *
@@ -526,7 +580,7 @@ function merch_stock_shipment_needs(array $shipment): array
  * line annotated with 'covered' and 'missing'), plus 'stockLeft' (stock no
  * remaining paid demand wants - the "stranded" pieces).
  */
-function merch_stock_allocate(array $shipments, array $stock): array
+function merch_stock_allocate(array $shipments, array $stock, string $priority = 'quick'): array
 {
     $rem = $stock;
     $ready = [];
@@ -565,7 +619,7 @@ function merch_stock_allocate(array $shipments, array $stock): array
         }
     }
 
-    // Closest-to-done first, judged against what's left after pass A.
+    // Judged against what's left after pass A.
     $short = function (array $s) use ($rem): int {
         $m = 0;
         foreach (merch_stock_shipment_needs($s) as $item => $byColor) {
@@ -575,7 +629,11 @@ function merch_stock_allocate(array $shipments, array $stock): array
         }
         return $m;
     };
-    usort($pending, fn($a, $b) => [$short($a), $a['minOrderId']] <=> [$short($b), $b['minOrderId']]);
+    if ($priority === 'quick') {
+        usort($pending, fn($a, $b) => [$short($a), $a['minOrderId']] <=> [$short($b), $b['minOrderId']]);
+    } else {
+        usort($pending, fn($a, $b) => [$a['minOrderId'], $a['key']] <=> [$b['minOrderId'], $b['key']]);
+    }
 
     $reserve = function (array $s) use (&$rem): array {
         $covered = 0;
@@ -650,7 +708,8 @@ function merch_stock_print_rows(array $shipments): array
 
 /**
  * Close-out ordering: shipments that could actually ship once printed
- * (not waiting on a shirt/hat, not Stars & Stripes) ranked by
+ * (not waiting on a shirt/hat, not Stars & Stripes). $priority 'age'
+ * ranks strictly oldest order first; 'quick' (the original rule) ranks by
  *   1. fewest pieces still missing (cheapest to finish),
  *   2. then pieces that share an item+color with OTHER close-to-done
  *      shipments - those ride the same plate, so finishing them costs
@@ -662,9 +721,15 @@ function merch_stock_print_rows(array $shipments): array
  * Returns every such shipment in ranked order; the caller slices off the
  * first N.
  */
-function merch_stock_closeout_rank(array $partial): array
+function merch_stock_closeout_rank(array $partial, string $priority = 'quick'): array
 {
     $eligible = array_values(array_filter($partial, fn($s) => !$s['special'] && empty($s['other']) && $s['missingUnits'] > 0));
+    if ($priority === 'age') {
+        // 2026-10-04 (Steve): with a big backlog the oldest orders must not
+        // sit while cheaper new ones jump ahead - strictly oldest first.
+        usort($eligible, fn($a, $b) => [$a['minOrderId'], $a['key']] <=> [$b['minOrderId'], $b['key']]);
+        return $eligible;
+    }
 
     $demand = []; // item|color => missing units across all eligible shipments
     foreach ($eligible as $s) {
@@ -734,4 +799,198 @@ function merch_stock_plan_stats(array $groups): array
         $plates += $cp;
     }
     return ['byColor' => $byColor, 'units' => $units, 'plates' => $plates, 'colors' => count($byColor)];
+}
+
+// ============================================================
+// Pick-list "Done" support (2026-10-04): the Ready-to-ship list on
+// merch_stock_report.php gets a checkbox per part and a Done button;
+// merch_stock_ship.php uses these to (a) mark the pulled rows Created and
+// (b) take the pieces out of inventory.csv - all or nothing.
+// ============================================================
+
+/**
+ * Fingerprint of exactly what a Done click commits for one shipment: every
+ * stock-covered line (order id, item, color, pieces). The page posts the
+ * value it rendered; the server recomputes from the live files and refuses
+ * if they differ, so what Steve physically gathered can never silently
+ * differ from what gets decremented/marked.
+ */
+function merch_stock_shipment_signature(array $shipment): string
+{
+    $parts = [];
+    foreach ($shipment['lines'] as $l) {
+        $parts[] = $l['orderId'] . '|' . $l['item'] . '|' . $l['color'] . '|' . $l['qty'];
+    }
+    sort($parts, SORT_STRING);
+    return substr(sha1(implode("\n", $parts)), 0, 16);
+}
+
+/** Ids of the rows a Done click would mark Created (the lines pulled from stock). */
+function merch_stock_shipment_commit_ids(array $shipment): array
+{
+    $ids = [];
+    foreach ($shipment['lines'] as $l) {
+        $ids[$l['orderId']] = true;
+    }
+    $ids = array_map('strval', array_keys($ids));
+    sort($ids, SORT_STRING);
+    return $ids;
+}
+
+/**
+ * Take $needs (item => color => qty) out of a raw inventory grid (the
+ * fgetcsv rows of inventory.csv, either layout), returning the grid with
+ * only those cells changed - labels, unmatched colors (Copper), blank
+ * rows and the BOM are all left exactly as uploaded. Zeroed cells go
+ * blank, like the rest of the sheet. If the sheet has numeric Total
+ * row/column cells, they come down by the same amount.
+ *
+ * Returns ['ok'=>true,'rows'=>...] or ['ok'=>false,'error'=>...] - and on
+ * error NOTHING is changed (all-or-nothing; the caller never gets a
+ * half-decremented grid).
+ */
+function merch_stock_decrement_grid(array $rows, array $needs, array $validItems, array $validColors): array
+{
+    $itemIdx = merch_stock_item_index($validItems);
+    $colorIdx = merch_stock_color_index($validColors);
+    $flipped = merch_stock_detect_orientation($rows, $validItems, $validColors) === 'colors-down';
+
+    $hdr = null;
+    foreach ($rows as $i => $r) {
+        if (is_array($r) && count(array_filter($r, fn($c) => trim((string) $c) !== '')) > 0) {
+            $hdr = $i;
+            break;
+        }
+    }
+    if ($hdr === null) {
+        return ['ok' => false, 'error' => 'The inventory file is empty.'];
+    }
+    $isTotal = fn($v) => strtolower(trim((string) $v)) === 'total';
+    $itemOf = fn($label) => $itemIdx[merch_stock_norm(trim((string) $label))] ?? null;
+    $colorOf = fn($label) => merch_stock_resolve_color(trim((string) $label), $colorIdx)[0];
+
+    $width = 0;
+    foreach ($rows as $r) {
+        $width = max($width, count($r));
+    }
+    $totalCol = null;
+    for ($c = 1; $c < $width; $c++) {
+        if ($isTotal($rows[$hdr][$c] ?? '')) {
+            $totalCol = $c;
+        }
+    }
+    $totalRow = null;
+    foreach ($rows as $i => $r) {
+        if ($i > $hdr && $isTotal($r[0] ?? '')) {
+            $totalRow = $i;
+        }
+    }
+
+    $out = $rows;
+    $changes = []; // [r, c, take]
+    foreach ($needs as $item => $byColor) {
+        foreach ($byColor as $color => $need) {
+            $left = (int) $need;
+            for ($r = $hdr + 1; $r < count($rows) && $left > 0; $r++) {
+                $side = trim((string) ($rows[$r][0] ?? ''));
+                if ($side === '' || $isTotal($side)) {
+                    continue;
+                }
+                for ($c = 1; $c < $width && $left > 0; $c++) {
+                    $top = trim((string) ($rows[$hdr][$c] ?? ''));
+                    if ($top === '' || $isTotal($top)) {
+                        continue;
+                    }
+                    $cellItem = $flipped ? $itemOf($top) : $itemOf($side);
+                    $cellColor = $flipped ? $colorOf($side) : $colorOf($top);
+                    if ($cellItem !== $item || $cellColor !== $color) {
+                        continue;
+                    }
+                    $raw = trim((string) ($out[$r][$c] ?? ''));
+                    if ($raw === '' || !is_numeric($raw) || (float) $raw < 0 || (float) $raw != floor((float) $raw)) {
+                        continue;
+                    }
+                    $have = (int) $raw;
+                    $take = min($have, $left);
+                    if ($take > 0) {
+                        while (count($out[$r]) <= $c) {
+                            $out[$r][] = '';
+                        }
+                        $out[$r][$c] = $have - $take === 0 ? '' : (string) ($have - $take);
+                        $changes[] = [$r, $c, $take];
+                        $left -= $take;
+                    }
+                }
+            }
+            if ($left > 0) {
+                return ['ok' => false, 'error' => "Not enough {$item} in {$color} on the shelf (the inventory changed - reload the page)."];
+            }
+        }
+    }
+
+    foreach ($changes as [$r, $c, $take]) {
+        // The row's Total cell, the column's Total cell, and the grand-total corner.
+        foreach ([[$r, $totalCol], [$totalRow, $c], [$totalRow, $totalCol]] as [$tr, $tc]) {
+            if ($tr === null || $tc === null) {
+                continue;
+            }
+            $v = trim((string) ($out[$tr][$tc] ?? ''));
+            if ($v !== '' && is_numeric($v)) {
+                $out[$tr][$tc] = (string) max(0, (int) $v - $take);
+            }
+        }
+    }
+    return ['ok' => true, 'rows' => $out];
+}
+
+/**
+ * The row-level effect of Done: exactly what ticking "Created" does in
+ * merch_update.php - Created gets today's date (kept if already set) and
+ * Qty Created becomes the full Quantity (the two columns are one fact; see
+ * the 2026-09-25 comment there). Never touches Fulfilled. Pads short rows
+ * first so a value can't land at the wrong offset.
+ */
+function merch_stock_apply_created(array &$row, array $col, string $today): void
+{
+    $created = $col['Created'];
+    $qtyCreated = $col['Qty Created'];
+    $quantity = $col['Quantity'];
+    $max = max($created, $qtyCreated);
+    while (count($row) <= $max) {
+        $row[] = '';
+    }
+    if (trim((string) $row[$created]) === '') {
+        $row[$created] = $today;
+    }
+    $row[$qtyCreated] = (string) max(1, (int) trim((string) ($row[$quantity] ?? '1')));
+}
+
+/** Back up inventory.csv to backups/inventory_<stamp>.csv (never overwrites an earlier one) and keep the newest 30. */
+function merch_stock_backup_inventory(string $target, string $backupDir, int $keep = 30): void
+{
+    if (!is_file($target) || filesize($target) === 0) {
+        return;
+    }
+    if (!is_dir($backupDir) && !mkdir($backupDir, 0755, true) && !is_dir($backupDir)) {
+        error_log("merch_stock_backup_inventory: could not create {$backupDir}");
+        return;
+    }
+    $stamp = date('Ymd_His');
+    $dest = $backupDir . '/inventory_' . $stamp . '.csv';
+    for ($n = 2; file_exists($dest); $n++) {
+        $dest = $backupDir . '/inventory_' . $stamp . '_' . $n . '.csv';
+    }
+    if (!copy($target, $dest)) {
+        error_log("merch_stock_backup_inventory: could not copy {$target} to {$dest}");
+        return;
+    }
+    $old = glob($backupDir . '/inventory_*.csv') ?: [];
+    if (count($old) > $keep) {
+        sort($old);
+        foreach (array_slice($old, 0, count($old) - $keep) as $f) {
+            if (!unlink($f)) {
+                error_log("merch_stock_backup_inventory: could not prune {$f}");
+            }
+        }
+    }
 }
