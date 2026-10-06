@@ -437,6 +437,10 @@ const FILAMENT_COLORS = [
     '#01 Red', '#02 Coral', '#03 Maroon', '#04 Orange', '#05 Silk Orange', '#06 Yellow', '#07 Gold', '#08 Hot Pink', '#09 Magenta',
     '#10 Light Pink', '#11 Plum', '#12 Purple', '#13 Lilac', '#14 Sky Blue', '#15 CM Blue', '#16 Navy Blue', '#17 Teal', '#18 Silk Green',
     '#19 Green', '#20 Light Green', '#21 Olive Green', '#22 Black', '#23 Gray', '#24 Ice', '#25 White', '#26 Tan', '#27 Brown',
+    // 2026-10-05 (Steve): Copper added as #28, orderable on every filament
+    // item (no surcharge). Its swatch on the chart is a synthesized one,
+    // built from a video frame, until copper is next loaded and photographed.
+    '#28 Copper',
     // Rainbow and Stars & Stripes both live only in the filament list
     // (they're print options, not garment colors) - merch_color_options_
     // for_item() below strips whichever one doesn't apply for a given

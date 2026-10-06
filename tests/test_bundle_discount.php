@@ -93,7 +93,7 @@ expect('pickup pair: total', $r['total'], 25 + 1.75);
 
 // ---- Add-on class facts (derived constants) --------------------------
 expect('add-on price', MERCH_PRICES['Tape Gun Add-On'], 10);
-expect('add-on weight 1.5oz', ITEM_WEIGHT_OZ['Tape Gun Add-On'], 1.5);
+expect('add-on weight 1.1oz', ITEM_WEIGHT_OZ['Tape Gun Add-On'], 1.1); // 2026-10-05: re-weighed (was 1.5)
 expect('add-on is mailer-tier', in_array('Tape Gun Add-On', MAILER_TIER_ITEMS, true) ? 'yes' : 'no', 'yes');
 expect('add-on Rainbow-eligible', in_array('Tape Gun Add-On', RAINBOW_ELIGIBLE_ITEMS, true) ? 'yes' : 'no', 'yes');
 expect('add-on Stars&Stripes-eligible', in_array('Tape Gun Add-On', STARS_STRIPES_ELIGIBLE_ITEMS, true) ? 'yes' : 'no', 'yes');
@@ -105,6 +105,7 @@ $rendered = merch_load_string('emails/invoice-body.text', [
     'discountLineText' => "- Bundle discount: -\$3.00\n",
     'tax' => '$1.75', 'shippingLineText' => "- Flat-rate shipping: \$6.00\n",
     'total' => '$32.75', 'last4Text' => '', 'venmoHandle' => 'x', 'paypalEmail' => 'x', 'accountNote' => '',
+    'zelleNoteText' => '', 'checkNoteText' => '', // tokens added to the template since this test was written
 ]);
 expect('invoice text: discount line present', strpos($rendered, 'Bundle discount: -$3.00') !== false ? 'yes' : 'no', 'yes');
 expect('invoice text: no unreplaced tokens', preg_match('/\{\{\w+\}\}/', $rendered) ? 'leftover' : 'clean', 'clean');
@@ -112,6 +113,7 @@ $renderedNoDiscount = merch_load_string('emails/invoice-body.text', [
     'name' => 'Test', 'lineItemsText' => "- Logo Hat: \$25.00\n", 'discountLineText' => '',
     'tax' => '$1.75', 'shippingLineText' => '', 'total' => '$26.75',
     'last4Text' => '', 'venmoHandle' => 'x', 'paypalEmail' => 'x', 'accountNote' => '',
+    'zelleNoteText' => '', 'checkNoteText' => '', // tokens added to the template since this test was written
 ]);
 expect('invoice text: clean when no discount', preg_match('/\{\{\w+\}\}|Bundle discount/', $renderedNoDiscount) ? 'dirty' : 'clean', 'clean');
 $pickup = merch_load_string('shipping/pickup-invoice-template', [
