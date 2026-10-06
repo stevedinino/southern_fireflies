@@ -7,7 +7,7 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-10-03-A';
+$merchBuild = '2026-10-05-B';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -31,6 +31,22 @@ require __DIR__ . '/print_plates.php'; // 2026-09-17: for print_plate_group_queu
 const MERCH_ADMIN_COLUMN_ORDER = [
     'OrderID', 'Name', 'Item', 'Quantity', 'Color',
     'Invoice Date', 'Pymt Date', 'Created', 'Fulfilled', 'Cancelled',
+];
+
+// 2026-10-05 (Steve): the Invoice and Payments views showed every column
+// (address, timestamp, IP, email ...) when only a few matter for the job.
+// Per-view column lists, applied in the browser by applyView() below: a
+// column NOT listed is hidden while that view is active, and the other
+// views (All, Create, Ship) still show everything. This only hides table
+// cells - nothing is removed from the data or the page. Keep the column
+// that carries the view's action button: Invoice Date holds Send Invoice,
+// Pymt Date holds Mark Paid. Cancelled stays because it is how a single
+// line is dropped before invoicing / an abandoned order is closed out.
+// Edit these two lists to change what each view shows; names must match
+// the table's column headers exactly.
+const MERCH_VIEW_COLUMNS = [
+    'needs-invoicing' => ['Name', 'Item', 'Color', 'Price', 'Invoice Date', 'Cancelled'],
+    'needs-payment' => ['Name', 'Item', 'Color', 'Price', 'Invoice Date', 'Pymt Date', 'Cancelled'],
 ];
 
 // Simple password gate (same login as ourguests.php - one admin, two
@@ -383,11 +399,17 @@ $merchEditCatalog = [
           // still holding 'active' as merchAdminView) degrades to the
           // same "show everything not fulfilled" behavior it always had,
           // instead of silently landing on a different view.
+          // 2026-10-05 (Steve): shortened labels - Invoice / Payments /
+          // Create / Ship (the full "Needs ..." name stays as the hover
+          // tooltip), "Cancelled" and "P/U @ Retreat" for the two
+          // checkboxes. Labels only: data-view values, element ids and all
+          // the JS are unchanged. Sort by Print Plate is deliberately not
+          // trimmed.
           echo '<button type="button" class="btn merch-view-btn" data-view="all" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">All</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-invoicing" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">Needs Invoicing</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-payment" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">Needs Payment</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-creating" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">Needs Creating</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-shipping" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">Needs Shipping</button>';
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-invoicing" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Invoicing">Invoice</button>';
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-payment" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Payment">Payments</button>';
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-creating" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Creating">Create</button>';
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-shipping" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Shipping">Ship</button>';
           // 2026-09-17 (Steve): "sort the Needs Creating list to give me
           // an optimized list of same color gadgets I can print
           // together." NOT another data-view case below (applyView()
@@ -412,6 +434,13 @@ $merchEditCatalog = [
           // moment the buttons/view logic wires up, so there's no flash
           // of a checkbox that doesn't apply to the default "All" view.
           echo '<label id="merch-print-plate-label" style="display:none; margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-print-plate-toggle" /> Sort by Print Plate</label>';
+          // 2026-10-05 (Steve): the Ship view now opens on the Packing
+          // Checklist (packing_slips.php, shown in a frame below the filter
+          // bar) instead of the plain filtered list, same idea as Sort by
+          // Print Plate on Create. Uncheck this to get the plain list back;
+          // the choice is remembered for the tab, like the plate checkbox.
+          // Only visible on the Ship view (JS shows/hides the label).
+          echo '<label id="merch-pack-label" style="display:none; margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-pack-toggle" checked /> Packing Checklist</label>';
           // 2026-08-23: independent of the named views above (which
           // never show a cancelled row, full stop - nothing to act on
           // there) - this is a manual override for browsing/auditing,
@@ -419,7 +448,7 @@ $merchEditCatalog = [
           // which is the actual fix for "the list is growing lengthy
           // and I don't want to scroll past abandoned orders" (Steve,
           // 2026-08-23).
-          echo '<label style="margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-show-cancelled" /> Show cancelled</label>';
+          echo '<label style="margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-show-cancelled" /> Cancelled</label>';
           // 2026-08-25 (Steve): same independent-of-the-named-views
           // pattern as "Show cancelled" right above - there was no way to
           // isolate just the Pickup at Retreat orders on this page, which
@@ -427,7 +456,7 @@ $merchEditCatalog = [
           // happens all at once at the retreat rather than trickling out
           // like shipments do. Off by default so the page's default view
           // is unchanged for everyone else.
-          echo '<label style="margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-pickup-only" /> Pickup at Retreat only</label>';
+          echo '<label style="margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-pickup-only" /> P/U @ Retreat</label>';
           // 2026-09-24 (Steve): "I've deployed everything, but the fix
           // isn't showing up live." Root-caused to PHP OPcache on the
           // host serving stale compiled bytecode even after a
@@ -911,7 +940,7 @@ $merchEditCatalog = [
       ?>
       <div id="merch-print-plate-pane" class="merch-table-pane" style="display:none; padding:16px;">
         <?php if (empty($printPlateGroups)): ?>
-          <p style="text-align:center; color:#666;">Nothing here right now &mdash; either Needs Creating is empty, or everything left is a shirt/hat or a Stars &amp; Stripes order, neither of which go through this view.</p>
+          <p style="text-align:center; color:#666;">Nothing here right now &mdash; either the Create view is empty, or everything left is a shirt/hat or a Stars &amp; Stripes order, neither of which go through this view.</p>
         <?php else: ?>
           <p style="color:#666; font-size:0.85em; margin-top:0;">
             The same Needs Creating queue, grouped by color (most-ordered colors first), then matched against your confirmed plate combos and per-item capacities in <code>print_plates.php</code>. Every order line appears in exactly one plate below, full or partial &mdash; nothing is hidden or double-counted. When a plate can't fit everyone waiting on an item, whichever order(s) that would fully complete get priority over ones that would stay incomplete either way. A partial plate is still a candidate for combining by hand with something else in that color. Check a plate off once it's printed &mdash; that's recorded per order, so a multi-unit line that's only partly done just needs the rest on a later plate.
@@ -970,8 +999,27 @@ $merchEditCatalog = [
         <?php endif; ?>
       </div>
 
+      <!-- 2026-10-05: Ship view's Packing Checklist. packing_slips.php is the
+           whole checklist (same page the Pack List footer link opens), so its
+           Fulfilled checkboxes, Print button and "still in progress" sections
+           all work here unchanged. The frame loads the first time the Ship
+           view is shown, not on every page load. -->
+      <div id="merch-pack-pane" style="display:none; padding:0 0 8px;">
+        <iframe id="merch-pack-frame" title="Packing Checklist" style="width:100%; height:calc(100vh - 170px); min-height:480px; border:1px solid #ddd; background:#fff;"></iframe>
+      </div>
+
       <div class="button-container" style="text-align:center; margin-top:20px;">
         <p style="margin:0;">
+          <!-- 2026-10-05 (Steve): shortened link names, ordered roughly by
+               how often each is used (Inventory first), to be adjusted by
+               feel. Display text only - every href/target is unchanged. -->
+          <!-- 2026-10-02 (Steve): read-only "what can I ship from what I have
+               printed, and what should I print next?" report - see
+               merch_stock.php / merch_stock_report.php header comments.
+               2026-10-05: link text is now "Inventory" (the page itself is
+               still titled Stock &amp; Print Plan). -->
+          <a href="merch_stock_report.php" target="_blank" style="color: var(--accent);">Inventory &rarr;</a>
+          &nbsp;&mdash;&nbsp;
           <!-- 2026-09-20 (Steve, item #6): these used to be one click -
                the Shippo CSV download also popped the pack list open in
                a new tab, whether or not you actually wanted the CSV yet.
@@ -982,34 +1030,30 @@ $merchEditCatalog = [
                Fulfilled batch either way (packing_slips.php and
                shippo_export.php already compute that set the same way -
                see Finding 10, 2026-08-19 code review) - pick whichever
-               one you actually need right now. -->
-          <a href="shippo_export.php" style="color: var(--accent);">Download Shippo Export (paid, unshipped orders) &rarr;</a>
+               one you actually need right now. (Both links are for the
+               paid, unshipped orders.) -->
+          <a href="shippo_export.php" style="color: var(--accent);">Shippo Export &rarr;</a>
           &nbsp;&mdash;&nbsp;
-          <a href="packing_slips.php" target="_blank" style="color: var(--accent);">Pack List (paid, unshipped orders) &rarr;</a>
+          <a href="packing_slips.php" target="_blank" style="color: var(--accent);">Pack List &rarr;</a>
           &nbsp;&mdash;&nbsp;
           <!-- 2026-08-25: companion to the link above, for the Pickup at
                retreat side - see pickup_slips.php's header comment for why
                it needed its own checklist instead of reusing packing_slips.php. -->
-          <a href="pickup_slips.php" target="_blank" style="color: var(--accent);">Pickup Checklist (Pickup at Retreat orders) &rarr;</a>
+          <a href="pickup_slips.php" target="_blank" style="color: var(--accent);">Retreat Pickup &rarr;</a>
           &nbsp;&mdash;&nbsp;
-          <a href="export_emails.php" style="color: var(--accent);">Download Customer Emails &rarr;</a>
+          <a href="export_emails.php" style="color: var(--accent);">D/L Customer Emails &rarr;</a>
           &nbsp;&mdash;&nbsp;
           <!-- 2026-09-26 (Steve, for Janet): the shirts and hats still to
                be made, as a CSV she can open in Excel - see
                merch_export_shirts_hats.php's header comment for exactly
                which rows/columns it includes. -->
-          <a href="merch_export_shirts_hats.php" style="color: var(--accent);">Download Shirts &amp; Hats to Make (for Janet) &rarr;</a>
+          <a href="merch_export_shirts_hats.php" style="color: var(--accent);">D/L Shirts &amp; Hats &rarr;</a>
           &nbsp;&mdash;&nbsp;
           <!-- 2026-08-29: bulk payment-reminder feature - preview-then-
                confirm list of invoiced-but-unpaid Ship customers (see
                merch_reminders.php's header comment). Opens in its own
-               tab, same as the Pickup Checklist link above. -->
-          <!-- 2026-10-02 (Steve): read-only "what can I ship from what I have
-               printed, and what should I print next?" report - see
-               merch_stock.php / merch_stock_report.php header comments. -->
-          <a href="merch_stock_report.php" target="_blank" style="color: var(--accent);">Stock &amp; Print Plan &rarr;</a>
-          &nbsp;&mdash;&nbsp;
-          <a href="merch_reminders.php" target="_blank" style="color: var(--accent);">Send Payment Reminders &rarr;</a>
+               tab, same as the Retreat Pickup link above. -->
+          <a href="merch_reminders.php" target="_blank" style="color: var(--accent);">Payment Reminders &rarr;</a>
           &nbsp;&mdash;&nbsp;
           <span style="color:#bbb; font-size:0.75em;">Build <?= htmlspecialchars($merchBuild, ENT_QUOTES, 'UTF-8') ?></span>
         </p>
@@ -1034,6 +1078,7 @@ $merchEditCatalog = [
     // 2026-08-23 (#2): catalog data for the Item-edit form below - see
     // the PHP that builds $merchEditCatalog near the top of this file.
     const MERCH_EDIT_CATALOG = <?= json_encode($merchEditCatalog) ?>;
+    const MERCH_VIEW_COLUMNS = <?= json_encode(MERCH_VIEW_COLUMNS) ?>; // 2026-10-05: see the PHP constant of the same name
 
     // 2026-08-29 (Finding 9): every fetch() below that POSTs to
     // merch_update.php/merch_invoice.php/merch_edit_line.php now
@@ -1778,10 +1823,40 @@ $merchEditCatalog = [
     const printPlateToggle = document.getElementById('merch-print-plate-toggle');
     const printPlatePane = document.getElementById('merch-print-plate-pane');
     const merchTablePane = document.getElementById('merch-table-pane');
+    // 2026-10-05: Ship view's Packing Checklist (a frame onto
+    // packing_slips.php). On by default for Ship; unchecking it shows the
+    // plain list. The choice lives in sessionStorage like the plate box.
+    // The one function below now decides which of the three panes (plain
+    // table / plate pane / checklist frame) is showing.
+    const packLabel = document.getElementById('merch-pack-label');
+    const packToggle = document.getElementById('merch-pack-toggle');
+    const packPane = document.getElementById('merch-pack-pane');
+    const packFrame = document.getElementById('merch-pack-frame');
+    try {
+      if (packToggle && sessionStorage.getItem('merchAdminPackChecklist') === '0') packToggle.checked = false;
+    } catch (e) { /* storage unavailable - checklist just starts on */ }
     function updatePrintPlatePaneVisibility() {
       const shown = !!(printPlateToggle && printPlateToggle.checked);
+      const packShown = currentView === 'needs-shipping' && !!(packToggle && packToggle.checked);
       if (printPlatePane) printPlatePane.style.display = shown ? '' : 'none';
-      if (merchTablePane) merchTablePane.style.display = shown ? 'none' : '';
+      if (packPane) packPane.style.display = packShown ? '' : 'none';
+      if (packShown && packFrame && !packFrame.getAttribute('src')) packFrame.setAttribute('src', 'packing_slips.php');
+      if (merchTablePane) merchTablePane.style.display = (shown || packShown) ? 'none' : '';
+    }
+    if (packToggle) {
+      packToggle.addEventListener('change', () => {
+        try {
+          sessionStorage.setItem('merchAdminPackChecklist', packToggle.checked ? '1' : '0');
+        } catch (e) { /* storage unavailable - just won't be remembered */ }
+        if (!packToggle.checked) {
+          // Back to the plain list: reload so it reflects anything marked
+          // Fulfilled inside the checklist frame (the choice and the Ship
+          // view are both remembered, so it comes back on the plain list).
+          location.reload();
+          return;
+        }
+        updatePrintPlatePaneVisibility();
+      });
     }
     // 2026-09-26 (Steve): "When I'm in the Sort by Print Plate view and I
     // click a checkbox, it reloads the page and takes me out of that view."
@@ -1805,6 +1880,26 @@ $merchEditCatalog = [
       });
     }
 
+    // 2026-10-05 (Steve): per-view column trimming for Invoice and Payments
+    // (MERCH_VIEW_COLUMNS, defined next to MERCH_EDIT_CATALOG). Cells are
+    // matched to their column by header text, once; every other view shows
+    // all columns again.
+    let viewColumnNames = null; // column name per cell index, built on first use
+    function applyViewColumns(view) {
+      const table = merchTablePane ? merchTablePane.querySelector('table') : null;
+      if (!table) return;
+      if (viewColumnNames === null) {
+        viewColumnNames = Array.from(table.rows[0].cells).map((th) => th.textContent.trim());
+      }
+      const allowed = MERCH_VIEW_COLUMNS[view] || null;
+      Array.from(table.rows).forEach((row) => {
+        Array.from(row.cells).forEach((cell, i) => {
+          const name = viewColumnNames[i];
+          cell.style.display = (allowed && name !== undefined && allowed.indexOf(name) === -1) ? 'none' : '';
+        });
+      });
+    }
+
     function applyView(view) {
       currentView = view;
       sessionStorage.setItem('merchAdminView', view);
@@ -1824,6 +1919,12 @@ $merchEditCatalog = [
         }
         updatePrintPlatePaneVisibility();
       }
+      // 2026-10-05: the Packing Checklist checkbox only exists on Ship.
+      if (packLabel) {
+        packLabel.style.display = view === 'needs-shipping' ? '' : 'none';
+        updatePrintPlatePaneVisibility();
+      }
+      applyViewColumns(view);
       document.querySelectorAll('table tr[data-fulfilled]').forEach((tr) => {
         const created = tr.dataset.created === '1';
         const fulfilled = tr.dataset.fulfilled === '1';

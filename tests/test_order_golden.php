@@ -41,7 +41,7 @@ $base = "http://127.0.0.1:{$port}";
 // ---- Build the scratch sandbox --------------------------------------
 @exec('rm -rf ' . escapeshellarg($scratch));
 mkdir($scratch, 0777, true);
-$copies = ['pricing.php', 'merch_items.php', 'strings.php', 'merch_order.php', 'merch_notify.php', 'merch_backup.php', 'PHPMailer', 'strings', 'items', 'styles'];
+$copies = ['pricing.php', 'sff_timezone.php', 'id_sequence.php', 'merch_items.php', 'strings.php', 'merch_order.php', 'merch_notify.php', 'merch_backup.php', 'PHPMailer', 'strings', 'items', 'styles'];
 foreach ($copies as $c) {
     exec(sprintf('cp -r %s %s', escapeshellarg("$repo/$c"), escapeshellarg("$scratch/$c")));
 }
@@ -84,6 +84,21 @@ usleep(400000);
 
 function post_order(string $base, array $fields): string
 {
+    // 2026-10-05: merch_order.php has taken a multi-item list (POSTed as
+    // JSON in 'list') since 2026-09-14; this test still described one item
+    // as flat fields. Wrap the per-item fields into a one-line list here so
+    // every case below stays written the simple way.
+    $lineKeys = ['item', 'quantity', 'color', 'size', 'sleeve'];
+    $line = [];
+    foreach ($lineKeys as $k) {
+        if (array_key_exists($k, $fields)) {
+            $line[$k] = $fields[$k];
+            unset($fields[$k]);
+        }
+    }
+    if ($line) {
+        $fields['list'] = json_encode([$line]);
+    }
     $ch = curl_init("$base/merch_order.php");
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
@@ -116,6 +131,12 @@ $cases = [
         'post' => ['item' => 'Circle Cutter Holder', 'quantity' => 3, 'color' => '#01 Red'],
         'expect' => ['Item' => 'Circle Cutter Holder', 'Quantity' => '3', 'Color' => '#01 Red',
                      'Price' => '54', 'Tax' => '3.78', 'Shipping' => '10'],
+    ],
+    'circle holder, Copper (#28), qty 1 -> no surcharge' => [
+        // 2026-10-05: Copper added as #28 on every filament item, at base price.
+        'post' => ['item' => 'Circle Cutter Holder', 'quantity' => 1, 'color' => '#28 Copper'],
+        'expect' => ['Item' => 'Circle Cutter Holder', 'Quantity' => '1', 'Color' => '#28 Copper',
+                     'Price' => '18', 'Tax' => '1.26', 'Shipping' => '6'],
     ],
     'tape gun holder qty 2 -> manual quote (cap)' => [
         // Price reflects the 2026-08-21 bump to $18 base (+$2 Rainbow).

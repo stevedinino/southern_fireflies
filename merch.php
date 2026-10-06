@@ -419,7 +419,7 @@
 
           <!-- 3D-print filament colors - the cutter holders, tape gun holder,
                and tool holder stand. Numbering/grouping here matches
-               filament-color-chart.jpg exactly (#1 Red through #27 Brown) -
+               filament-color-chart.jpg exactly (#1 Red through #28 Copper) -
                keep the two in sync if the chart is ever renumbered. Rainbow
                lives here (not in the Gildan list above) since it's a filament
                print option, not a garment color; RAINBOW_ELIGIBLE_ITEMS in
@@ -459,6 +459,8 @@
                 <option value="#25 White">#25 &ndash; White</option>
                 <option value="#26 Tan">#26 &ndash; Tan</option>
                 <option value="#27 Brown">#27 &ndash; Brown</option>
+                <!-- 2026-10-05 (Steve): Copper, #28. Chart image gained a fourth row for it. -->
+                <option value="#28 Copper">#28 &ndash; Copper</option>
               </optgroup>
               <option value="Rainbow (+$2)" id="color-option-rainbow" hidden>Rainbow (+$2)</option>
               <option value="Stars &amp; Stripes (+$7)" id="color-option-stars-stripes" hidden>Stars &amp; Stripes (+$7)</option>
