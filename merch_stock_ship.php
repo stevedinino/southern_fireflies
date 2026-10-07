@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-04-A
+// Build: 2026-10-07-A
 // ============================================================
 // Admin-only endpoint behind the "Done" button on merch_stock_report.php's
 // "Ready to ship from stock" pick-list (Steve, 2026-10-04).
@@ -11,7 +11,10 @@
 //      merchandise.csv (Created = today, Qty Created = Quantity - exactly
 //      what ticking "Created" in Merchandise Requests does; Fulfilled is
 //      never touched - shipping is still its own step), and
-//   2. takes those pieces out of inventory.csv.
+//   2. takes those pieces out of inventory.csv, and (2026-10-07) records the
+//      pull in inventory_log.csv ("Pulled for order #N (Name)") so the
+//      editor's history is complete. The log is best-effort here: a failure
+//      to write it is reported in the reply but never undoes the pull.
 //
 // It trusts nothing from the page except which order(s) and the signature
 // of what the page showed. Everything is recomputed from the live files
@@ -66,7 +69,7 @@ $invFile = __DIR__ . '/inventory.csv';
 $backupDir = __DIR__ . '/backups';
 
 if (!is_file($invFile)) {
-    merch_stock_ship_fail(409, 'There is no inventory file yet - upload one first.');
+    merch_stock_ship_fail(409, 'There is no inventory recorded yet - add pieces on the Inventory page first.');
 }
 
 // ---- Lock both files (always in this order) ----------------------
@@ -176,6 +179,14 @@ if (count($marked) !== count($postedIds)) {
 // ---- Back up both, then write both -------------------------------
 merch_backup_csv($csvFile, $backupDir);
 merch_stock_backup_inventory($invFile, $backupDir);
+// The change log is locked last (merchandise.csv, inventory.csv, then the log - the order
+// merch_stock_adjust.php uses too, so they can't deadlock). Failing to get it never blocks the pull.
+$logFile = __DIR__ . '/inventory_log.csv';
+$lh = fopen($logFile, 'c+');
+if ($lh && !flock($lh, LOCK_EX)) {
+    fclose($lh);
+    $lh = false;
+}
 
 $writeAll = function ($handle, array $outRows, array $csvArgs): bool {
     if (!rewind($handle) || !ftruncate($handle, 0)) {
@@ -198,6 +209,10 @@ $putBack = function ($handle, string $contents): void {
 $okMerch = $writeAll($mh, $rows, [',', '"', '\\']);
 if (!$okMerch) {
     $putBack($mh, $origMerch);
+    if ($lh) {
+        flock($lh, LOCK_UN);
+        fclose($lh);
+    }
     error_log('merch_stock_ship: could not write merchandise.csv - restored');
     $bail(500, 'Could not save merchandise.csv - nothing was changed.');
 }
@@ -205,8 +220,36 @@ $okInv = $writeAll($ih, $dec['rows'], [',', '"', '\\']);
 if (!$okInv) {
     $putBack($ih, $origInv);
     $putBack($mh, $origMerch);
+    if ($lh) {
+        flock($lh, LOCK_UN);
+        fclose($lh);
+    }
     error_log('merch_stock_ship: could not write inventory.csv - both restored');
     $bail(500, 'Could not save inventory.csv - nothing was changed.');
+}
+
+// ---- Log the pull (best effort; the pull above already happened) ----
+$logWarning = false;
+if ($lh) {
+    $now = date('Y-m-d H:i:s');
+    $logRows = merch_stock_log_read($lh);
+    $entries = [];
+    $marker = merch_stock_log_outside_marker($logRows, $origInv, $now);
+    if ($marker !== null) {
+        $entries[] = $marker;
+    }
+    $stockBefore = merch_stock_parse_grid($invRows, FILAMENT_COLOR_ITEMS, FILAMENT_COLORS)['stock'];
+    $stockAfter = merch_stock_parse_grid($dec['rows'], FILAMENT_COLOR_ITEMS, FILAMENT_COLORS)['stock'];
+    $label = 'order #' . implode(', #', $marked) . ' (' . $shipment['name'] . ')';
+    $entries = array_merge($entries, merch_stock_log_pull_entries($needs, $stockBefore, $stockAfter, $label, $now, merch_stock_file_hash(merch_stock_grid_to_csv($dec['rows']))));
+    $logWarning = !merch_stock_log_append($lh, merch_stock_log_finish($logRows, $entries));
+    flock($lh, LOCK_UN);
+    fclose($lh);
+} else {
+    $logWarning = true;
+}
+if ($logWarning) {
+    error_log('merch_stock_ship: pull saved but inventory_log.csv could not be written');
 }
 
 flock($ih, LOCK_UN);
@@ -225,5 +268,6 @@ echo json_encode([
     'created' => $marked,
     'pulled' => $pulled,
     'customer' => $shipment['name'],
-    'build' => '2026-10-04-A',
+    'logWarning' => $logWarning,
+    'build' => '2026-10-07-A',
 ]);

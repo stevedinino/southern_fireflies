@@ -40,7 +40,8 @@ login_throttle.json
 # so never committed.
 /reports/*
 
-# 2026-10-02: printed-parts inventory (merch_stock_report.php / merch_stock_upload.php) -
-# live server state replaced via the upload box, like the CSVs above. Never committed:
-# a deploy would otherwise overwrite the live inventory with whatever is checked in.
-Printed Inventory.csv
+# 2026-10-07: live printed-parts inventory (merch_stock_edit.php writes it on every tap) and its
+# append-only change log (merch_stock_adjust.php / merch_stock_ship.php). Live server state like
+# the CSVs above - never committed, or a deploy could overwrite the real counts with a stale copy.
+inventory.csv
+inventory_log.csv

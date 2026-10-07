@@ -1,17 +1,21 @@
 <?php
-// Build: 2026-10-04-C
+// Build: 2026-10-07-A
 // Admin-only report: "what can I ship from what I've already printed, and
 // what should I print next?" (Steve, 2026-10-02 - see merch_stock.php's
 // header comment for the rules it follows: whole shipments only, paid
 // first, exact color only).
 //
-// Reads merchandise.csv and inventory.csv (his printed-parts sheet, saved
-// as CSV and uploaded here - see merch_stock_upload.php). Viewing the page
-// changes nothing. It writes only through two endpoints: the upload form,
-// and (2026-10-04) the pick-list's Done button on the Ready list, which
-// goes to merch_stock_ship.php to mark that order's pulled pieces Created
-// and take them off the inventory sheet - only after every part has been
-// ticked, and only when clicked.
+// Reads merchandise.csv and inventory.csv (the printed-parts counts).
+// Viewing the page changes nothing. It writes only through one endpoint:
+// the pick-list's Done button on the Ready list (merch_stock_ship.php),
+// which marks that order's pulled pieces Created and takes them off
+// inventory.csv - only after every part has been ticked, and only when
+// clicked.
+//
+// 2026-10-07 (Steve): the "Replace inventory" CSV upload box is gone.
+// Counts are now kept on their own page, merch_stock_edit.php (live
+// editing, every change logged to inventory_log.csv); replacing the whole
+// file is an FTP push of inventory.csv.
 //
 // 2026-10-04 (Steve): shirt/hat orders are Janet's, so the old "waiting on a
 // shirt/hat" list is gone from this page. Such orders still can't be "ready"
@@ -32,9 +36,9 @@
 //     missing), with the plates that would finish exactly those.
 //   - Batch: everything still missing, grouped by color (biggest color
 //     first) - for when he'd rather just run filament down.
-// Plate planning reuses print_plates.php (confirmed combos, solo
-// capacities, keep-one-customer-together), fed only the pieces that are
-// STILL missing after stock is applied.
+// Plate planning reuses print_plates.php (Steve's 22 real Bambu plates,
+// one customer's pieces kept together, longest-waiting first), fed only
+// the pieces that are STILL missing after stock is applied.
 
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php';
@@ -45,7 +49,7 @@ require __DIR__ . '/merch_stock.php';
 merch_require_admin_redirect('ourmerch.php');
 
 $csrfToken = merch_csrf_token();
-// Read-only page past this point (the upload goes to its own endpoint) -
+// Read-only page past this point (Done goes to its own endpoint) -
 // release the session lock so this page never queues behind, or in front
 // of, another admin request.
 session_write_close();
@@ -56,7 +60,7 @@ $closeoutN = max(1, min(60, (int) ($_GET['n'] ?? 10)));
 $priority = (($_GET['prio'] ?? 'age') === 'quick') ? 'quick' : 'age';
 $altPriority = $priority === 'age' ? 'quick' : 'age';
 $qs = fn(array $over) => htmlspecialchars(http_build_query(array_merge(['mode' => $mode, 'n' => $closeoutN, 'prio' => $priority], $over)), ENT_QUOTES, 'UTF-8');
-$build = '2026-10-04-C';
+$build = '2026-10-07-B';
 
 $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
@@ -243,16 +247,13 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
   .done-msg.ok { color: #2a7a2a; }
   .done-msg.err { color: #b00020; }
   .age { white-space: nowrap; color: #555; font-size: 13px; }
-  .upload { margin-top: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .upload-msg { font-size: 13px; }
-  .upload-msg.ok { color: #2a7a2a; }
-  .upload-msg.err { color: #b00020; }
 </style>
 </head>
 <body>
 <h1>Stock &amp; Print Plan</h1>
 <div class="note">
   <a href="ourmerch.php">&larr; Merchandise Requests</a> &middot;
+  <a href="merch_stock_edit.php">Edit inventory &rarr;</a> &middot;
   Build <?= $h($build) ?> &middot; paid orders only, whole shipments only, exact color only, longest-paid first
 </div>
 
@@ -264,10 +265,10 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 </div>
 
 <?php if (!$inv['exists']): ?>
-  <div class="warnbox">No inventory file yet. In Excel use File &rarr; Save As &rarr; CSV on your printed-inventory sheet, then upload it at the bottom of this page. Until then the plan below assumes you have nothing on the shelf.</div>
+  <div class="warnbox">No inventory recorded yet. Add what you have on the <a href="merch_stock_edit.php">Inventory page</a>. Until then the plan below assumes you have nothing on the shelf.</div>
 <?php endif; ?>
 <?php foreach ($parsed['unmatched'] as $u): ?>
-  <div class="warnbox">Not counted: <?= (int) $u['qty'] ?> &times; <?= $h($u['part']) ?> in &ldquo;<?= $h($u['color']) ?>&rdquo; &mdash; <?= $h($u['reason']) ?> Fix the name in the sheet (or add the color to the site's list) and re-upload.</div>
+  <div class="warnbox">Not counted: <?= (int) $u['qty'] ?> &times; <?= $h($u['part']) ?> in &ldquo;<?= $h($u['color']) ?>&rdquo; &mdash; <?= $h($u['reason']) ?> Fix the label in <code>inventory.csv</code> (or add the color to the site's list).</div>
 <?php endforeach; ?>
 <?php foreach ($parsed['warnings'] as $w): ?>
   <div class="warnbox"><?= $h($w) ?></div>
@@ -427,15 +428,6 @@ usort($gridColors, function ($a, $b) {
   </table>
 <?php endif; ?>
 
-<div class="upload">
-  <form id="stock-upload-form" style="margin:0;">
-    <label>Replace inventory (CSV saved from your sheet): <input type="file" name="inventory" accept=".csv,text/csv" required /></label>
-    <button type="submit">Upload</button>
-  </form>
-  <span id="stock-upload-msg" class="upload-msg"></span>
-</div>
-<p class="note">Layout: parts down the first column with site colors across the top (e.g. <code>#15 CM Blue</code>) <em>or</em> colors down the first column with parts across the top &mdash; either way works, and it's detected automatically. Counts go in the cells. Excel's Total row/column and blank cells are ignored. Colors must match the site's list &mdash; anything that doesn't is reported above instead of guessed.</p>
-
 <script>
 // Pick-list: tick every part, then Done. Ticks are remembered in this
 // browser (so a refresh or a walk to the shelf doesn't lose them) but
@@ -507,33 +499,6 @@ usort($gridColors, function ($a, $b) {
   persist();
 })();
 
-(function () {
-  var form = document.getElementById('stock-upload-form');
-  var msg = document.getElementById('stock-upload-msg');
-  form.addEventListener('submit', function (e) {
-    e.preventDefault();
-    var fd = new FormData(form);
-    fd.append('csrf_token', <?= json_encode($csrfToken) ?>);
-    msg.className = 'upload-msg';
-    msg.textContent = 'Uploading...';
-    fetch('merch_stock_upload.php', { method: 'POST', body: fd, credentials: 'same-origin' })
-      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Unexpected response (HTTP ' + r.status + ').' }; }); })
-      .then(function (d) {
-        if (d.ok) {
-          msg.className = 'upload-msg ok';
-          msg.textContent = 'Saved - ' + d.pieces + ' pieces recognized. Reloading...';
-          setTimeout(function () { location.reload(); }, 600);
-        } else {
-          msg.className = 'upload-msg err';
-          msg.textContent = d.error || 'Upload failed.';
-        }
-      })
-      .catch(function () {
-        msg.className = 'upload-msg err';
-        msg.textContent = 'Could not reach the server.';
-      });
-  });
-})();
 </script>
 </body>
 </html>
