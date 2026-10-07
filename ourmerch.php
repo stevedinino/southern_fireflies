@@ -7,7 +7,7 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-10-05-B';
+$merchBuild = '2026-10-07-A';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -328,6 +328,10 @@ $merchEditCatalog = [
       // missing entirely just means every row is its own group, same
       // as it behaved before this column existed.
       $orderGroupIdIndex = array_search('OrderGroupID', $header, true);
+      // 2026-10-07: Timestamp (order placed) - with Pymt Date, how long a
+      // customer has been waiting, which orders the plates in the Sort by
+      // Print Plate view (see print_plates.php). Optional like the rest.
+      $timestampIndex = array_search('Timestamp', $header, true);
 
       // Table render order: MERCH_ADMIN_COLUMN_ORDER's columns first (in
       // that order), then every other column the CSV actually has, in
@@ -574,6 +578,12 @@ $merchEditCatalog = [
                       'shipmentKey' => ($nameIndex !== false && trim($data[$nameIndex] ?? '') !== '' && $rowShipmentKey !== '')
                           ? (($rowIsShipping ? 'ship:' : 'pickup:') . $rowShipmentKey)
                           : '',
+                      // 2026-10-07: how long this line has been waiting -
+                      // paid date, else the order's own timestamp (an
+                      // unpaid Pickup). print_plates.php prints the plate
+                      // holding the longest-waiting customer first.
+                      'ts' => print_plate_parse_ts($pymtDateIndex !== false ? (string) ($data[$pymtDateIndex] ?? '') : '')
+                          ?? print_plate_parse_ts($timestampIndex !== false ? (string) ($data[$timestampIndex] ?? '') : ''),
                   ];
               }
               echo '<tr class="' . ($rowQuantity > 1 ? 'merch-row-multi' : '') . '" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '" data-cancelled="' . ($rowIsCancelled ? '1' : '0') . '" data-quantity="' . $rowQuantity . '">';
@@ -926,16 +936,11 @@ $merchEditCatalog = [
       // leftover list. This display shape has held through the later
       // passes below.
       //
-      // 2026-09-18: print_plates.php now also (a) matches Steve's
-      // confirmed cross-item combos before falling back to per-item
-      // solo capacity, and (b) when a plate can't fit every order
-      // wanting that item, prefers whichever order(s) would actually
-      // be completed (nothing else outstanding shop-wide) over ones
-      // that would stay incomplete regardless - see
-      // print_plate_consume_units() in print_plates.php. $printPlateRows
+      // 2026-10-07 (Steve): print_plates.php now plans with his 22 real
+      // Bambu plates and keeps each customer's pieces together, longest-
+      // waiting customer first - see its header comment. $printPlateRows
       // (collected above, unfiltered by item type) is passed through
-      // as-is so that logic can see an order's shirts/hats too, not
-      // just its filament pieces.
+      // as-is so a customer's wait time counts their shirts/hats too.
       $printPlateGroups = print_plate_group_queue($printPlateRows);
       ?>
       <div id="merch-print-plate-pane" class="merch-table-pane" style="display:none; padding:16px;">
@@ -943,57 +948,57 @@ $merchEditCatalog = [
           <p style="text-align:center; color:#666;">Nothing here right now &mdash; either the Create view is empty, or everything left is a shirt/hat or a Stars &amp; Stripes order, neither of which go through this view.</p>
         <?php else: ?>
           <p style="color:#666; font-size:0.85em; margin-top:0;">
-            The same Needs Creating queue, grouped by color (most-ordered colors first), then matched against your confirmed plate combos and per-item capacities in <code>print_plates.php</code>. Every order line appears in exactly one plate below, full or partial &mdash; nothing is hidden or double-counted. When a plate can't fit everyone waiting on an item, whichever order(s) that would fully complete get priority over ones that would stay incomplete either way. A partial plate is still a candidate for combining by hand with something else in that color. Check a plate off once it's printed &mdash; that's recorded per order, so a multi-unit line that's only partly done just needs the rest on a later plate.
+            The same Needs Creating queue, grouped by color (most-ordered colors first), then planned onto your 22 real plates (named and numbered as in Bambu Studio). Within a color the plate holding the customer who has waited longest comes first, and one customer's pieces stay on one plate unless no single plate can hold their order. Every order line appears on exactly one plate below &mdash; nothing is hidden or double-counted. A partial plate is still a candidate for combining by hand with something else in that color. Check a plate off once it's printed &mdash; that's recorded per order, so a multi-unit line that's only partly done just needs the rest on a later plate.
             <button type="button" id="merch-print-plate-print-btn" class="btn no-print" style="padding:2px 10px; font-size:0.85em; margin-left:8px;">Print this list</button>
           </p>
           <?php foreach ($printPlateGroups as $group): ?>
             <div class="print-plate-color-group">
               <h3 class="print-plate-color-heading"><?= htmlspecialchars($group['color']) ?></h3>
-              <?php foreach ($group['plateGroups'] as $pg): ?>
-                <div class="print-plate-group-block">
-                  <div class="print-plate-group-heading"><?= htmlspecialchars($pg['group']) ?></div>
-                  <ul class="print-plate-plate-list">
-                    <?php foreach ($pg['plates'] as $plateIndex => $plate): ?>
-                      <?php
-                      $isFull = $plate['fillFraction'] >= 0.999;
-                      $fillPct = (int) round($plate['fillFraction'] * 100);
-                      $itemBits = [];
-                      $orderBits = [];
-                      // 2026-09-20 (Steve, item #4): "Checkboxes to mark
-                      // items as 'complete' are needed in the Sort by
-                      // Print Plate view." One checkbox per plate,
-                      // carrying exactly what this plate consumed from
-                      // each order (summed across every item on the
-                      // plate, in case a combo plate pulls from the same
-                      // order twice) as its Qty Created delta - see
-                      // merch_update_apply_qty_created_deltas() in
-                      // merch_update.php. Checking it posts those deltas
-                      // and reloads; the plate then simply isn't
-                      // regenerated next time (its orders' remaining
-                      // quantity dropped, possibly to 0) rather than
-                      // sitting there struck through.
-                      $plateDeltas = [];
-                      foreach ($plate['items'] as $itemName => $data) {
-                          $itemBits[] = (int) $data['qty'] . '&times; ' . htmlspecialchars($itemName);
-                          foreach ($data['orders'] as $o) {
-                              $orderBits[] = '#' . htmlspecialchars($o['orderId']) . ' ' . htmlspecialchars($o['customerName']) . ' (' . (int) $o['qty'] . ')';
-                              $plateDeltas[$o['orderId']] = ($plateDeltas[$o['orderId']] ?? 0) + (int) $o['qty'];
-                          }
-                      }
-                      ?>
-                      <li class="<?= $isFull ? '' : 'print-plate-partial' ?>">
-                        <label style="display:block; cursor:pointer;">
-                        <input type="checkbox" class="print-plate-complete-toggle" data-deltas="<?= htmlspecialchars(json_encode($plateDeltas), ENT_QUOTES) ?>" />
-                        <strong>Plate <?= $plateIndex + 1 ?></strong>
-                        &mdash; <?= implode(', ', $itemBits) ?>
-                        <span class="print-plate-plate-fill"><?= $isFull ? '(full)' : '(' . $fillPct . '% full)' ?></span>
-                        <span class="print-plate-plate-orders"><?= implode(', ', $orderBits) ?></span>
-                        </label>
-                      </li>
-                    <?php endforeach; ?>
-                  </ul>
-                </div>
-              <?php endforeach; ?>
+              <?php /* 2026-10-07: one list per color, plates in PRINT ORDER (longest-waiting customer first); each plate names the real Bambu plate to open. */ ?>
+              <ul class="print-plate-plate-list">
+                <?php $printSeq = 0; ?>
+                <?php foreach ($group['plateGroups'] as $pg): ?>
+                  <?php foreach ($pg['plates'] as $plate): ?>
+                    <?php
+                    $printSeq++;
+                    $isFull = $plate['fillFraction'] >= 0.999;
+                    $fillPct = (int) round($plate['fillFraction'] * 100);
+                    $itemBits = [];
+                    $orderBits = [];
+                    // 2026-09-20 (Steve, item #4): "Checkboxes to mark
+                    // items as 'complete' are needed in the Sort by
+                    // Print Plate view." One checkbox per plate,
+                    // carrying exactly what this plate consumed from
+                    // each order (summed across every item on the
+                    // plate, in case a plate pulls from the same
+                    // order twice) as its Qty Created delta - see
+                    // merch_update_apply_qty_created_deltas() in
+                    // merch_update.php. Checking it posts those deltas
+                    // and reloads; the plate then simply isn't
+                    // regenerated next time (its orders' remaining
+                    // quantity dropped, possibly to 0) rather than
+                    // sitting there struck through.
+                    $plateDeltas = [];
+                    foreach ($plate['items'] as $itemName => $data) {
+                        $itemBits[] = (int) $data['qty'] . '&times; ' . htmlspecialchars($itemName);
+                        foreach ($data['orders'] as $o) {
+                            $orderBits[] = '#' . htmlspecialchars($o['orderId']) . ' ' . htmlspecialchars($o['customerName']) . ' (' . (int) $o['qty'] . ')';
+                            $plateDeltas[$o['orderId']] = ($plateDeltas[$o['orderId']] ?? 0) + (int) $o['qty'];
+                        }
+                    }
+                    ?>
+                    <li class="<?= $isFull ? '' : 'print-plate-partial' ?>">
+                      <label style="display:block; cursor:pointer;">
+                      <input type="checkbox" class="print-plate-complete-toggle" data-deltas="<?= htmlspecialchars(json_encode($plateDeltas), ENT_QUOTES) ?>" />
+                      <strong><?= $printSeq ?>. <?= htmlspecialchars($pg['group']) ?></strong>
+                      &mdash; <?= implode(', ', $itemBits) ?>
+                      <span class="print-plate-plate-fill"><?= $isFull ? '(full)' : '(' . $fillPct . '% full)' ?></span>
+                      <span class="print-plate-plate-orders"><?= implode(', ', $orderBits) ?></span>
+                      </label>
+                    </li>
+                  <?php endforeach; ?>
+                <?php endforeach; ?>
+              </ul>
             </div>
           <?php endforeach; ?>
         <?php endif; ?>
@@ -1019,6 +1024,10 @@ $merchEditCatalog = [
                2026-10-05: link text is now "Inventory" (the page itself is
                still titled Stock &amp; Print Plan). -->
           <a href="merch_stock_report.php" target="_blank" style="color: var(--accent);">Inventory &rarr;</a>
+          &nbsp;&mdash;&nbsp;
+          <!-- 2026-10-07 (Steve): live inventory editor (merch_stock_edit.php) - every
+               tap saves and is logged; replaces the old upload-a-CSV box. -->
+          <a href="merch_stock_edit.php" target="_blank" style="color: var(--accent);">Edit Stock &rarr;</a>
           &nbsp;&mdash;&nbsp;
           <!-- 2026-09-20 (Steve, item #6): these used to be one click -
                the Shippo CSV download also popped the pack list open in
