@@ -1064,6 +1064,10 @@ $merchEditCatalog = [
                tab, same as the Retreat Pickup link above. -->
           <a href="merch_reminders.php" target="_blank" style="color: var(--accent);">Payment Reminders &rarr;</a>
           &nbsp;&mdash;&nbsp;
+          <!-- 2026-10-15: "please be patient" email to paid, still-waiting
+               Ship customers (see merch_patience.php's header comment). -->
+          <a href="merch_patience.php" target="_blank" style="color: var(--accent);">Patience Email &rarr;</a>
+          &nbsp;&mdash;&nbsp;
           <span style="color:#bbb; font-size:0.75em;">Build <?= htmlspecialchars($merchBuild, ENT_QUOTES, 'UTF-8') ?></span>
         </p>
       </div>
