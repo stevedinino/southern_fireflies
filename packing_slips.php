@@ -110,14 +110,6 @@ foreach ($rows as $row) {
     // same convention as every other optional lookup here.
     $cancelled = $col['Cancelled'] !== false && trim($row[$col['Cancelled']] ?? '') !== '';
 
-    // 2026-10-15 (Steve): shirts/hats are Janet's and ship separately, so
-    // they neither hold a printed shipment back nor appear on its packing
-    // list/label. Same rule in the Ship view, packing_slips.php and
-    // shippo_export.php so the three always agree on what is ready.
-    if ($col['Item'] !== false && !merch_is_printed_item(trim($row[$col['Item']] ?? ''))) {
-        continue;
-    }
-
     if ($paid !== '' && $fulfillment === 'Ship' && $fulfilled === '' && !$cancelled) {
         $eligible[] = $row;
     }

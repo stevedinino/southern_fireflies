@@ -25,9 +25,8 @@
 //      only when every line in it is in hand. Stock is therefore
 //      allocated per whole shipment, not per piece.
 //   2. PAID FIRST. Only rows the Needs Creating view would show are
-//      considered: Ship rows must be paid, never cancelled, never
-//      fulfilled. As of 2026-10-15 Pickup rows and shirts/hats are not
-//      considered at all (Steve: ship orders, printed parts only).
+//      considered: Ship rows must be paid, Pickup rows any payment state
+//      (same test as ourmerch.php), never cancelled, never fulfilled.
 //      Unpaid pieces are counted (so the report can say how many are
 //      being ignored) but never allocated stock or planned for printing.
 //   3. NO COLOR SUBSTITUTION. Stock only ever matches the exact item +
@@ -443,16 +442,6 @@ function merch_stock_build_shipments(array $rows, array $col, array $validItems,
         $isShip = $get($row, 'Fulfillment') === 'Ship';
         $paid = $get($row, 'Pymt Date') !== '';
         $item = $get($row, 'Item');
-        // 2026-10-15 (Steve): this plan is for SHIPPING PRINTED PIECES only.
-        // Pickup-at-retreat orders are out, and so are shirts/hats (anything
-        // that is not a printed color item): Janet ships those separately,
-        // and the never-a-partial-shipment rule applies only to the printed
-        // parts. A shirt or hat on the same order therefore no longer holds
-        // the printed parts back ('other' stays empty from here on; the
-        // code that reads it is left in place and simply never triggers).
-        if (!$isShip || !in_array($item, $validItems, true)) {
-            continue;
-        }
         $color = $get($row, 'Color');
         $orderId = $get($row, 'OrderID');
         $qty = (int) $get($row, 'Quantity');
