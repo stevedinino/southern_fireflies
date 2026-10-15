@@ -46,4 +46,4 @@ DirectoryIndex index.php index.html
 # content at index.html): a direct hit on /index.html still bounces to
 # "/", which then correctly shows whichever is actually live right now.
 
-Redirect 301 /index.html /
+# DISABLED (conflicts with the maintenance-page swap): Redirect 301 /index.html /

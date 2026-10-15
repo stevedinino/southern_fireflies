@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<!-- Build: 2026-07-21-A -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Southern Fireflies Retreats</title>
+  <link rel="icon" href="images/favicon.png" type="image/png" />
+  <link rel="stylesheet" href="styles/layout.css" />
+</head>
+<body>
+  <header>
+    <div class="nav-wrapper">
+      <button class="menu-toggle" aria-label="Toggle menu">&#9776;</button>
+      <nav class="main-nav">
+        <ul class="nav-links">
+          <li><a href="index.html" aria-current="page">Home</a></li>
+          <li><a href="merch.php">Merch</a></li>
+          <li><a href="cancellation.html">Our Policies</a></li>
+          <li><a href="gallery.html">Gallery</a></li>
+          <li><a href="about.html">About</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <div class="content-wrapper">
+
+    <section class="home-hero">
+      <img src="images/logo.png" alt="Southern Fireflies Retreat logo" class="home-logo" />
+      <p class="home-tagline">
+        A warm, creative getaway for crafters who want to relax, make, and connect.
+        Pre-register below to save your spot at an upcoming retreat!
+      </p>
+    </section>
+
+    <section class="save-the-dates">
+      <h1>Save the Date</h1>
+      <p class="gallery-intro">Click a card to see that retreat's full flyer and details.</p>
+
+      <div class="std-grid">
+
+        <a class="std-card" href="event-august-2026.html">
+          <span class="std-badge std-badge-sold-out">Sold Out</span>
+          <img src="images/SFF_August_2026_thumb.jpg" alt="Long Southern Summer Nights Drive-In flyer" class="std-thumb" loading="lazy" />
+          <span class="std-caption">Aug 27&ndash;30, 2026</span>
+          <span class="std-subcaption">Long Southern Summer Nights Drive-In</span>
+        </a>
+
+        <a class="std-card" href="event-september-2026.html">
+          <img src="images/september_thumb.jpg" alt="Sunflower Fields and Southern Dreams flyer" class="std-thumb" loading="lazy" />
+          <span class="std-caption">Sep 10&ndash;13, 2026</span>
+          <span class="std-subcaption">Sunflower Fields &amp; Southern Dreams</span>
+        </a>
+
+        <a class="std-card" href="event-february-2027.html">
+          <img src="images/feb2027_thumb.jpg" alt="Country Roads Take Me Home flyer" class="std-thumb" loading="lazy" />
+          <span class="std-caption">Feb 18&ndash;21, 2027</span>
+          <span class="std-subcaption">Country Roads Take Me Home</span>
+        </a>
+
+        <a class="std-card" href="event-april-2027.html">
+          <img src="images/apr2027_thumb.jpg" alt="Front Porch and Fireflies flyer" class="std-thumb" loading="lazy" />
+          <span class="std-caption">Apr 8&ndash;10, 2027</span>
+          <span class="std-subcaption">Front Porch and Fireflies</span>
+        </a>
+
+        <a class="std-card" href="event-august-2027.html">
+          <img src="images/aug2027_thumb.jpg" alt="Dog Days of Summer flyer" class="std-thumb" loading="lazy" />
+          <span class="std-caption">Aug 12&ndash;15, 2027</span>
+          <span class="std-subcaption">Dog Days of Summer</span>
+        </a>
+
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    const menuToggle = document.querySelector('.menu-toggle');
+    const navLinks = document.querySelector('.nav-links');
+    menuToggle.addEventListener('click', () => {
+      navLinks.classList.toggle('show');
+    });
+  </script>
+</body>
+</html>

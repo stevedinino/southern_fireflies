@@ -1,96 +1,143 @@
-name: Deploy to Network Solutions
+name: Deploy to InterServer
 
-# Runs every time a commit lands on main (i.e. every time a PR is merged
-# or you push directly to main). Change the branch name below if your
-# default branch is called something else.
+# Runs every time a commit lands on main (a merged PR or a direct push), and
+# can also be started by hand from the Actions tab ("Run workflow") - handy
+# for re-sending the current main without making a new commit.
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+# One deploy at a time; a second push waits for the first instead of the two
+# uploading over each other.
+concurrency:
+  group: deploy-interserver
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Sync files over SFTP
+    name: Sync files over FTPS
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 2026-08-31: replaces SamKirkland/FTP-Deploy-Action, which turned
-      # out to only speak ftp/ftps - it can't talk to Network Solutions'
-      # real SSH-based SFTP at all (that mismatch is what caused the
-      # first run's "Timeout (control socket)" failure). This action
-      # speaks actual SFTP over username/password, no SSH key or shell/
-      # rsync access on the server required - just the plain SFTP file
-      # access the mister_firefly_ftp account already has.
-      - name: Deploy via SFTP
-        uses: milanmk/actions-file-deployer@master
-        with:
-          remote-protocol: sftp
-          remote-host: ${{ secrets.SFTP_SERVER }}
-          remote-port: ${{ secrets.SFTP_PORT }}
-          remote-user: ${{ secrets.SFTP_USERNAME }}
-          remote-password: ${{ secrets.SFTP_PASSWORD }}
+      # Rewritten 2026-10-07 for InterServer (DirectAdmin).
+      #
+      # What changed and why:
+      #  - Protocol. DirectAdmin FTP accounts speak FTP/FTPS only, never SFTP,
+      #    so the SFTP deploy (and its Network Solutions ssh-rsa host-key
+      #    workaround) is gone. Everything now goes over explicit FTPS
+      #    (port 21, TLS required - the job refuses to fall back to plain
+      #    FTP, so the password is never sent in the clear).
+      #  - It can fail. The old milanmk/actions-file-deployer step swallowed
+      #    lftp errors and finished green even when nothing was uploaded
+      #    (the 2026-10-07 run that "succeeded" against a refused SFTP login).
+      #    This job runs lftp itself: any failed command or file makes the
+      #    job RED, and a final step reads the revision marker back from the
+      #    server and fails unless it matches the commit being deployed.
+      #  - No third-party action. The old step was pinned to @master of
+      #    someone else's repo and ran with the FTP password; plain lftp
+      #    (the same tool it used underneath) does the same job.
+      #
+      # What did NOT change:
+      #  - Deploys never delete anything on the server (no --delete). config.php,
+      #    the CSV/counter/inventory files, login_throttle.json and backups/ are
+      #    not in this checkout, so they are never touched. Files you remove from
+      #    the repo must still be deleted from the server by hand.
+      #  - .git*/.github are not uploaded.
+      #
+      # Secrets (Settings > Secrets and variables > Actions). New names, so the
+      # old SFTP_* secrets stay untouched as a rollback reference until the
+      # Network Solutions hosting is retired:
+      #   FTP_SERVER    host name of the DirectAdmin FTP service (no ftp:// and
+      #                 no port) - what DirectAdmin shows for the account
+      #   FTP_USERNAME  the full FTP user as DirectAdmin shows it
+      #                 (usually name@southernfirefliesretreats.com)
+      #   FTP_PASSWORD  that account's password
+      # The FTP account's root must be the site's public_html: everything below
+      # uploads to "/" which is that root. Do not use a relative path here - see
+      # the history of the old remote-path bug (files landed in a nested
+      # /home/runner/work/... tree on the old server).
+      #
+      # Certificate checking is OFF ("ssl:verify-certificate no"): the
+      # connection is encrypted but the server's identity is not verified.
+      # Turn it on once the host in FTP_SERVER has a certificate that matches
+      # it (flip VERIFY_CERT to "yes" below and re-run).
+      - name: Install lftp
+        run: sudo apt-get --quiet --quiet update && sudo apt-get --quiet --quiet --no-install-recommends --yes install lftp
 
-          # mister_firefly_ftp is set up on the Network Solutions side to
-          # be jailed to /southernfireflies as its own root (confirmed by
-          # Steve's manual RealFTP test) - so both sides are just "the
-          # site root" and need no subfolder path.
-          #
-          # 2026-09-05 (Steve, first deploy after the password fix):
-          # remote-path was './' here, on the assumption that a relative
-          # path would mean "wherever the SFTP login lands" - same idea
-          # as local-path meaning "the checkout root." It doesn't work
-          # that way for remote-path: this action resolves it with
-          # `realpath --canonicalize-missing` BEFORE it ever opens the
-          # SFTP connection, i.e. against the RUNNER's own local
-          # filesystem, not the remote one. './' became the runner's own
-          # absolute checkout path
-          # (/home/runner/work/southern_fireflies/southern_fireflies),
-          # and every file this workflow has "successfully" deployed
-          # since the SFTP action went in on 2026-08-31 went into a
-          # nested folder tree matching that exact path INSIDE the jail
-          # (confirmed on the live server: /southernfireflies/home/runner/
-          # work/southern_fireflies/southern_fireflies/... - that stray
-          # tree needs manual cleanup via the same FTP client, separate
-          # from this file) - never at the jail's own root, where the
-          # live site actually reads from. The action's own README
-          # example uses a real absolute path
-          # ("/var/www/example.com"), which is the format that survives
-          # realpath unchanged - so remote-path is now '/', the jail's
-          # own root, matching the site-root intent this comment always
-          # described. local-path is untouched - it was never run
-          # through realpath and './' already meant the checkout root
-          # correctly.
-          local-path: './'
-          remote-path: '/'
+      # The password goes to lftp through ~/.netrc (mode 600, deleted at the end of
+      # the job), not the command line or the script, so characters like " \ # $ in
+      # it are safe and it never shows in a process list.
+      - name: Write FTP credentials
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${FTP_SERVER:?Missing secret FTP_SERVER}"
+          : "${FTP_USERNAME:?Missing secret FTP_USERNAME}"
+          : "${FTP_PASSWORD:?Missing secret FTP_PASSWORD}"
+          umask 077
+          printf 'machine %s login %s password %s\n' "${FTP_SERVER}" "${FTP_USERNAME}" "${FTP_PASSWORD}" > "${HOME}/.netrc"
 
-          # Network Solutions' SFTP server only offers legacy host-key
-          # types (confirmed by today's failure: "no matching host key
-          # type found. Their offer: ssh-rsa,ssh-dss") - modern OpenSSH
-          # (what ubuntu-latest ships) refuses both by default, so the
-          # SSH handshake itself fails before any file transfers. This
-          # flag re-enables ssh-rsa as an allowed host-key type so the
-          # connection can complete. This line was already live on
-          # GitHub before 2026-09-05's remote-path fix (confirmed by
-          # that day's FIRST deploy log, which listed it as a configured
-          # input) - it just wasn't in the local copy that fix was based
-          # on, so it got silently dropped when that copy replaced the
-          # real file. Anyone editing this file: pull the CURRENT file
-          # from GitHub first, not an old local copy - this is the
-          # second time a stale base has quietly reverted a working fix.
-          ssh-options: '-o HostKeyAlgorithms=+ssh-rsa'
+      - name: Upload site files
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PORT: "21"
+          VERIFY_CERT: "no"
+        run: |
+          set -euo pipefail
 
-          # "full" is the ONLY sync mode that never deletes anything on
-          # the server - "delta" mode can. That matters here because
-          # config.php, the *.csv data files, the *_counter.txt files,
-          # login_throttle.json, and everything else under backups/ all
-          # live ONLY on the server (deliberately gitignored - see
-          # .gitignore) and must survive every deploy. In practice "full"
-          # can't touch them even by accident: they were never part of
-          # this git checkout to begin with, so they're simply not among
-          # the files this step ever looks at.
-          #
-          # .git/ and .github/ are excluded from the upload by this
-          # action's own default behavior - nothing extra needed here.
-          sync: full
+          # Written for the end of the deploy (below), not mirrored with the rest.
+          echo "${GITHUB_SHA}" > .deploy-revision
+
+          cat > "$RUNNER_TEMP/deploy.lftp" <<LFTP
+          set cmd:fail-exit yes
+          set ftp:ssl-allow yes
+          set ftp:ssl-force yes
+          set ftp:ssl-protect-data yes
+          set ssl:verify-certificate ${VERIFY_CERT}
+          set net:max-retries 3
+          set net:persist-retries 0
+          set net:timeout 20
+          set net:reconnect-interval-base 5
+          set mirror:overwrite yes
+          set mirror:set-permissions no
+          set xfer:clobber yes
+          open -u "${FTP_USERNAME}" -p ${FTP_PORT} ${FTP_SERVER}
+          mirror --reverse --verbose=1 --parallel=3 --no-perms \
+            --exclude-glob '.git*' --exclude-glob '.deploy-revision' . /
+          put -O / .deploy-revision
+          LFTP
+
+          lftp -f "$RUNNER_TEMP/deploy.lftp"
+          rm -f "$RUNNER_TEMP/deploy.lftp"
+
+      # The marker is uploaded last, only after every file went up, so reading
+      # it back proves both that the deploy finished and that it landed in the
+      # account root.
+      - name: Verify the deploy reached the server
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PORT: "21"
+          VERIFY_CERT: "no"
+        run: |
+          set -euo pipefail
+          remote="$(lftp -e "set cmd:fail-exit yes; set ftp:ssl-allow yes; set ftp:ssl-force yes; set ftp:ssl-protect-data yes; set ssl:verify-certificate ${VERIFY_CERT}; set net:max-retries 3; set net:persist-retries 0; set net:timeout 20; cat /.deploy-revision; bye" -u "${FTP_USERNAME}" -p "${FTP_PORT}" "${FTP_SERVER}" | tr -d '[:space:]')"
+          echo "Server reports revision: ${remote}"
+          echo "Deployed revision:       ${GITHUB_SHA}"
+          if [ "${remote}" != "${GITHUB_SHA}" ]; then
+            echo "::error::The revision marker on the server does not match this commit - the deploy did not complete."
+            exit 1
+          fi
+          echo "Deploy verified."
+
+      - name: Remove FTP credentials
+        if: always()
+        run: rm -f "${HOME}/.netrc"

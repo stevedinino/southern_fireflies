@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<!-- Build: 2026-07-21-A -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>About – Southern Fireflies Retreats</title>
+  <link rel="icon" href="images/favicon.png" type="image/png" />
+  <link rel="stylesheet" href="styles/layout.css" />
+</head>
+<body>
+  <header>
+    <div class="nav-wrapper">
+      <button class="menu-toggle" aria-label="Toggle menu">&#9776;</button>
+      <nav class="main-nav">
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="merch.php">Merch</a></li>
+          <li><a href="cancellation.html">Our Policies</a></li>
+          <li><a href="gallery.html">Gallery</a></li>
+          <li><a href="about.html" aria-current="page">About</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <div class="content-wrapper">
+    <div class="page-container">
+      <h1>About Southern Fireflies Retreats</h1>
+      <p>Southern Fireflies Retreats is a warm, creative getaway for crafters who want to relax, make, and connect. We host curated weekends with plenty of table space, good company, and time to dive deep into your projects.</p>
+      <p>Questions or special requests? We're happy to help — reach out anytime during registration.</p>
+      <hr />
+      <h2>Meet Your Hosts</h2>
+      <img src="images/hosts.jpeg" alt="Melissa and Janet" />
+      <p>Janet and Melissa are lifelong crafters and community-builders who believes creativity shines brightest together. They bring thoughtful planning, kindness, and a bit of sparkle to every retreat.</p>
+      <hr />
+
+      <h2>Meet Mr. Firefly</h2>
+      <figure class="about-figure">
+        <img src="images/mr-firefly.jpg" alt="Mr. Firefly" />
+        <figcaption><em>A rare sighting of Mr. Firefly relaxing in his favorite watering hole between jobs.</figcaption></em>
+      </figure>
+    </div>
+  </div>
+
+  <script>
+    const menuToggle = document.querySelector('.menu-toggle');
+    const navLinks = document.querySelector('.nav-links');
+    menuToggle.addEventListener('click', () => {
+      navLinks.classList.toggle('show');
+    });
+  </script>
+</body>
+</html>
