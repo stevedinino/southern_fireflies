@@ -1,0 +1,26 @@
+Hi {{firstName}},
+
+First, let us say a HUGE THANK YOU for your patience, support, and love for Mr. Firefly! We had no idea our gadgets would be this popular!
+
+We have officially added another 3D printer to the family, and those printers are now working harder than we do! They are running 24 hours a day, 7 days a week, turning out your Mr. Firefly goodies. We’re pretty sure the folks at the post office know us by name at this point!🤣
+
+Your paid order is on our production list:
+{{lineItemsText}}
+
+We are working as fast as those little machines will let us, and we’re aiming to be caught up on all orders in about two weeks. A couple of colors are waiting on filament deliveries, so a few orders may take a little longer than that. We ship every order complete, once all of its pieces are made, so everything will arrive together in one package. We know waiting is hard, and we truly appreciate you hanging in there with us while we get everyone's orders made, packed, and on their way to you.
+
+A few important things to remember:
+* This is your status update, so there’s no need to write and ask where your order is. When it ships, you’ll receive an email with your tracking number. Be sure to check your spam or junk folder, too, just in case your tracking email decides to hide from you!
+
+* If anything in the list above doesn’t look right, just reply to this email and let us know.
+
+Most importantly, please know that behind every little Mr. Firefly is a whole lot of love, some sleepless nights, several very busy printers, and two people doing their very best to get your pieces into your hands.
+
+You could have purchased from anyone, but you chose us, and that means more than you know. Your support helps our little business grow, and we are so thankful to have you along for the ride.
+
+We appreciate you buzzing along with us, for being patient, and for giving Mr. Firefly a home with you! ❤️
+
+
+Gratefully,
+
+Mr. Firefly

@@ -3,6 +3,7 @@ merchandise_archive.csv
 inventory.csv
 inventory_log.csv
 registrations.csv
+merch_email_log.csv
 config.php
 
 # Persistent ID-sequence counters (id_sequence.php, Finding 3 fix) -
