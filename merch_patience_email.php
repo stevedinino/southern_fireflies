@@ -125,14 +125,21 @@ function merch_patience_first_name(string $fullName): string
     if (preg_match('/^(dr|mr|mrs|ms|miss|mx|rev|pastor|fr|sr|sgt|capt|col|lt|prof)\.?$/iu', $first)) {
         return 'there';
     }
-    if (substr($first, -1) === '.' || mb_strlen($first, 'UTF-8') < 2) {
+    if (substr($first, -1) === '.' || preg_match_all('/./us', $first) < 2) {
         return 'there'; // an initial like "J." or "J"
     }
     if (!preg_match('/^\p{L}[\p{L}\'\x{2019}\-]*$/u', $first)) {
         return 'there';
     }
-    if ($first === mb_strtolower($first, 'UTF-8') || $first === mb_strtoupper($first, 'UTF-8')) {
-        $first = mb_convert_case($first, MB_CASE_TITLE, 'UTF-8');
+    // All-lowercase or all-uppercase gets capitalized; mixed case
+    // ("DeAnna", "McKenzie") is left as typed. Uses mbstring when the
+    // server has it, plain ASCII functions when it does not.
+    $lower = function_exists('mb_strtolower') ? mb_strtolower($first, 'UTF-8') : strtolower($first);
+    $upper = function_exists('mb_strtoupper') ? mb_strtoupper($first, 'UTF-8') : strtoupper($first);
+    if ($first === $lower || $first === $upper) {
+        $first = function_exists('mb_convert_case')
+            ? mb_convert_case($first, MB_CASE_TITLE, 'UTF-8')
+            : ucfirst(strtolower($first));
     }
     return $first;
 }

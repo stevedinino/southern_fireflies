@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-07-A
+// Build: 2026-10-15-B
 // ============================================================
 // Print-plate planning for ourmerch.php's "Sort by Print Plate" view and
 // merch_stock_report.php's "what to print next" plan.
@@ -37,6 +37,12 @@
 //   - A plate that doesn't fill a whole real plate is shown as partial
 //     (fill = pieces on it / pieces on the smallest real plate that holds
 //     them) - same as before, it can still be combined by hand.
+//
+// 2026-10-15 (Steve): plate 23 added (2 Tool Stands + 1 Tape Gun Holder +
+// 1 Add-On; about 12.5 hours, about 500 g). It is an ordinary plate like the
+// others: available for ANY color whenever that combination of parts needs
+// printing. (An Olive-Green-only / made-to-order rule was tried earlier today
+// and removed - that was never intended.)
 //
 // Keep updating PRINT_PLATES when a plate changes - nothing else needs to.
 // Counts below are read from Steve's 2026-10-07 screenshot plus his
@@ -81,6 +87,10 @@ const PRINT_PLATES = [
     ['no' => '20', 'name' => 'Ovals Hearts', 'items' => ['Oval Cutter Holder' => 1, 'Hearts Cutter Holder' => 1]],
     ['no' => '21', 'name' => 'Circles Hearts', 'items' => ['Circle Cutter Holder' => 1, 'Hearts Cutter Holder' => 1]],
     ['no' => '22', 'name' => 'Rectangles Blade Holder', 'items' => ['Rectangle Cutter Holder' => 1, 'Blade Holder' => 2]],
+    // 'minutes' / 'grams' are Steve's approximate figures (2026-10-10), kept for
+    // the print-time idea in the TODO list; nothing reads them yet.
+    ['no' => '23', 'name' => 'Tool Stands Tape Gun and Add on', 'minutes' => 750, 'grams' => 500,
+        'items' => ['Tool Holder Stand' => 2, 'Tape Gun Holder' => 1, 'Tape Gun Add-On' => 1]],
 ];
 
 // ---- Per-item "one plate of just this" count --------------------
