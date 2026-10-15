@@ -124,13 +124,13 @@ foreach ($b['shipments'] as $s) {
 }
 expect('ship: unpaid Ship row ignored', isset($byName['unpaid una']) ? 'included' : 'ignored', 'ignored');
 expect('ship: unpaid pieces counted', $b['unpaidPieces'], 1);
-expect('ship: pickup included regardless of payment', isset($byName['pat pickup']) ? 'included' : 'ignored', 'included');
+expect('ship: pickup orders are ignored (2026-10-15, ship orders only)', isset($byName['pat pickup']) ? 'included' : 'ignored', 'ignored');
 expect('ship: cancelled skipped', isset($byName['cal cancelled']) ? 'included' : 'ignored', 'ignored');
 expect('ship: fulfilled skipped', isset($byName['fran fulfilled']) ? 'included' : 'ignored', 'ignored');
 expect('ship: printed-and-awaiting-ship not a print job', [isset($byName['done dee']), $b['awaitingShip']], [false, 1]);
 expect('ship: Name+Zip groups separate OrderIDs (case/space-insensitive)', count($byName['ann']['orderIds'] ?? []), 2);
 expect('ship: partial Qty Created leaves only the remainder (3 - 1 = 2)', $byName['ann']['lines'][1]['qty'] ?? null, 2);
-expect('ship: shirt becomes a blocker, not a printable line', [count($byName['sam shirt']['other']), count($byName['sam shirt']['lines'])], [1, 1]);
+expect('ship: shirt is ignored entirely (Janet ships those); printed part stays a plain line', [count($byName['sam shirt']['other']), count($byName['sam shirt']['lines'])], [0, 1]);
 expect('ship: minOrderId is the oldest', $byName['ann']['minOrderId'], 10);
 
 // ---- Allocation (rules 1 and 3) --------------------------------
@@ -232,12 +232,14 @@ $r2 = function (array $f) use ($hdr2): array {
 $b2 = merch_stock_build_shipments([
     $r2(['OrderID' => '30', 'Name' => 'Mia', 'Timestamp' => '2026-09-20 10:00:00']),
     $r2(['OrderID' => '31', 'Name' => 'Mia', 'Item' => 'Hearts Cutter Holder', 'Quantity' => '3', 'Qty Created' => '1', 'Timestamp' => '8/22/2026']),
-    $r2(['OrderID' => '32', 'Name' => 'Mia', 'Item' => 'Logo Shirt', 'Color' => '#70 Black', 'Size' => 'L', 'Sleeve' => 'Long', 'Created' => '9/25/2026', 'Timestamp' => '2026-09-21 09:00:00']),
+    $r2(['OrderID' => '32', 'Name' => 'Mia', 'Item' => 'Circle Cutter Holder', 'Color' => '#17 Teal', 'Created' => '9/25/2026', 'Timestamp' => '2026-09-21 09:00:00']),
+    $r2(['OrderID' => '33', 'Name' => 'Mia', 'Item' => 'Logo Shirt', 'Color' => '#70 Black', 'Size' => 'L', 'Sleeve' => 'Long', 'Timestamp' => '2026-09-21 09:00:00']), // shirt: ignored
 ], $col2, FILAMENT_COLOR_ITEMS, []);
 $mia = $b2['shipments'][0];
 expect('ship: oldestTs is the earliest row in the shipment', date('Y-m-d', $mia['oldestTs']), '2026-08-22');
 expect('ship: partly-made line carries made / rowQty', [$mia['lines'][1]['qty'], $mia['lines'][1]['made'], $mia['lines'][1]['rowQty']], [2, 1, 3]);
-expect('ship: fully Created row is kept as a made line (for the pick-list)', [count($mia['madeLines']), $mia['madeLines'][0]['item'], $mia['madeLines'][0]['size'], $mia['madeLines'][0]['sleeve']], [1, 'Logo Shirt', 'L', 'Long']);
+expect('ship: fully Created row is kept as a made line (for the pick-list)', [count($mia['madeLines']), $mia['madeLines'][0]['item'], $mia['madeLines'][0]['color']], [1, 'Circle Cutter Holder', '#17 Teal']);
+expect('ship: a shirt on the same order is not part of the shipment', [count($mia['other']), in_array('33', $mia['orderIds'], true)], [0, false]);
 expect('ship: made rows still belong to the shipment', count($mia['orderIds']), 3);
 expect('ship: made rows are NOT planned as print work', array_map(fn($l) => $l['orderId'], $mia['lines']), ['30', '31']);
 $noTs = merch_stock_build_shipments([$r2(['OrderID' => '40', 'Name' => 'Noel'])], $col2, FILAMENT_COLOR_ITEMS, []);
@@ -363,12 +365,12 @@ $aged = merch_stock_build_shipments([
     $r2(['OrderID' => '90', 'Name' => 'Pat Pickup', 'Timestamp' => '2026-09-15 10:00:00', 'Pymt Date' => '', 'Fulfillment' => 'Pickup at retreat']),
 ], $col2, FILAMENT_COLOR_ITEMS, []);
 $agedNames = array_map(fn($x) => $x['name'], $aged['shipments']);
-expect('age: shipments rank by PAID date, not order number or order date', $agedNames, ['Aug Abe', 'Pat Pickup', 'Sept Sam', 'July Jane']);
+expect('age: shipments rank by PAID date, not order number or order date', $agedNames, ['Aug Abe', 'Sept Sam', 'July Jane']);
 $byN = [];
 foreach ($aged['shipments'] as $x) { $byN[$x['name']] = $x; }
 expect('age: paid row is dated by Pymt Date and labelled paid', [date('Y-m-d', $byN['July Jane']['ageTs']), $byN['July Jane']['ageBasis']], ['2026-10-03', 'paid']);
 expect('age: the July order date is still kept separately', date('Y-m-d', $byN['July Jane']['oldestTs']), '2026-07-10');
-expect('age: unpaid Pickup falls back to its order date', [date('Y-m-d', $byN['Pat Pickup']['ageTs']), $byN['Pat Pickup']['ageBasis']], ['2026-09-15', 'ordered']);
+expect('age: pickup orders do not appear at all', isset($byN['Pat Pickup']) ? 'present' : 'absent', 'absent');
 expect('age: lines carry the paid date too', date('Y-m-d', $byN['July Jane']['lines'][0]['ts']), '2026-10-03');
 expect('age label: paid', merch_stock_age_label(merch_stock_parse_ts('2026-09-30'), 'paid', merch_stock_parse_ts('2026-10-04 12:00:00')), 'Paid Sep 30 (4 days)');
 expect('age label: ordered', merch_stock_age_label(merch_stock_parse_ts('2026-09-30'), 'ordered', merch_stock_parse_ts('2026-10-04 12:00:00')), 'Ordered Sep 30 (4 days)');

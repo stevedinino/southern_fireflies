@@ -18,8 +18,11 @@
 // file is an FTP push of inventory.csv.
 //
 // 2026-10-04 (Steve): shirt/hat orders are Janet's, so the old "waiting on a
-// shirt/hat" list is gone from this page. Such orders still can't be "ready"
-// (never ship a partial order) and still hold shelf stock; only the list is hidden.
+// shirt/hat" list is gone from this page.
+// 2026-10-15 (Steve): shirts/hats and Pickup-at-retreat orders are now left out
+// of this plan completely (see merch_stock_build_shipments()). The
+// never-a-partial-shipment rule applies to the printed parts only; Janet ships
+// shirts/hats separately, so one no longer holds a printed order back.
 //
 // 2026-10-04 (Steve): "how old" means how long since the order was PAID
 // (Pymt Date, now the real payment day), not since it was placed; an
@@ -60,7 +63,7 @@ $closeoutN = max(1, min(60, (int) ($_GET['n'] ?? 10)));
 $priority = (($_GET['prio'] ?? 'age') === 'quick') ? 'quick' : 'age';
 $altPriority = $priority === 'age' ? 'quick' : 'age';
 $qs = fn(array $over) => htmlspecialchars(http_build_query(array_merge(['mode' => $mode, 'n' => $closeoutN, 'prio' => $priority], $over)), ENT_QUOTES, 'UTF-8');
-$build = '2026-10-07-B';
+$build = '2026-10-15-A';
 
 $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
@@ -254,7 +257,7 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 <div class="note">
   <a href="ourmerch.php">&larr; Merchandise Requests</a> &middot;
   <a href="merch_stock_edit.php">Edit inventory &rarr;</a> &middot;
-  Build <?= $h($build) ?> &middot; paid orders only, whole shipments only, exact color only, longest-paid first
+  Build <?= $h($build) ?> &middot; paid shipping orders only (no pickup, shirts or hats), whole shipments only, exact color only, longest-paid first
 </div>
 
 <div class="summary">
@@ -326,7 +329,7 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 <?php if ($mode === 'closeout'): ?>
   <p class="note">
     <?php if ($priority === 'age'): ?>
-      The <?= (int) count($chosen) ?> <strong>longest-paid</strong> orders that could ship once printed (nothing waiting on a shirt/hat or Stars &amp; Stripes). Printing exactly the plates below ships all <?= (int) count($chosen) ?>:
+      The <?= (int) count($chosen) ?> <strong>longest-paid</strong> orders that could ship once printed (nothing waiting on Stars &amp; Stripes). Printing exactly the plates below ships all <?= (int) count($chosen) ?>:
     <?php else: ?>
       The <?= (int) count($chosen) ?> paid orders closest to done (fewest pieces still missing; ties go to pieces that share a plate with other near-done orders, then fewest colors, then oldest). Printing exactly the plates below ships all <?= (int) count($chosen) ?>:
     <?php endif; ?>

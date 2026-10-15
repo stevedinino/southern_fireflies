@@ -7,7 +7,7 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-10-07-A';
+$merchBuild = '2026-10-15-A';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -444,6 +444,10 @@ $merchEditCatalog = [
           // Print Plate on Create. Uncheck this to get the plain list back;
           // the choice is remembered for the tab, like the plate checkbox.
           // Only visible on the Ship view (JS shows/hides the label).
+          // 2026-10-15 (Steve): Create hides pickup orders and shirts/hats so
+          // the list is only what he can print for shipping. This brings
+          // them back; only shown on Create, remembered for the tab.
+          echo '<label id="merch-focus-label" style="display:none; margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-focus-out" /> + Shirts/Hats/P/U</label>';
           echo '<label id="merch-pack-label" style="display:none; margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-pack-toggle" checked /> Packing Checklist</label>';
           // 2026-08-23: independent of the named views above (which
           // never show a cancelled row, full stop - nothing to act on
@@ -505,6 +509,11 @@ $merchEditCatalog = [
               $rowIsInvoiced = $invoiceDateIndex !== false && trim($data[$invoiceDateIndex] ?? '') !== '';
               $rowIsPaid = $pymtDateIndex !== false && trim($data[$pymtDateIndex] ?? '') !== '';
               $rowIsShipping = $fulfillmentIndex !== false && trim($data[$fulfillmentIndex] ?? '') === 'Ship';
+              // 2026-10-15 (Steve): the Create view and the print plan focus
+              // on SHIPPING PRINTED pieces. A pickup row or a shirt/hat is
+              // "out of focus": hidden there unless the "+ Shirts/Hats/P/U"
+              // checkbox (or P/U @ Retreat) is on. See applyView().
+              $rowIsFocusOut = !$rowIsShipping || !merch_is_printed_item($rowItem);
               $rowIsCancelled = $cancelledIndex !== false && trim($data[$cancelledIndex] ?? '') !== '';
               // Same normalized Name+Zip key as the pre-scan above -
               // defaults to "ready" (true) when Name/Zip columns are
@@ -553,7 +562,11 @@ $merchEditCatalog = [
               // ($rowQtyRemaining itself now folds the old Created gate
               // back in above, so this condition doesn't need its own
               // separate !$rowIsCreated/!$rowIsFulfilled check).
-              if ($rowQtyRemaining > 0 && ($rowIsShipping ? $rowIsPaid : true) && !$rowIsCancelled) {
+              // 2026-10-15 (Steve): the plate plan is for paid SHIPPING
+              // printed pieces only - pickup orders and shirts/hats are no
+              // longer collected here (so they also stop counting toward a
+              // customer's wait time, which print_plates.php ranks plates by).
+              if ($rowQtyRemaining > 0 && $rowIsShipping && $rowIsPaid && !$rowIsFocusOut && !$rowIsCancelled) {
                   $printPlateRows[] = [
                       'item' => $rowItem,
                       'color' => $colorIndex !== false ? trim($data[$colorIndex] ?? '') : '',
@@ -586,7 +599,7 @@ $merchEditCatalog = [
                           ?? print_plate_parse_ts($timestampIndex !== false ? (string) ($data[$timestampIndex] ?? '') : ''),
                   ];
               }
-              echo '<tr class="' . ($rowQuantity > 1 ? 'merch-row-multi' : '') . '" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '" data-cancelled="' . ($rowIsCancelled ? '1' : '0') . '" data-quantity="' . $rowQuantity . '">';
+              echo '<tr class="' . ($rowQuantity > 1 ? 'merch-row-multi' : '') . '" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-focus-out="' . ($rowIsFocusOut ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '" data-cancelled="' . ($rowIsCancelled ? '1' : '0') . '" data-quantity="' . $rowQuantity . '">';
               foreach ($displayOrder as $col) {
                   $i = $columnIndexByName[$col] ?? null;
                   if ($i === null) {
@@ -940,12 +953,13 @@ $merchEditCatalog = [
       // Bambu plates and keeps each customer's pieces together, longest-
       // waiting customer first - see its header comment. $printPlateRows
       // (collected above, unfiltered by item type) is passed through
-      // as-is so a customer's wait time counts their shirts/hats too.
+      // as-is. As of 2026-10-15 it holds paid shipping printed pieces only,
+      // so a customer's wait time no longer counts pickup or shirt/hat lines.
       $printPlateGroups = print_plate_group_queue($printPlateRows);
       ?>
       <div id="merch-print-plate-pane" class="merch-table-pane" style="display:none; padding:16px;">
         <?php if (empty($printPlateGroups)): ?>
-          <p style="text-align:center; color:#666;">Nothing here right now &mdash; either the Create view is empty, or everything left is a shirt/hat or a Stars &amp; Stripes order, neither of which go through this view.</p>
+          <p style="text-align:center; color:#666;">Nothing here right now &mdash; either the Create view is empty, or everything left is a pickup order, a shirt/hat or a Stars &amp; Stripes order, none of which go through this view.</p>
         <?php else: ?>
           <p style="color:#666; font-size:0.85em; margin-top:0;">
             The same Needs Creating queue, grouped by color (most-ordered colors first), then planned onto your 22 real plates (named and numbered as in Bambu Studio). Within a color the plate holding the customer who has waited longest comes first, and one customer's pieces stay on one plate unless no single plate can hold their order. Every order line appears on exactly one plate below &mdash; nothing is hidden or double-counted. A partial plate is still a candidate for combining by hand with something else in that color. Check a plate off once it's printed &mdash; that's recorded per order, so a multi-unit line that's only partly done just needs the rest on a later plate.
@@ -1823,6 +1837,21 @@ $merchEditCatalog = [
       applyView(currentView);
     });
 
+    // 2026-10-15: "+ Shirts/Hats/P/U" - Create hides pickup orders and
+    // shirts/hats by default (row data-focus-out="1"); this shows them again.
+    const focusBox = document.getElementById('merch-focus-out');
+    const focusLabel = document.getElementById('merch-focus-label');
+    let showFocusOut = false;
+    try { showFocusOut = sessionStorage.getItem('merchAdminShowFocusOut') === '1'; } catch (e) { /* storage unavailable - starts off */ }
+    if (focusBox) {
+      focusBox.checked = showFocusOut;
+      focusBox.addEventListener('change', () => {
+        showFocusOut = focusBox.checked;
+        try { sessionStorage.setItem('merchAdminShowFocusOut', showFocusOut ? '1' : '0'); } catch (e) { /* ignore */ }
+        applyView(currentView);
+      });
+    }
+
     // 2026-09-20 (Steve, item #2): "unlike any of the other buttons -
     // you can click it from any view... It should really be a checkbox
     // that only appears when Needs Creating is clicked." Declared here
@@ -1937,6 +1966,9 @@ $merchEditCatalog = [
         packLabel.style.display = view === 'needs-shipping' ? '' : 'none';
         updatePrintPlatePaneVisibility();
       }
+      if (focusLabel) {
+        focusLabel.style.display = view === 'needs-creating' ? '' : 'none';
+      }
       applyViewColumns(view);
       document.querySelectorAll('table tr[data-fulfilled]').forEach((tr) => {
         const created = tr.dataset.created === '1';
@@ -1986,6 +2018,11 @@ $merchEditCatalog = [
             // keep the paid requirement; pickup orders just need to not
             // be created yet.
             show = !created && (isShipping ? paid : true);
+            // 2026-10-15: pickup orders and shirts/hats are out of focus
+            // here unless "+ Shirts/Hats/P/U" or "P/U @ Retreat" is on.
+            if (show && tr.dataset.focusOut === '1' && !showFocusOut && !pickupOnly) {
+              show = false;
+            }
             break;
           case 'needs-shipping':
             // Matches shippo_export.php's own "safe to buy a label"

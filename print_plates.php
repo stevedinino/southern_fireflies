@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-07-A
+// Build: 2026-10-15-A
 // ============================================================
 // Print-plate planning for ourmerch.php's "Sort by Print Plate" view and
 // merch_stock_report.php's "what to print next" plan.
@@ -37,6 +37,20 @@
 //   - A plate that doesn't fill a whole real plate is shown as partial
 //     (fill = pieces on it / pieces on the smallest real plate that holds
 //     them) - same as before, it can still be combined by hand.
+//
+// 2026-10-15 (Steve): plate 23 added - 2 Tool Stands + 1 Tape Gun Holder +
+// 1 Add-On, about 12.5 hours and about 500 g (half a spool). It is a
+// MADE-TO-ORDER plate ('madeToOrder' => true): Steve built it for an
+// uncommon color (Olive Green) that two customers ordered, so one long print
+// covers both while that spool is loaded. The planner therefore offers it
+// ONLY for the colors listed in that plate's 'colors' entry below (Olive
+// Green to start with) and, within such a color, only when the waiting
+// demand for its three items together already fills it. Everywhere else the
+// plan is exactly what it was before plate 23 existed. To use it for another
+// color, add that color to the plate's 'colors' list. (Tried first: "offer it
+// whenever a color's demand fills / equals it" - on the 2026-10-14 orders that
+// pulled it into CM Blue and Purple and split customers across a 12.5-hour
+// print, so it is opt-in per color instead.)
 //
 // Keep updating PRINT_PLATES when a plate changes - nothing else needs to.
 // Counts below are read from Steve's 2026-10-07 screenshot plus his
@@ -81,6 +95,10 @@ const PRINT_PLATES = [
     ['no' => '20', 'name' => 'Ovals Hearts', 'items' => ['Oval Cutter Holder' => 1, 'Hearts Cutter Holder' => 1]],
     ['no' => '21', 'name' => 'Circles Hearts', 'items' => ['Circle Cutter Holder' => 1, 'Hearts Cutter Holder' => 1]],
     ['no' => '22', 'name' => 'Rectangles Blade Holder', 'items' => ['Rectangle Cutter Holder' => 1, 'Blade Holder' => 2]],
+    // 'minutes' / 'grams' are Steve's approximate figures (2026-10-10), kept for
+    // the print-time idea in the TODO list; nothing reads them yet.
+    ['no' => '23', 'name' => 'Tool Stands Tape Gun and Add on', 'madeToOrder' => true, 'colors' => ['#21 Olive Green'], 'minutes' => 750, 'grams' => 500,
+        'items' => ['Tool Holder Stand' => 2, 'Tape Gun Holder' => 1, 'Tape Gun Add-On' => 1]],
 ];
 
 // ---- Per-item "one plate of just this" count --------------------
@@ -131,6 +149,32 @@ function print_plate_pieces(array $items): int
 }
 
 /**
+ * Indexes into PRINT_PLATES the planner may use for one color. Every
+ * ordinary plate always; a made-to-order plate (23) only when $color is in
+ * that plate's 'colors' list AND this color's total waiting pieces
+ * ($colorTotals: item => qty, all customers together) cover every slot of
+ * it. See the 2026-10-15 note in the header.
+ */
+function print_plate_allowed_indexes(array $colorTotals = [], string $color = ''): array
+{
+    $allowed = [];
+    foreach (PRINT_PLATES as $idx => $plate) {
+        if (!empty($plate['madeToOrder'])) {
+            if ($color === '' || !in_array($color, $plate['colors'] ?? [], true)) {
+                continue;
+            }
+            foreach ($plate['items'] as $item => $cap) {
+                if (($colorTotals[$item] ?? 0) < $cap) {
+                    continue 2;
+                }
+            }
+        }
+        $allowed[] = $idx;
+    }
+    return $allowed;
+}
+
+/**
  * Can some real plate hold exactly these contents (item => qty), in the
  * sense that every item is on the plate and its count is within the
  * plate's count? Returns the index into PRINT_PLATES of the best such
@@ -138,8 +182,9 @@ function print_plate_pieces(array $items): int
  * Tape Gun Holder is plate 03, not plate 15), then the plate with the
  * fewest piece slots, then the earlier plate number.
  */
-function print_plate_best_plate(array $contents): ?int
+function print_plate_best_plate(array $contents, ?array $allowed = null): ?int
 {
+    $allowed = $allowed ?? print_plate_allowed_indexes();
     $contents = array_filter($contents, fn($q) => $q > 0);
     if (empty($contents)) {
         return null;
@@ -147,6 +192,9 @@ function print_plate_best_plate(array $contents): ?int
     $best = null;
     $bestKey = null;
     foreach (PRINT_PLATES as $idx => $plate) {
+        if (!in_array($idx, $allowed, true)) {
+            continue;
+        }
         $ok = true;
         foreach ($contents as $item => $qty) {
             if (($plate['items'][$item] ?? 0) < $qty) {
@@ -174,14 +222,18 @@ function print_plate_best_plate(array $contents): ?int
  * item => qty maps. An item no plate can hold is returned as its own
  * one-piece chunks so nothing is ever dropped.
  */
-function print_plate_chunk_needs(array $needs): array
+function print_plate_chunk_needs(array $needs, ?array $allowed = null): array
 {
+    $allowed = $allowed ?? print_plate_allowed_indexes();
     $needs = array_filter($needs, fn($q) => $q > 0);
     $chunks = [];
     while (!empty($needs)) {
         $bestIdx = null;
         $bestKey = null;
         foreach (PRINT_PLATES as $idx => $plate) {
+            if (!in_array($idx, $allowed, true)) {
+                continue;
+            }
             $cover = 0;
             foreach ($plate['items'] as $item => $cap) {
                 $cover += min($needs[$item] ?? 0, $cap);
@@ -326,6 +378,15 @@ function print_plate_group_queue(array $rows): array
                 <=> [$keyTs[$b] ?? PHP_INT_MAX, $keyMinOrder[$b] ?? PHP_INT_MAX, $b];
         });
 
+        // 2026-10-15: which plates this color may use (plate 23 only for an
+        // opted-in color whose total demand fills it).
+        $colorTotals = [];
+        foreach ($customers as $cust) {
+            foreach ($cust['lines'] as $item => $list) {
+                $colorTotals[$item] = ($colorTotals[$item] ?? 0) + array_sum(array_column($list, 'qty'));
+            }
+        }
+        $allowed = print_plate_allowed_indexes($colorTotals, (string) $color);
         $plates = []; // each: ['contents'=>item=>qty, 'items'=>item=>['qty','orders'], 'ts', 'minOrder', 'seq']
         foreach ($keys as $key) {
             $lines = $customers[$key]['lines'];
@@ -333,7 +394,7 @@ function print_plate_group_queue(array $rows): array
             foreach ($lines as $item => $list) {
                 $needs[$item] = array_sum(array_column($list, 'qty'));
             }
-            foreach (print_plate_chunk_needs($needs) as $chunk) {
+            foreach (print_plate_chunk_needs($needs, $allowed) as $chunk) {
                 // Draw this chunk's pieces from the customer's order
                 // lines, first line first.
                 $chunkItems = [];
@@ -359,7 +420,7 @@ function print_plate_group_queue(array $rows): array
                     foreach ($chunkItems as $item => $d) {
                         $merged[$item] = ($merged[$item] ?? 0) + $d['qty'];
                     }
-                    $idx = print_plate_best_plate($merged);
+                    $idx = print_plate_best_plate($merged, $allowed);
                     if ($idx === null) {
                         continue;
                     }
@@ -401,7 +462,7 @@ function print_plate_group_queue(array $rows): array
 
         $plateGroups = [];
         foreach ($plates as $plate) {
-            $idx = print_plate_best_plate($plate['contents']);
+            $idx = print_plate_best_plate($plate['contents'], $allowed);
             if ($idx === null) { // only the "no plate holds this item" fallback
                 $label = array_key_first($plate['items']);
                 $fill = 1.0;
