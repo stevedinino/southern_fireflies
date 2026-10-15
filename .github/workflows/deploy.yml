@@ -22,6 +22,9 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          # Do not leave the GitHub token in .git/config of the checkout.
+          persist-credentials: false
 
       # Rewritten 2026-10-07 for InterServer (DirectAdmin).
       #
@@ -46,7 +49,11 @@ jobs:
       #    the CSV/counter/inventory files, login_throttle.json and backups/ are
       #    not in this checkout, so they are never touched. Files you remove from
       #    the repo must still be deleted from the server by hand.
-      #  - .git*/.github are not uploaded.
+      #  - The repo's .git and .github folders, tests/, "Claude outputs/", archive/ and
+      #    start-local-server.bat are NOT uploaded. Directory excludes need a
+      #    trailing slash in lftp: a plain '.git*' pattern skips files named
+      #    .git... but NOT the .git folder (the first deploy, 2026-10-14, uploaded
+      #    it by mistake; it was deleted from the server by hand).
       #
       # Secrets (Settings > Secrets and variables > Actions). New names, so the
       # old SFTP_* secrets stay untouched as a rollback reference until the
@@ -111,7 +118,12 @@ jobs:
           set xfer:clobber yes
           open -u "${FTP_USERNAME}" -p ${FTP_PORT} ${FTP_SERVER}
           mirror --reverse --verbose=1 --parallel=3 --no-perms \
-            --exclude-glob '.git*' --exclude-glob '.deploy-revision' . /
+            --exclude-glob '.git/' --exclude-glob '.github/' \
+            --exclude-glob 'tests/' --exclude-glob 'Claude outputs/' \
+            --exclude-glob 'archive/' \
+            --exclude-glob 'start-local-server.bat' \
+            --exclude-glob '.gitignore' --exclude-glob '.gitattributes' \
+            --exclude-glob '.deploy-revision' . /
           put -O / .deploy-revision
           LFTP
 
