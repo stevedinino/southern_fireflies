@@ -47,7 +47,7 @@ merch_admin_login_gate('Admin Login – Southern Fireflies Retreats', 'ourguests
   <meta charset="UTF-8" />
   <title>Retreat Registrants</title>
   <link rel="icon" href="images/favicon.png" type="image/png" />
-  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/base.css" />
   <style>
     /* Same override as ourmerch.php, and for the same reason: this
        admin page doesn't share the public site's nav/branding, so

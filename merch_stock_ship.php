@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-07-A
+// Build: 2026-10-15-D
 // ============================================================
 // Admin-only endpoint behind the "Done" button on merch_stock_report.php's
 // "Ready to ship from stock" pick-list (Steve, 2026-10-04).
@@ -37,6 +37,7 @@ require __DIR__ . '/merch_shipments.php';
 require __DIR__ . '/print_plates.php';
 require __DIR__ . '/merch_stock.php';
 require __DIR__ . '/merch_backup.php';
+require __DIR__ . '/merch_status_log.php';
 
 merch_require_admin_json();
 merch_require_csrf_json();
@@ -114,6 +115,7 @@ $header = $rows[0];
 if (isset($header[0])) {
     $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
 }
+$statusBefore = merch_status_snapshot($header, $rows); // 2026-10-15 status log
 $col = [];
 foreach (['OrderID', 'Name', 'Zip', 'Item', 'Quantity', 'Color', 'Fulfillment', 'Pymt Date', 'Created', 'Fulfilled', 'Cancelled', 'Qty Created'] as $name) {
     $col[$name] = array_search($name, $header, true);
@@ -227,6 +229,9 @@ if (!$okInv) {
     error_log('merch_stock_ship: could not write inventory.csv - both restored');
     $bail(500, 'Could not save inventory.csv - nothing was changed.');
 }
+
+// ---- Status change log (2026-10-15; best effort, never undoes the pull) ----
+merch_status_log_changes($statusBefore, $header, $rows, 'Stock & Print Plan: Done (pulled from stock)');
 
 // ---- Log the pull (best effort; the pull above already happened) ----
 $logWarning = false;

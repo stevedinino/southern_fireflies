@@ -41,7 +41,8 @@ $event = events_by_slug($slug);
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><?= $event ? htmlspecialchars($event['title'], ENT_QUOTES, 'UTF-8') . ' – Southern Fireflies Retreats' : 'Retreat Not Found – Southern Fireflies Retreats' ?></title>
   <link rel="icon" href="../images/favicon.png" type="image/png" />
-  <link rel="stylesheet" href="../styles/layout.css" />
+  <link rel="stylesheet" href="../styles/base.css" />
+  <link rel="stylesheet" href="../styles/site.css" />
 </head>
 <body>
   <header>

@@ -25,7 +25,8 @@ $retreatEvents = giftcert_valid_retreat_events();
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gift Certificates – Southern Fireflies Retreats</title>
   <link rel="icon" href="images/favicon.png" type="image/png" />
-  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/site.css" />
   <style>
     /* Small page-specific additions - kept here rather than growing
        layout.css for a handful of rules only this page uses. */

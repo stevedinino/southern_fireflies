@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-29-A
+// Build: 2026-10-15-D
 // Admin-triggered: given ONE OrderID (the row the button was clicked
 // on), finds every OTHER not-yet-invoiced order from the same email
 // address that pays to the same account (printed vs. shop items) and
@@ -43,6 +43,7 @@ header('Content-Type: application/json');
 require __DIR__ . '/pricing.php';
 require __DIR__ . '/merch_notify.php';
 require __DIR__ . '/merch_backup.php';
+require __DIR__ . '/merch_status_log.php';
 require_once __DIR__ . '/strings.php';
 
 /**
@@ -77,6 +78,7 @@ function merch_invoice_stamp_invoice_date(string $csvFile, array $groupOrderIds)
     if (isset($freshHeader[0])) {
         $freshHeader[0] = preg_replace('/^\xEF\xBB\xBF/', '', $freshHeader[0]);
     }
+    $statusBefore = merch_status_snapshot($freshHeader, $freshRows); // 2026-10-15 status log
     $freshOrderIdIdx = array_search('OrderID', $freshHeader, true);
     $freshInvoiceDateIdx = array_search('Invoice Date', $freshHeader, true);
 
@@ -105,6 +107,7 @@ function merch_invoice_stamp_invoice_date(string $csvFile, array $groupOrderIds)
             fputcsv($handle, $row, ",", '"', "\\");
         }
         fflush($handle);
+        merch_status_log_changes($statusBefore, $freshHeader, $freshRows, 'Send Invoice');
     }
 
     flock($handle, LOCK_UN);

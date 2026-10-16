@@ -55,7 +55,8 @@ function giftcert_render_error_page(string $bodyHtml): void
 <head>
   <meta charset="UTF-8">
   <title>Certificate Not Saved</title>
-  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/site.css" />
 </head>
 <body>
   <div class="content-wrapper">
@@ -221,7 +222,8 @@ echo '<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Your Gift Certificate – Southern Fireflies Retreats</title>
   <link rel="icon" href="images/favicon.png" type="image/png" />
-  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/site.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
