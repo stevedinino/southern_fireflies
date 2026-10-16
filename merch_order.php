@@ -73,7 +73,8 @@ function merch_render_error_page(string $bodyHtml): void
 <head>
   <meta charset="UTF-8">
   <title>Request Not Saved</title>
-  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/merch.css" />
 </head>
 <body>
   <div class="content-wrapper">
@@ -464,7 +465,8 @@ echo '<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta http-equiv="refresh" content="3;url=merch.php">
   <title>Request Received</title>
-  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/merch.css" />
 </head>
 <body>
   <div class="content-wrapper">

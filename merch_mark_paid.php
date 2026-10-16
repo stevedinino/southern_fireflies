@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-04-A
+// Build: 2026-10-15-D
 // ============================================================
 // Admin-triggered "Mark Paid" one-click group action, mirroring
 // merch_invoice.php's "Send Invoice" grouping (Steve: he gets ONE
@@ -65,6 +65,7 @@
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 header('Content-Type: application/json');
 require __DIR__ . '/merch_backup.php';
+require __DIR__ . '/merch_status_log.php';
 
 // Shared implementation in admin_guard.php/csrf.php - same as
 // merch_update.php and merch_invoice.php.
@@ -125,6 +126,8 @@ $header = $rows[0];
 if (isset($header[0])) {
     $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
 }
+
+$statusBefore = merch_status_snapshot($header, $rows); // 2026-10-15 status log
 
 $col = [];
 foreach (['OrderID', 'Name', 'Email', 'Invoice Date', 'Pymt Date', 'Cancelled', 'Fulfillment', 'Item', 'Quantity', 'Color'] as $name) {
@@ -254,6 +257,7 @@ foreach ($rows as $row) {
     fputcsv($handle, $row, ",", '"', "\\");
 }
 fflush($handle);
+merch_status_log_changes($statusBefore, $header, $rows, 'Mark Paid');
 flock($handle, LOCK_UN);
 fclose($handle);
 

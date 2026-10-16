@@ -37,7 +37,7 @@ $result = $opcacheEnabled ? opcache_reset() : false;
 <head>
   <meta charset="UTF-8" />
   <title>PHP Cache Reset</title>
-  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/base.css" />
 </head>
 <body>
   <div class="content-wrapper">

@@ -16,7 +16,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Register for Southern Fireflies Retreats</title>
   <link rel="icon" href="images/favicon.png" type="image/png" />
-  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/site.css" />
 </head>
 <body class="register-page">
   <header>

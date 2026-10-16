@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-04-A
+// Build: 2026-10-15-D
 // Marks a single order's status, called via fetch() from ourmerch.php's
 // checkboxes. Same admin session gate as the rest of the admin pages -
 // this is not a public endpoint.
@@ -98,6 +98,7 @@
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php';
 require __DIR__ . '/merch_backup.php';
+require __DIR__ . '/merch_status_log.php';
 
 header('Content-Type: application/json');
 
@@ -231,6 +232,9 @@ $header = $rows[0];
 if (isset($header[0])) {
     $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
 }
+// 2026-10-15: snapshot of the tracked status fields, compared after the write (merch_status_log.php).
+$statusBefore = merch_status_snapshot($header, $rows);
+$statusSource = 'merch_update.php: ' . $field . ($checked ? ' checked' : ' unchecked');
 $fieldIndex = array_search($field, $header, true);
 $orderIdIndex = array_search('OrderID', $header, true);
 $cascadeIndex = $cascadeField !== null ? array_search($cascadeField, $header, true) : null;
@@ -429,6 +433,7 @@ if (count($orderIds) === 1) {
         fputcsv($handle, $row, ",", '"', "\\");
     }
     fflush($handle);
+    merch_status_log_changes($statusBefore, $header, $rows, $statusSource);
     flock($handle, LOCK_UN);
     fclose($handle);
 
@@ -512,6 +517,7 @@ if ($anyChanged) {
         fputcsv($handle, $row, ",", '"', "\\");
     }
     fflush($handle);
+    merch_status_log_changes($statusBefore, $header, $rows, $statusSource);
 }
 flock($handle, LOCK_UN);
 fclose($handle);
@@ -598,6 +604,7 @@ function merch_update_apply_qty_created_deltas(string $csvFile): void
     if (isset($header[0])) {
         $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
     }
+    $statusBefore = merch_status_snapshot($header, $rows); // 2026-10-15 status log
     $orderIdIndex = array_search('OrderID', $header, true);
     $quantityIndex = array_search('Quantity', $header, true);
     $qtyCreatedIndex = array_search('Qty Created', $header, true);
@@ -677,6 +684,7 @@ function merch_update_apply_qty_created_deltas(string $csvFile): void
             fputcsv($handle, $row, ',', '"', '\\');
         }
         fflush($handle);
+        merch_status_log_changes($statusBefore, $header, $rows, 'merch_update.php: Qty Created (print plate)');
     }
     flock($handle, LOCK_UN);
     fclose($handle);

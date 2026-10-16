@@ -4,6 +4,7 @@ inventory.csv
 inventory_log.csv
 registrations.csv
 merch_email_log.csv
+merch_status_log.csv
 config.php
 
 # Persistent ID-sequence counters (id_sequence.php, Finding 3 fix) -

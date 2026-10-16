@@ -1,0 +1,620 @@
+/* ============================================================================
+   merch.css - the Merch pages (split out of layout.css, 2026-10-15)
+   Product cards, order estimate, color chart note, request modal, list
+   button and list modal, demand banner. Needs base.css loaded first.
+   ============================================================================ */
+
+/* ============================ Merch page ============================ */
+.merch-page-container {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.65), rgba(255,255,255,0.65)),
+    url('../images/merch-bg.jpg');
+  background-size: cover;
+  background-position: center;
+}
+
+/* Banner that leads the merch page, above the announcement text. Capped
+   width so it doesn't stretch edge-to-edge on wide screens - same width
+   discipline as .demand-banner below it. The banner artwork's own
+   background is close in color to the page's --bg, so a border + shadow
+   are added directly on the image (rather than relying on a background-
+   color behind it) - that gives a visible edge no matter what colors the
+   artwork itself uses. */
+.merch-banner-wrapper {
+  text-align: center;
+  padding: 20px 20px 0;
+}
+
+.merch-banner-img {
+  width: 100%;
+  max-width: 900px;
+  height: auto;
+  border: 1px solid rgba(0,0,0,0.1);
+  box-shadow: var(--card-shadow);
+}
+
+.merch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 24px;
+  margin-top: 24px;
+}
+
+/* 2026-09-14 (uniform card sizes): .merch-card is now a flex column so
+   its content stacks the same way regardless of which pieces a given
+   item has (gallery link, Request button, ...). Combined with the
+   fixed-aspect .merch-media-slot and the capped/scrollable .merch-desc
+   below, every card in .merch-grid now renders at the same height -
+   the height the Tool Holder Stand / Logo Shirt / Finding Your Way
+   Shirt row already had (short description, single photo, no gallery
+   link) - instead of stretching taller for a longer description, a
+   portrait demo video, or a multi-photo gallery link. */
+.merch-card {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: var(--card-shadow);
+  padding: 16px;
+  text-align: center;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* 2026-09-14: margin-top: auto soaks up whatever's left of the card's
+   fixed height and pushes this footer - "See all N photos" / "Click
+   photo to enlarge" plus "Add To Your List", zero, one, or both - flush
+   against the bottom of every card alike, instead of each button
+   sitting right after .merch-price and leaving the leftover space
+   beneath it (visible on a card with only one button, or none, once its
+   siblings' extra button pushed everyone's card to the same height). */
+.merch-card-actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.merch-card-actions .btn {
+  margin: 0;
+}
+
+/* Fixed-aspect media slot: every card face - photo, video, or no media
+   yet (e.g. "More Coming Soon") - reserves exactly the same space here.
+   Previously only the <img> itself carried aspect-ratio:1/1, so a card
+   with no media yet had no reserved height at all (it collapsed to
+   almost nothing outside a stretched grid row - visible on
+   single-column mobile widths), and a video's own wrapper (below) used
+   a taller portrait ratio, making video-first cards taller than photo
+   cards for reasons that had nothing to do with their text. Giving the
+   slot itself the aspect ratio fixes both. */
+.merch-media-slot {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  margin: 0 0 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.merch-media-slot .merch-photo,
+.merch-media-slot .merch-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  margin: 0;
+  border-radius: 6px;
+}
+
+.merch-photo.zoomable {
+  cursor: zoom-in;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.merch-photo.zoomable:hover {
+  transform: scale(1.02);
+  box-shadow: var(--elevated-shadow);
+}
+
+/* Used to be its own fixed-width (max-width: 260px) portrait box, sized
+   via the padding-top: 177.63% trick to show a demo video's full native
+   608x1080 frame uncropped - which is exactly what made a video-first
+   card taller than a photo-first one (see .merch-media-slot above).
+   .merch-media-slot now owns the sizing for every card face, video
+   included, so this just supplies the black fill behind the video
+   (visible briefly before its poster/first frame paints, and in any
+   letterboxed gap object-fit: cover might leave) instead of shaping the
+   box itself. */
+.merch-video-wrapper {
+  background: #000;
+}
+
+.merch-photo-wide {
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
+/* Text-link trigger for a secondary "example in another color" photo on
+   a card that doesn't otherwise have a photo gallery (2026-08-20, Stars
+   & Stripes on the two video-only cutter-holder cards). Deliberately
+   plain text rather than a thumbnail image - Steve, 2026-08-20: this is
+   a temporary fix until the next pass standardizes photo/video viewing
+   across all merch cards, so it isn't worth a second visual treatment
+   here. Opens the same shared lightbox as every other product photo
+   (openPhotoGallery(), see the script below) via its data-gallery
+   attribute - just triggered by a button instead of an <img>. */
+.merch-color-sample-link {
+  display: inline-block;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 2px 0 12px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--accent);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.merch-color-sample-link:hover {
+  text-decoration-style: solid;
+}
+
+.merch-card h2 {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+  color: var(--accent);
+}
+
+/* 2026-09-14 (uniform card sizes): a fixed height, not just a cap - 8
+   lines (11.2em = 8 x the 1.4 line-height this inherits from body, at
+   this element's own 0.95rem font-size), the natural height of the
+   longest description in the Tool Holder Stand / Logo Shirt / Finding
+   Your Way Shirt row this page's cards are now sized to match. A fixed
+   height (rather than max-height) matters here specifically because
+   "uniform" has to work both directions: a short description (Logo Hat,
+   More Coming Soon, ...) needs to leave blank space below it rather than
+   shrinking its card, exactly as a long one needs to scroll rather than
+   growing its card - max-height alone only handles the second half.
+   Longer descriptions scroll inside this box instead of growing the
+   card past that row's height. */
+.merch-desc {
+  font-size: 0.95rem;
+  color: #555;
+  margin: 0 0 10px;
+  height: 11.2em;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* Fade the last ~1.5 lines toward transparent - a "scroll for more" cue
+   rather than text that just stops mid-sentence. 2026-09-14: split out
+   from .merch-desc itself and gated behind this class, which
+   updateDescFade() in merch.php's script toggles on/off based on actual
+   scroll position - a plain unconditional mask on .merch-desc faded the
+   last line even for a description that exactly fills the box with
+   nothing left to scroll to (e.g. Tool Holder Stand at some widths), and
+   kept fading it even once a scrollable one was scrolled all the way to
+   its own end, which reads as "there's still more" when there isn't.
+   This only ever applies to a box that's actually still scrollable. */
+.merch-desc.merch-desc-has-more {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5em), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5em), transparent 100%);
+}
+
+/* Visible (not overlay-hidden-until-hover) scrollbar, thin and in the
+   site's accent color, so the "more text below" affordance from the
+   fade above is backed by an actual scrollbar a visitor can see and
+   grab - Chromium/Safari only render a custom scrollbar via these
+   pseudo-elements when the box actually overflows, so this never shows
+   on a card whose description already fits. .merch-desc's own
+   scrollbar-width: thin above is the Firefox equivalent (Firefox has no
+   ::-webkit-scrollbar hook to color the thumb). */
+.merch-desc::-webkit-scrollbar {
+  width: 6px;
+}
+
+.merch-desc::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.merch-desc::-webkit-scrollbar-thumb {
+  background: rgba(98, 129, 65, 0.35);
+  border-radius: 3px;
+}
+
+/* 2026-09-14 (uniform card sizes): min-height reserves 3 lines (4.2em =
+   3 x the 1.4 line-height this inherits from body). merch_price_display()
+   (pricing.php) only ever emits two shapes - a 1-line "$X plus tax and
+   shipping" for everything else, or the shirts' longer short/long-sleeve
+   line, which wraps to 3 lines at card width - so 3 lines is a real
+   ceiling, not a guess. Reserving it means a 1-line price card (e.g. Tool
+   Holder Stand) takes up the same footer space as a 3-line one (e.g.
+   Logo Shirt) instead of ending up shorter overall. */
+.merch-price {
+  font-weight: bold;
+  color: #333;
+  margin: 0 0 12px;
+  min-height: 4.2em;
+}
+
+/* ============================ Merch order estimate ============================ */
+.merch-estimate {
+  background: rgba(98, 129, 65, 0.07);
+  border: 1px solid rgba(98, 129, 65, 0.25);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 4px 0 14px;
+  font-size: 0.9rem;
+  color: #444;
+}
+
+.merch-estimate:empty {
+  display: none;
+}
+
+.merch-estimate-total {
+  font-weight: bold;
+  color: var(--accent);
+  margin-top: 6px;
+  font-size: 1rem;
+}
+
+.merch-estimate-note {
+  font-style: italic;
+  color: #777;
+  margin-top: 4px;
+}
+
+/* ============================ Merch color chart note ============================ */
+.merch-color-note {
+  text-align: center;
+  background: rgba(255,255,255,0.85);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 18px 0;
+}
+
+.merch-color-note p {
+  margin: 0 0 10px;
+  color: #444;
+  font-size: 0.95rem;
+}
+
+.merch-color-chart-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 32px;
+  margin-top: 4px;
+}
+
+.merch-color-chart-trigger {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.merch-color-chart-trigger img {
+  width: 140px;
+  max-width: 60vw;
+  border-radius: 6px;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.merch-color-chart-trigger:hover img,
+.merch-color-chart-trigger:focus img {
+  transform: scale(1.03);
+  box-shadow: var(--elevated-shadow);
+}
+
+.merch-color-chart-trigger span {
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: var(--accent);
+}
+
+/* ============================ Merch request modal ============================ */
+.merch-modal-content {
+  background: #fff;
+  border-radius: 10px;
+  padding: 24px;
+  max-width: 420px;
+  width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+}
+
+.merch-modal-content h2 {
+  text-align: center;
+  margin: 0 0 16px;
+  font-size: 1.4rem;
+  color: var(--accent);
+}
+
+.merch-modal-content .qr-code {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.merch-modal-content .qr-code img {
+  width: 110px;
+  height: auto;
+}
+
+.merch-modal-content .qr-code a {
+  display: block;
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.merch-modal-content .qr-code a:hover {
+  text-decoration: underline;
+}
+
+.merch-modal-content input,
+.merch-modal-content select,
+.merch-modal-content textarea {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin: 8px 0;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  /* 2026-08-29 (Finding 19, a11y/UX): was 15px - iOS Safari auto-zooms
+     the whole page in when a tapped input's computed font-size is under
+     16px, which then has to be manually pinched back out. 16px is the
+     one value that reliably avoids that; this modal is where it's most
+     disruptive since it's the highest-traffic form on the site. */
+  font-size: 16px;
+  font-family: inherit;
+  background: #fff;
+}
+
+.address-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 8px;
+}
+
+.address-row input,
+.address-row select {
+  margin: 8px 0;
+}
+
+@media (max-width: 480px) {
+  .address-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================ Merch list button (2026-09-14) ============================ */
+/* Originally ported over as a full-width bar pinned to the bottom of
+   the viewport (this whole block existed in the old, no-longer-linked
+   root layout.css but was never carried into this file - the one every
+   page actually links to - see the note on .merch-card above, so
+   #list-bar/#list-modal/.list-line etc in merch.php had no styling on
+   the live site at all until that port). Moved into the header the same
+   day, at Steve's request, as a small persistent button in the
+   upper-right of the nav bar (see .main-nav's comment above for the
+   flex order: nav links, then this, then the mobile hamburger),
+   styled like the page's other .btn buttons instead of as its own
+   full-width strip. Sitting in the sticky header means it's just as
+   reachable without scrolling back up as the nav links themselves - see
+   #list-bar in merch.php and renderList() there for the show/hide and
+   count/total logic. */
+.list-bar {
+  order: 2;
+  margin-left: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.list-bar[hidden] {
+  display: none;
+}
+
+.list-bar-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: bold;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  padding: 8px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.list-bar-open:hover {
+  background-color: var(--accent-hover);
+}
+
+.list-bar-total {
+  margin-left: 2px;
+}
+
+.list-bar-view {
+  font-weight: normal;
+  opacity: 0.9;
+}
+
+/* The list/checkout modal reuses .merch-modal-content but needs more
+   room for the line-item list on top of the shared contact form. */
+.list-modal-content {
+  max-width: 480px;
+}
+
+#list-lines {
+  margin-bottom: 6px;
+}
+
+.list-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.list-line-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.list-line-item {
+  font-weight: bold;
+  color: #333;
+}
+
+.list-line-detail {
+  font-size: 0.85rem;
+  color: #777;
+}
+
+.list-line-price {
+  font-size: 0.9rem;
+  color: #444;
+  margin-top: 2px;
+}
+
+.list-line-qty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.list-qty-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--accent);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.list-qty-btn:hover {
+  background: #f3f0e8;
+}
+
+.list-qty-label {
+  min-width: 1.4em;
+  text-align: center;
+  font-weight: bold;
+}
+
+.list-line-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.list-line-actions .list-line-edit {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.list-line-remove {
+  border: none;
+  background: none;
+  color: #a8585c;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 4px 2px;
+  text-decoration: underline;
+}
+
+.list-line-remove:hover {
+  color: #832e32;
+}
+
+@media (max-width: 480px) {
+  .list-bar-open {
+    font-size: 0.78rem;
+    gap: 6px;
+    padding: 6px 10px;
+  }
+
+  /* Header real estate is tight next to the hamburger at this width -
+     "3 items · $87.50" still says everything that matters; tapping the
+     button is what "View List" was there to suggest. */
+  .list-bar-view {
+    display: none;
+  }
+
+  .list-line {
+    flex-wrap: wrap;
+  }
+
+  .list-line-actions {
+    flex-direction: row;
+    margin-left: auto;
+  }
+}
+
+/* ============================ Notes on changes ============================= */
+/* - Added --nav-height and used it to lock header height across viewports.
+   - Kept hamburger right-aligned via flex order and ensured its height/line-height match the header.
+   - Added accessible current-link underline using aria-current or .active.
+   - Removed heavy debugging overrides and !important rules for a clean, maintainable stylesheet.
+   - Added gallery grid and lightbox styling for gallery.html. */
+
+/* ============================ Merch demand banner ============================ */
+/* Previously a full-bleed strip (background ran edge-to-edge, no matter
+   how wide the viewport). Changed to a contained card, same width as
+   every other block on the page (.demand-banner sits inside its own
+   .content-wrapper in merch.php, which supplies the max-width + centering
+   + side gutter) - this was the odd-one-out full-width element on an
+   otherwise boxed-content page. */
+.demand-banner {
+  background-color: #f3ead6;
+  border: 1px solid #e3d4b0;
+  border-radius: 10px;
+  padding: 14px 20px;
+  margin-top: 20px;
+}
+
+.demand-banner p {
+  margin: 0;
+  text-align: center;
+  color: #5a4a2f;
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .demand-banner {
+    padding: 12px 16px;
+  }
+  .demand-banner p {
+    font-size: 1rem;
+  }
+}

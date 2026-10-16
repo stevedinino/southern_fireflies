@@ -148,7 +148,7 @@ function merch_admin_login_gate(string $pageTitle, string $selfUrl): void
         <head>
           <meta charset="UTF-8" />
           <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
-          <link rel="stylesheet" href="styles/layout.css" />
+          <link rel="stylesheet" href="styles/base.css" />
         </head>
         <body>
           <div class="content-wrapper">

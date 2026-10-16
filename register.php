@@ -262,7 +262,8 @@ if ($name && $address && $phone && $email && $event) {
           <meta charset="UTF-8">
           <meta http-equiv="refresh" content="3;url=index.php">
           <title>Registration Successful</title>
-          <link rel="stylesheet" href="styles/layout.css" />
+          <link rel="stylesheet" href="styles/base.css" />
+          <link rel="stylesheet" href="styles/site.css" />
         </head>
         <body>
           <div class="content-wrapper">

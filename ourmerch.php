@@ -7,7 +7,7 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-10-15-A';
+$merchBuild = '2026-10-15-D';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -84,7 +84,7 @@ $merchEditCatalog = [
   <meta charset="UTF-8" />
   <title>Merch Requests</title>
   <link rel="icon" href="images/favicon.png" type="image/png" />
-  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/base.css" />
   <style>
     /* This admin page doesn't share the public site's nav/branding, so
        widening it here doesn't affect any other page - layout.css's
@@ -1147,6 +1147,28 @@ $merchEditCatalog = [
         const field = box.dataset.field;
         const checked = box.checked;
         const previousChecked = !checked;
+
+        // 2026-10-15 (Steve): cancelling a line that is already paid or
+        // already shipped is rarely intended, and the line then vanishes
+        // from the working views (the 2026-10-14 incident, orders
+        // 1097-1098). Ask first. Un-cancelling and cancelling an unpaid,
+        // unshipped line need no prompt. The state comes from the row's
+        // own data-paid / data-fulfilled flags. Cancel acts on this ONE
+        // line, so the message says so.
+        if (field === 'Cancelled' && checked) {
+          const tr = box.closest('tr');
+          const isPaid = tr && tr.dataset.paid === '1';
+          const isShipped = tr && tr.dataset.fulfilled === '1';
+          if (isPaid || isShipped) {
+            const state = isPaid && isShipped ? 'already paid and shipped'
+              : (isShipped ? 'already shipped' : 'already paid');
+            const ok = confirm(`Order ${orderId} is ${state}.\n\nCancelling hides this line from the working views (use the Cancelled box to see it again). Other lines of the same customer are not affected.\n\nCancel it anyway?`);
+            if (!ok) {
+              box.checked = false;
+              return;
+            }
+          }
+        }
 
         box.disabled = true;
         fetch('merch_update.php', {

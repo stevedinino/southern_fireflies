@@ -22,7 +22,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Merchandise – Southern Fireflies Retreats</title>
   <link rel="icon" href="images/favicon.png" type="image/png" />
-  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/merch.css" />
 </head>
 <body class="merch-page">
   <header>
