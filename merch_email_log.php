@@ -1,11 +1,11 @@
 <?php
-// Build: 2026-10-15-A
+// Build: 2026-10-15-C
 // ============================================================
 // A plain, append-only log of customer emails the admin pages sent in
 // bulk. New 2026-10-15 for the "please be patient" email; written
 // generically (a "kind" column) so the payment reminders can start
-// using the same file later - that is the separate "Log sent payment
-// reminders" TODO item. Nothing here touches merchandise.csv.
+// using the same file later. As of 2026-10-15 (build C) the payment
+// reminders do: kind 'payment-reminder' (see merch_reminder_kind()). Nothing here touches merchandise.csv.
 //
 // One row per send ATTEMPT: Timestamp, Kind, Email, Name, Result
 // ("sent" or "failed"), Detail (the error text for a failure).
@@ -105,4 +105,24 @@ function merch_email_log_last_sent(string $kind): array
     }
     fclose($handle);
     return $last;
+}
+
+/**
+ * Generic "was this address sent this kind of email within the last
+ * $days days?" check, against the array merch_email_log_last_sent()
+ * returns. Returns the timestamp of that send, or null when there was
+ * none inside the window (or none at all).
+ */
+function merch_email_log_recent_within(array $lastSent, string $email, int $days, ?int $now = null): ?string
+{
+    $email = strtolower(trim($email));
+    if (!isset($lastSent[$email])) {
+        return null;
+    }
+    $ts = strtotime($lastSent[$email]);
+    if ($ts === false) {
+        return null;
+    }
+    $now = $now ?? time();
+    return ($now - $ts) < $days * 86400 ? $lastSent[$email] : null;
 }

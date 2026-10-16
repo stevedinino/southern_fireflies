@@ -1,11 +1,18 @@
 <?php
-// Build: 2026-08-29-A
+// Build: 2026-10-15-C
 // Admin-triggered: given a comma-separated list of anchor OrderIDs
 // (one per customer group Steve left checked on merch_reminders.php's
 // preview list), sends a gentle "you still owe for this" reminder
 // email to each one via merch_notify.php's merch_send_payment_reminder()
 // and reports back which sent/skipped/failed. Same admin+CSRF session
 // gate as merch_update.php/merch_invoice.php - not a public endpoint.
+//
+// 2026-10-15: every attempt is now recorded in merch_email_log.csv
+// (kind 'payment-reminder': who, when, sent or failed, anchor OrderID),
+// and a customer reminded within merch_reminder_resend_guard_days() is
+// skipped unless the request carries allowRepeat=1 (the preview page's
+// second confirm). The reminder itself is unchanged, and merchandise.csv
+// is still never written.
 //
 // Read-only with respect to merchandise.csv end to end - no flock/
 // write phase at all, unlike merch_invoice.php. A reminder causes no
@@ -30,6 +37,7 @@ require __DIR__ . '/pricing.php';
 require __DIR__ . '/merch_notify.php';
 require __DIR__ . '/merch_shipments.php';
 require __DIR__ . '/merch_reminder_groups.php';
+require __DIR__ . '/merch_email_log.php';
 require_once __DIR__ . '/strings.php';
 
 // Shared implementation in admin_guard.php as of 2026-08-20 (Finding
@@ -39,6 +47,7 @@ merch_require_admin_json();
 // (or, here, email-sending) admin endpoint - see csrf.php.
 merch_require_csrf_json();
 
+$allowRepeat = isset($_POST['allowRepeat']) && $_POST['allowRepeat'] === '1';
 $anchorIdsRaw = isset($_POST['anchorOrderIds']) ? trim($_POST['anchorOrderIds']) : '';
 if ($anchorIdsRaw === '') {
     http_response_code(400);
@@ -72,6 +81,14 @@ $col = merch_csv_column_map(
     'merchandise.csv'
 );
 
+// Snapshot of earlier sends, read once. Deliberately NOT updated inside
+// the loop: two overdue invoices for the same email in one click both
+// still go out, exactly as before the log existed. Only sends from
+// earlier requests count as "already reminded".
+$kind = merch_reminder_kind();
+$lastSent = merch_email_log_last_sent($kind);
+$guardDays = merch_reminder_resend_guard_days();
+
 $results = [];
 $sentCount = 0;
 foreach ($anchorIds as $anchorId) {
@@ -87,6 +104,18 @@ foreach ($anchorIds as $anchorId) {
         continue;
     }
 
+    $recent = merch_email_log_recent_within($lastSent, $group['email'], $guardDays);
+    if ($recent !== null && !$allowRepeat) {
+        $results[] = [
+            'anchorOrderId' => $anchorId,
+            'ok' => false,
+            'skipped' => true,
+            'name' => $group['name'],
+            'error' => 'Already reminded ' . $recent . ' - not repeated.',
+        ];
+        continue;
+    }
+
     $itemLines = merch_reminder_format_item_lines($group['items']);
     // 2026-09-28: $group['pricing'] is merch_reminder_group_for_anchor()'s
     // fresh re-price of exactly this anchor's Invoice-Date-scoped rows -
@@ -95,6 +124,16 @@ foreach ($anchorIds as $anchorId) {
     // back to the original "reply and I'll send it over" wording instead
     // of guessing.
     $sendResult = merch_send_payment_reminder($itemLines, $group['name'], $group['email'], $group['isPrinted'], $group['pricing']);
+
+    // Record every attempt right away, success or failure. A failed log
+    // write never triggers a resend (see merch_email_log_append()).
+    merch_email_log_append(
+        $kind,
+        $group['email'],
+        $group['name'],
+        $sendResult['sent'],
+        'order ' . $anchorId . ($sendResult['sent'] ? '' : ': ' . $sendResult['error'])
+    );
 
     $results[] = [
         'anchorOrderId' => $anchorId,

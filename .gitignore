@@ -50,3 +50,7 @@ Printed Inventory.csv
 
 # 2026-10-14: No reason to commit or deploy the bat file I use to start PHP
 start-local-server.bat
+
+# 2026-10-15: local test scripts. Run on the dev machine only; tests/ is not
+# deployed (the deploy excludes it) and is not kept in the repo.
+/tests/
