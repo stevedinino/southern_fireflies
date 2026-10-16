@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-29-A
+// Build: 2026-10-15-C
 // Admin-only page: preview-then-confirm list for the payment-reminder
 // feature (2026-08-29, per Steve: "a bulk reminder email that gently
 // nudges the people who placed requests but never paid"). Lists every
@@ -32,6 +32,7 @@ require __DIR__ . '/admin_guard.php'; // must come before anything else that mig
 require __DIR__ . '/pricing.php';
 require __DIR__ . '/merch_shipments.php';
 require __DIR__ . '/merch_reminder_groups.php';
+require __DIR__ . '/merch_email_log.php';
 
 // Shared implementation in admin_guard.php as of 2026-08-20 (Finding
 // 11, 2026-08-19 code review) - was previously duplicated across 8 files.
@@ -48,6 +49,15 @@ $col = merch_csv_column_map(
 
 $groups = merch_reminder_build_groups($loaded['rows'], $col);
 $groupCount = count($groups);
+// 2026-10-15 (reminder log): when was each address last reminded?
+$lastSent = merch_email_log_last_sent(merch_reminder_kind());
+$guardDays = merch_reminder_resend_guard_days();
+$recentCount = 0;
+foreach ($groups as $g) {
+    if (merch_email_log_recent_within($lastSent, $g['email'], $guardDays) !== null) {
+        $recentCount++;
+    }
+}
 $minAgeDays = merch_reminder_min_age_days();
 $money = fn($n) => '$' . number_format((float) $n, 2);
 ?>
@@ -105,6 +115,9 @@ $money = fn($n) => '$' . number_format((float) $n, 2);
   .total-note .total-amount { font-weight: bold; }
   .total-note.total-unavailable { color: #888; font-style: italic; }
 
+  .reminded-note { color: #6b5416; font-size: 0.85em; margin-top: 4px; }
+  .reminded-note.reminded-recent { background: #fff6e0; border: 1px solid #e8cf8a; padding: 4px 8px; border-radius: 3px; }
+
   .abandoned-warning {
     margin-top: 6px;
     padding: 6px 10px;
@@ -155,6 +168,13 @@ $money = fn($n) => '$' . number_format((float) $n, 2);
     same email that was already paid - it may already be settled; left unchecked by default, verify before sending.
   </p>
 
+  <?php if ($recentCount > 0): ?>
+    <p class="generated-note" style="background:#fff6e0;border:1px solid #e8cf8a;color:#6b5416;padding:8px 12px;border-radius:3px;">
+      <?= $recentCount ?> group<?= $recentCount === 1 ? ' was' : 's were' ?> already reminded within the last <?= $guardDays ?> days
+      and <?= $recentCount === 1 ? 'is' : 'are' ?> unchecked below. Checking one anyway will ask you to confirm a repeat.
+    </p>
+  <?php endif; ?>
+
   <?php if ($groupCount === 0): ?>
     <p class="empty-note">Nobody's overdue on a payment right now &mdash; nothing here until a Ship order has been invoiced for at least <?= $minAgeDays ?> days with its Pymt Date still blank.</p>
   <?php else: ?>
@@ -177,9 +197,11 @@ $money = fn($n) => '$' . number_format((float) $n, 2);
           $pricing = $group['pricing'];
           $showTotal = $pricing !== null && $pricing['shipping'] !== null;
           $isAbandonedCandidate = !empty($group['possiblyAbandoned']);
+          $lastReminded = $lastSent[strtolower(trim($group['email']))] ?? null;
+          $recentReminder = merch_email_log_recent_within($lastSent, $group['email'], $guardDays);
         ?>
         <li class="reminder-row" data-anchor-order-id="<?= htmlspecialchars($group['anchorOrderId'], ENT_QUOTES) ?>">
-          <input type="checkbox" class="reminder-check" <?= $isAbandonedCandidate ? '' : 'checked' ?> data-anchor-order-id="<?= htmlspecialchars($group['anchorOrderId'], ENT_QUOTES) ?>" />
+          <input type="checkbox" class="reminder-check" <?= ($isAbandonedCandidate || $recentReminder !== null) ? '' : 'checked' ?> data-anchor-order-id="<?= htmlspecialchars($group['anchorOrderId'], ENT_QUOTES) ?>" data-recent="<?= $recentReminder !== null ? '1' : '0' ?>" />
           <div class="reminder-body">
             <div class="reminder-summary">
               <span class="customer-name"><?= htmlspecialchars($group['name']) ?></span>
@@ -205,6 +227,11 @@ $money = fn($n) => '$' . number_format((float) $n, 2);
               <div class="total-note">Total in this reminder: <span class="total-amount"><?= $money($pricing['total']) ?></span></div>
             <?php else: ?>
               <div class="total-note total-unavailable">No total shown - needs a manual shipping quote; the email will just ask them to reply for it.</div>
+            <?php endif; ?>
+            <?php if ($lastReminded !== null): ?>
+              <div class="reminded-note<?= $recentReminder !== null ? ' reminded-recent' : '' ?>">
+                <?= $recentReminder !== null ? '&#9888; ' : '' ?>Last reminded <?= htmlspecialchars($lastReminded) ?><?= $recentReminder !== null ? ' &mdash; unchecked.' : '' ?>
+              </div>
             <?php endif; ?>
             <?php if ($isAbandonedCandidate): ?>
               <div class="abandoned-warning">
@@ -256,6 +283,16 @@ $money = fn($n) => '$' . number_format((float) $n, 2);
         if (!confirm(`Send a payment reminder to ${anchorIds.length} customer${anchorIds.length === 1 ? '' : 's'}?`)) {
           return;
         }
+        // 2026-10-15 (reminder log): anyone reminded within the last
+        // <?= $guardDays ?> days needs a second, explicit confirm.
+        const repeats = checked.filter((cb) => cb.dataset.recent === '1');
+        let allowRepeat = '0';
+        if (repeats.length > 0) {
+          if (!confirm(`${repeats.length} of these were already reminded within the last <?= $guardDays ?> days. Send to them AGAIN?`)) {
+            return;
+          }
+          allowRepeat = '1';
+        }
 
         sendBtn.disabled = true;
         sendBtn.textContent = 'Sending…';
@@ -264,7 +301,7 @@ $money = fn($n) => '$' . number_format((float) $n, 2);
         fetch('merch_send_reminders.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `anchorOrderIds=${encodeURIComponent(anchorIds.join(','))}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
+          body: `anchorOrderIds=${encodeURIComponent(anchorIds.join(','))}&allowRepeat=${allowRepeat}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
         })
           .then((r) => r.json())
           .then((data) => {

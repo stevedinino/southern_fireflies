@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-03-A
+// Build: 2026-10-15-C
 // ============================================================
 // Shared customer-notification logic for merch orders. Used by:
 //   - merch_order.php  (automatic, one order, right at submission)
@@ -568,11 +568,9 @@ function merch_send_payment_reminder(array $itemLines, string $name, string $ema
     try {
         $mail = merch_mailer();
         $mail->addAddress($email, $name);
-        // CC'd to Steve, same as the real invoice email - so he sees
-        // every reminder that actually went out.
-        if (defined('NOTIFY_MRFIREFLY_EMAIL') && NOTIFY_MRFIREFLY_EMAIL) {
-            $mail->addCC(NOTIFY_MRFIREFLY_EMAIL);
-        }
+        // 2026-10-15 (Steve): reminders are no longer CC'd to him. His
+        // record of what went out is merch_email_log.csv (kind
+        // 'payment-reminder'), the same as the patience email.
         $mail->isHTML(true);
         $mail->Subject = merch_load_string('emails/payment-reminder.subject', ['itemLabel' => $itemLabel]);
         $mail->Body = merch_load_string('emails/payment-reminder.html', [

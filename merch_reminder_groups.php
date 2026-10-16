@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-29-A
+// Build: 2026-10-15-C
 // ============================================================
 // Shared eligibility/grouping/formatting logic for the payment-
 // reminder feature (merch_reminders.php preview page,
@@ -106,6 +106,24 @@ function merch_reminder_required_columns(): array
 function merch_reminder_min_age_days(): int
 {
     return 14;
+}
+
+/** The "Kind" value payment reminders carry in merch_email_log.csv. */
+function merch_reminder_kind(): string
+{
+    return 'payment-reminder';
+}
+
+/**
+ * 2026-10-15 (reminder log): a customer reminded within this many
+ * days is left UNCHECKED on the preview page, and the send endpoint
+ * skips them unless Steve confirms a repeat. Older reminders are only
+ * shown as a note ("last reminded ..."), because a second nudge weeks
+ * later can be perfectly reasonable.
+ */
+function merch_reminder_resend_guard_days(): int
+{
+    return 7;
 }
 
 /**
