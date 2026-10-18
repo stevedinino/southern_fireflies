@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-15-D
+// Build: 2026-10-18-A
 // Admin-triggered: given ONE OrderID (the row the button was clicked
 // on), finds every OTHER not-yet-invoiced order from the same email
 // address that pays to the same account (printed vs. shop items) and
@@ -44,6 +44,7 @@ require __DIR__ . '/pricing.php';
 require __DIR__ . '/merch_notify.php';
 require __DIR__ . '/merch_backup.php';
 require __DIR__ . '/merch_status_log.php';
+require __DIR__ . '/merch_charges.php';
 require_once __DIR__ . '/strings.php';
 
 /**
@@ -371,6 +372,9 @@ if (!$isShipping) {
         exit;
     }
 
+    // Record the charge (tax; shipping is $0 for pickup). Never blocks.
+    merch_charges_record($pricing, $email, $groupOrderIds, $items, false, false, $stampResult['invoicedDate']);
+
     $safeNameForFilename = preg_replace('/[^A-Za-z0-9_-]+/', '-', $name);
     echo json_encode([
         'ok' => true,
@@ -453,6 +457,10 @@ if (!$stampResult['ok']) {
     echo json_encode(['ok' => false, 'error' => 'Invoice email sent, but ' . lcfirst($stampResult['error'])]);
     exit;
 }
+
+// Record what was actually charged (shipping.csv + tax.csv). Failure is
+// logged and swallowed - the invoice already went out.
+merch_charges_record($pricing, $email, $groupOrderIds, $items, true, $manualShipping !== null, $stampResult['invoicedDate']);
 
 echo json_encode([
     'ok' => true,
