@@ -55,3 +55,10 @@ start-local-server.bat
 # 2026-10-15: local test scripts. Run on the dev machine only; tests/ is not
 # deployed (the deploy excludes it) and is not kept in the repo.
 /tests/
+
+# 2026-10-18: per-invoice shipping/tax charge records (merch_charges.php).
+# Customer emails inside, so never committed; the counter only counts up
+# (same reasoning as the other counters above).
+shipping.csv
+tax.csv
+charges_chargeid_counter.txt
