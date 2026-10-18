@@ -7,7 +7,7 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-10-15-D';
+$merchBuild = '2026-10-18-B';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -1098,11 +1098,18 @@ $merchEditCatalog = [
   <dialog id="merch-markpaid-dialog" style="max-width:420px; border:1px solid #ccc; border-radius:8px; padding:18px 20px;">
     <form method="dialog">
       <p style="margin:0 0 6px; font-weight:bold;">Mark this order paid?</p>
-      <p style="margin:0 0 16px; font-size:0.9em; color:#555;">This also marks any other unpaid order from the same invoice. You can email the customer a "payment received" note, or mark it quietly.</p>
+      <p style="margin:0 0 12px; font-size:0.9em; color:#555;">This also marks any other unpaid order from the same invoice. <span id="merch-markpaid-emailnote">You can email the customer a "payment received" note, or mark it quietly.</span></p>
+      <!-- 2026-10-18: how it was paid -> payments.csv (see merch_payments.php) -->
+      <p style="margin:0 0 8px;"><label>Paid with
+        <select id="merch-markpaid-method" style="margin-left:6px;">
+          <option>Venmo</option><option>PayPal</option><option>Zelle</option><option>Check</option><option>Cash</option><option>Other</option>
+        </select></label></p>
+      <p style="margin:0 0 16px;"><label>Amount received <span style="color:#777; font-size:0.85em;">(blank = invoice total)</span>
+        <input id="merch-markpaid-amount" type="text" inputmode="decimal" style="width:90px; margin-left:6px;" autocomplete="off"></label></p>
       <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
         <button type="submit" value="cancel" class="btn">Cancel</button>
         <button type="submit" value="silent" class="btn">Mark paid silently</button>
-        <button type="submit" value="email" class="btn" autofocus>Mark paid &amp; email receipt</button>
+        <button type="submit" value="email" id="merch-markpaid-emailbtn" class="btn" autofocus>Mark paid &amp; email receipt</button>
       </div>
     </form>
   </dialog>
@@ -1720,8 +1727,17 @@ $merchEditCatalog = [
     // plain confirm and always post notify=0.
     const markPaidDialog = document.getElementById('merch-markpaid-dialog');
 
-    function askMarkPaidChoice() {
-      // Resolves to 'email', 'silent' or 'cancel'.
+    function askMarkPaidChoice(isShip) {
+      // Resolves to 'email', 'silent' or 'cancel'. Pickup rows never get the email.
+      const emailBtn = document.getElementById('merch-markpaid-emailbtn');
+      const emailNote = document.getElementById('merch-markpaid-emailnote');
+      const methodSel = document.getElementById('merch-markpaid-method');
+      const amountIn = document.getElementById('merch-markpaid-amount');
+      if (emailBtn) emailBtn.style.display = isShip ? '' : 'none';
+      if (emailNote) emailNote.style.display = isShip ? '' : 'none';
+      amountIn.value = '';
+      try { const m = localStorage.getItem('merchLastPayMethod'); if (m) methodSel.value = m; } catch (e) {}
+      if (!isShip) { methodSel.value = 'Cash'; }
       return new Promise((resolve) => {
         const finish = (choice) => {
           markPaidDialog.removeEventListener('close', onClose);
@@ -1741,12 +1757,17 @@ $merchEditCatalog = [
         const isShip = !!tr && tr.dataset.shipping === '1';
 
         let notify = '0';
-        if (isShip && markPaidDialog && typeof markPaidDialog.showModal === 'function') {
-          const choice = await askMarkPaidChoice();
+        let payMethod = 'Other';
+        let payAmount = '';
+        if (markPaidDialog && typeof markPaidDialog.showModal === 'function') {
+          const choice = await askMarkPaidChoice(isShip);
           if (choice === 'cancel') {
             return;
           }
-          notify = choice === 'email' ? '1' : '0';
+          notify = (isShip && choice === 'email') ? '1' : '0';
+          payMethod = document.getElementById('merch-markpaid-method').value;
+          payAmount = document.getElementById('merch-markpaid-amount').value.trim().replace(/^\$/, '');
+          try { localStorage.setItem('merchLastPayMethod', payMethod); } catch (e) {}
         } else if (!confirm('Mark this order paid (and any other unpaid order from the same invoice)?')) {
           return;
         }
@@ -1757,7 +1778,7 @@ $merchEditCatalog = [
         fetch('merch_mark_paid.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `orderId=${encodeURIComponent(orderId)}&notify=${notify}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
+          body: `orderId=${encodeURIComponent(orderId)}&notify=${notify}&method=${encodeURIComponent(payMethod)}&amountReceived=${encodeURIComponent(payAmount)}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
         })
           .then((r) => r.json())
           .then((data) => {
