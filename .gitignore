@@ -62,3 +62,6 @@ start-local-server.bat
 shipping.csv
 tax.csv
 charges_chargeid_counter.txt
+
+# 2026-10-18: how each invoice was paid (merch_payments.php) - amounts + customer order IDs.
+payments.csv

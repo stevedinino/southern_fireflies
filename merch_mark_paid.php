@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-15-D
+// Build: 2026-10-18-B
 // ============================================================
 // Admin-triggered "Mark Paid" one-click group action, mirroring
 // merch_invoice.php's "Send Invoice" grouping (Steve: he gets ONE
@@ -66,6 +66,7 @@ require __DIR__ . '/admin_guard.php'; // must come before anything else that mig
 header('Content-Type: application/json');
 require __DIR__ . '/merch_backup.php';
 require __DIR__ . '/merch_status_log.php';
+require __DIR__ . '/merch_payments.php';
 
 // Shared implementation in admin_guard.php/csrf.php - same as
 // merch_update.php and merch_invoice.php.
@@ -83,6 +84,12 @@ $csvFile = __DIR__ . '/merchandise.csv';
 $orderId = isset($_POST['orderId']) ? trim($_POST['orderId']) : '';
 // Opt-in only: a missing/any-other value means "mark silently".
 $notify = (($_POST['notify'] ?? '') === '1');
+// 2026-10-18: how it was paid (payments.csv). Anything missing/invalid
+// is recorded as 'Other' by merch_payments_record(); a blank amount means
+// "the invoice total".
+$payMethod = trim((string) ($_POST['method'] ?? ''));
+$payAmountRaw = trim((string) ($_POST['amountReceived'] ?? ''));
+$payAmount = ($payAmountRaw !== '' && is_numeric($payAmountRaw) && (float) $payAmountRaw >= 0) ? round((float) $payAmountRaw, 2) : null;
 if ($orderId === '' || !ctype_digit($orderId)) {
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => 'Invalid request.']);
@@ -261,6 +268,9 @@ merch_status_log_changes($statusBefore, $header, $rows, 'Mark Paid');
 flock($handle, LOCK_UN);
 fclose($handle);
 
+// Record the payment method/amount/fee. Never blocks or undoes the payment.
+merch_payments_record($paidOrderIds, $payMethod, $payAmount, $paidToday);
+
 // ---- Optional "payment received" email (see the file-level comment). ----
 // Everything above is done: the CSV is written and the lock released, so
 // a slow mail server can't hold up the live order form.
@@ -312,5 +322,5 @@ echo json_encode([
     'paidOrderIds' => $paidOrderIds,
     'paidDate' => $paidToday,
     'email' => $emailResult,
-    'build' => '2026-10-04-A',
+    'build' => '2026-10-18-B',
 ]);
