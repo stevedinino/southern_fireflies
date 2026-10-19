@@ -88,7 +88,7 @@ merch_admin_login_gate('Admin Login – Southern Fireflies Retreats', 'ourguests
       $header = [];
       if (file_exists($csvFile) && filesize($csvFile) > 0) {
           if (($handle = fopen($csvFile, 'r')) !== false) {
-              while (($row = fgetcsv($handle)) !== false) {
+              while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
                   $rows[] = $row;
               }
               fclose($handle);

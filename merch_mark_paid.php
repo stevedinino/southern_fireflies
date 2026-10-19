@@ -115,7 +115,7 @@ if (!flock($handle, LOCK_EX)) {
 }
 
 $rows = [];
-while (($row = fgetcsv($handle)) !== false) {
+while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
     $rows[] = $row;
 }
 

@@ -129,7 +129,12 @@ $csvFile = __DIR__ . '/merchandise.csv';
 // first and exit, before any of that runs. See the file-level comment
 // above and merch_update_apply_qty_created_deltas() further down.
 if (isset($_POST['field']) && trim($_POST['field']) === 'Qty Created') {
-    merch_update_apply_qty_created_deltas($csvFile);
+    // 2026-10-19 (Steve's workflow decision): the per-plate checkbox that
+    // posted here is gone - a finished plate now adds to the shelf and
+    // Done takes it off, so nothing may mark pieces Created behind the
+    // inventory's back. The function below stays (tests, history).
+    http_response_code(410);
+    echo json_encode(['ok' => false, 'error' => 'Plates are marked finished with the Finished button (it adds the pieces to inventory). Created is set by Done on the Inventory page.']);
     exit;
 }
 
@@ -215,7 +220,7 @@ if (!flock($handle, LOCK_EX)) {
 }
 
 $rows = [];
-while (($row = fgetcsv($handle)) !== false) {
+while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
     $rows[] = $row;
 }
 
@@ -266,7 +271,11 @@ if ($fieldIndex === false || $orderIdIndex === false || ($cascadeField !== null 
 // without a second hand-maintained copy. Takes the matched row BY
 // REFERENCE and mutates it in place (same as the old inline code did);
 // returns what the caller needs to report back or bail out on.
+$itemColIndex = array_search('Item', $header, true);
+$fulfillColIndex = array_search('Fulfillment', $header, true);
 $applyToRow = function (array &$row) use (
+    $itemColIndex,
+    $fulfillColIndex,
     $isClearOnlyField,
     $clearGuardIndex,
     $clearOnlyFields,
@@ -281,6 +290,15 @@ $applyToRow = function (array &$row) use (
     $quantityIndex,
     $createdColIndex
 ): array {
+    // 2026-10-19: printed pieces are marked Created only by Done on the
+    // Inventory page (it takes them off the shelf at the same moment).
+    // Shirts/hats have no shelf, and Pickup-at-retreat orders are not on the
+    // Stock & Print Plan (no Done for them yet), so their Created box still works.
+    if ($field === 'Created' && $itemColIndex !== false && $fulfillColIndex !== false
+        && trim($row[$fulfillColIndex] ?? '') === 'Ship'
+        && in_array(trim($row[$itemColIndex] ?? ''), FILAMENT_COLOR_ITEMS, true)) {
+        return ['ok' => false, 'error' => 'Printed pieces are marked Created by Done on the Inventory page (it also takes them off the shelf). To change a count, use Edit Stock.'];
+    }
     if ($isClearOnlyField && $clearGuardIndex !== null && trim($row[$clearGuardIndex] ?? '') !== '') {
         return ['ok' => false, 'error' => "Can't un-invoice - this order already shows a " . $clearOnlyFields[$field] . '. Sort out the payment by hand first.'];
     }
@@ -589,7 +607,7 @@ function merch_update_apply_qty_created_deltas(string $csvFile): void
     }
 
     $rows = [];
-    while (($row = fgetcsv($handle)) !== false) {
+    while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
         $rows[] = $row;
     }
     if (empty($rows)) {

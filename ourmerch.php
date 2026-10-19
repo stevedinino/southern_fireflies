@@ -7,10 +7,11 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-10-18-B';
+$merchBuild = '2026-10-19-B';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
+require __DIR__ . '/merch_stock.php'; // 2026-10-19: merch_stock_reduce_print_rows() - the plate pane counts the shelf
 require __DIR__ . '/print_plates.php'; // 2026-09-17: for print_plate_group_queue() - powers the "Sort by Print Plate" toggle below (checkbox, Needs Creating only, as of 2026-09-20)
 
 // 2026-08-20 (Steve): working an order means glancing back and forth
@@ -271,7 +272,7 @@ $merchEditCatalog = [
       $rows = [];
       if (file_exists($csvFile) && filesize($csvFile) > 0) {
           if (($handle = fopen($csvFile, 'r')) !== false) {
-              while (($row = fgetcsv($handle)) !== false) {
+              while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
                   $rows[] = $row;
               }
               fclose($handle);
@@ -415,11 +416,15 @@ $merchEditCatalog = [
           // checkboxes. Labels only: data-view values, element ids and all
           // the JS are unchanged. Sort by Print Plate is deliberately not
           // trimmed.
-          echo '<button type="button" class="btn merch-view-btn" data-view="all" style="margin-right:8px; padding:4px 12px; font-size:0.85em;">All</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-invoicing" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Invoicing">Invoice</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-payment" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Payment">Payments</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-creating" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Creating">Create</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-shipping" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Shipping">Ship</button>';
+          // 2026-10-19 (Steve): the "All" button is gone. The four view buttons
+          // are on/off toggles: pressing one turns off whichever was on (radio
+          // style), pressing the lit one turns it off, and "nothing lit" IS the
+          // All view (no filter). The old "Active" case and the stale-value
+          // fallback for it are gone too (see applyView()).
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-invoicing" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Invoicing">Invoice</button>';
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-payment" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Payment">Payments</button>';
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-creating" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Creating">Create</button>';
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-shipping" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Shipping">Ship</button>';
           // 2026-09-17 (Steve): "sort the Needs Creating list to give me
           // an optimized list of same color gadgets I can print
           // together." NOT another data-view case below (applyView()
@@ -453,7 +458,7 @@ $merchEditCatalog = [
           // 2026-10-15 (Steve): Create hides pickup orders and shirts/hats so
           // the list is only what he can print for shipping. This brings
           // them back; only shown on Create, remembered for the tab.
-          echo '<label id="merch-focus-label" style="display:none; margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-focus-out" /> + Shirts/Hats/P/U</label>';
+          echo '<label id="merch-focus-label" title="Show the plain list (instead of the plate view), including shirts/hats and pickup orders" style="display:none; margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-focus-out" /> + Shirts/Hats/P/U</label>';
           echo '<label id="merch-pack-label" style="display:none; margin-left:16px; font-size:0.85em; font-weight:normal; white-space:nowrap;"><input type="checkbox" id="merch-pack-toggle" checked /> Packing Checklist</label>';
           // 2026-08-23: independent of the named views above (which
           // never show a cancelled row, full stop - nothing to act on
@@ -660,7 +665,14 @@ $merchEditCatalog = [
                       // "checkbox, checked" with no idea which order or
                       // field it belonged to. The values are already
                       // available here, so no new markup/data needed.
-                      echo '<input type="checkbox" class="merch-status-toggle" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="' . htmlspecialchars($fieldName, ENT_QUOTES) . '" aria-label="' . htmlspecialchars($fieldName . ' - order ' . $orderId, ENT_QUOTES) . '" ' . ($isChecked ? 'checked' : '') . ' />';
+                      // 2026-10-19 (Steve's workflow decision): printed pieces are marked
+                      // Created only by Done on the Inventory page, which also takes them
+                      // off the shelf - a hand-ticked box skipped the shelf and let counts
+                      // drift. Locked here for SHIP rows (and refused by merch_update.php);
+                      // shirts/hats have no shelf, and Pickup orders are not on the
+                      // Stock & Print Plan, so those keep a working box.
+                      $createdLocked = ($fieldName === 'Created' && $rowIsShipping && in_array($rowItem, FILAMENT_COLOR_ITEMS, true));
+                      echo '<input type="checkbox" class="merch-status-toggle" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="' . htmlspecialchars($fieldName, ENT_QUOTES) . '" aria-label="' . htmlspecialchars($fieldName . ' - order ' . $orderId, ENT_QUOTES) . '" ' . ($isChecked ? 'checked' : '') . ($createdLocked ? ' disabled title="Set by Done on the Inventory page"' : '') . ' />';
                       echo '<br /><span class="merch-status-date" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-field="' . htmlspecialchars($fieldName, ENT_QUOTES) . '" style="font-size:0.8em; color:#888;">' . htmlspecialchars($displayValue) . '</span>';
                       echo '</td>';
                   } elseif ($col === 'Pymt Date') {
@@ -961,6 +973,19 @@ $merchEditCatalog = [
       // (collected above, unfiltered by item type) is passed through
       // as-is. As of 2026-10-15 it holds paid shipping printed pieces only,
       // so a customer's wait time no longer counts pickup or shirt/hat lines.
+      // 2026-10-19 (Steve's workflow decision): a finished plate adds to the
+      // SHELF (inventory.csv), and Done takes pieces off it - the old per-plate
+      // checkbox marked orders Created without touching inventory, which is
+      // how counts drifted. So the plate plan is the Needs Creating queue
+      // MINUS what the shelf already holds (oldest order first).
+      $plateShelfCovered = 0;
+      $plateInv = merch_stock_load_inventory(__DIR__ . '/inventory.csv');
+      if ($plateInv['exists']) {
+          $plateParsed = merch_stock_parse_grid($plateInv['rows'], FILAMENT_COLOR_ITEMS, FILAMENT_COLORS);
+          $plateReduced = merch_stock_reduce_print_rows($printPlateRows, $plateParsed['stock'] ?? []);
+          $printPlateRows = $plateReduced['rows'];
+          $plateShelfCovered = $plateReduced['covered'];
+      }
       $printPlateGroups = print_plate_group_queue($printPlateRows);
       ?>
       <div id="merch-print-plate-pane" class="merch-table-pane" style="display:none; padding:16px;">
@@ -968,7 +993,7 @@ $merchEditCatalog = [
           <p style="text-align:center; color:#666;">Nothing here right now &mdash; either the Create view is empty, or everything left is a pickup order, a shirt/hat or a Stars &amp; Stripes order, none of which go through this view.</p>
         <?php else: ?>
           <p style="color:#666; font-size:0.85em; margin-top:0;">
-            The same Needs Creating queue, grouped by color (most-ordered colors first), then planned onto your 22 real plates (named and numbered as in Bambu Studio). Within a color the plate holding the customer who has waited longest comes first, and one customer's pieces stay on one plate unless no single plate can hold their order. Every order line appears on exactly one plate below &mdash; nothing is hidden or double-counted. A partial plate is still a candidate for combining by hand with something else in that color. Check a plate off once it's printed &mdash; that's recorded per order, so a multi-unit line that's only partly done just needs the rest on a later plate.
+            The same Needs Creating queue, grouped by color (most-ordered colors first), then planned onto your 22 real plates (named and numbered as in Bambu Studio). Within a color the plate holding the customer who has waited longest comes first, and one customer's pieces stay on one plate unless no single plate can hold their order. Every order line appears on exactly one plate below &mdash; nothing is hidden or double-counted. A partial plate is still a candidate for combining by hand with something else in that color. Pieces already on the shelf are counted first<?= $plateShelfCovered > 0 ? ' (' . (int) $plateShelfCovered . ' piece' . ($plateShelfCovered === 1 ? '' : 's') . ' right now)' : '' ?>, so this is only what is still left to print. Press <strong>Finished&hellip;</strong> when a plate comes off the printer &mdash; it adds those pieces to inventory (change a number if the plate came out different). The orders are marked Created later, by <strong>Done</strong> on the Inventory page, when the pieces are pulled for shipping.
             <button type="button" id="merch-print-plate-print-btn" class="btn no-print" style="padding:2px 10px; font-size:0.85em; margin-left:8px;">Print this list</button>
           </p>
           <?php foreach ($printPlateGroups as $group): ?>
@@ -1008,13 +1033,19 @@ $merchEditCatalog = [
                     }
                     ?>
                     <li class="<?= $isFull ? '' : 'print-plate-partial' ?>">
-                      <label style="display:block; cursor:pointer;">
-                      <input type="checkbox" class="print-plate-complete-toggle" data-deltas="<?= htmlspecialchars(json_encode($plateDeltas), ENT_QUOTES) ?>" />
+                      <?php
+                      $plateDoneItems = [];
+                      foreach ($plate['items'] as $itemName => $data) {
+                          $plateDoneItems[] = ['item' => (string) $itemName, 'qty' => (int) $data['qty']];
+                      }
+                      ?>
+                      <div style="display:block;">
+                      <button type="button" class="print-plate-finished no-print" data-color="<?= htmlspecialchars($group['color'], ENT_QUOTES) ?>" data-plate="<?= htmlspecialchars($pg['group'], ENT_QUOTES) ?>" data-items="<?= htmlspecialchars(json_encode($plateDoneItems), ENT_QUOTES) ?>" style="margin-right:8px; padding:1px 8px; font-size:0.85em; border:1px solid #2a7a2a; background:#fff; color:#2a7a2a; border-radius:3px; cursor:pointer;">Finished&hellip;</button>
                       <strong><?= $printSeq ?>. <?= htmlspecialchars($pg['group']) ?></strong>
                       &mdash; <?= implode(', ', $itemBits) ?>
                       <span class="print-plate-plate-fill"><?= $isFull ? '(full)' : '(' . $fillPct . '% full)' ?></span>
                       <span class="print-plate-plate-orders"><?= implode(', ', $orderBits) ?></span>
-                      </label>
+                      </div>
                     </li>
                   <?php endforeach; ?>
                 <?php endforeach; ?>
@@ -1023,6 +1054,19 @@ $merchEditCatalog = [
           <?php endforeach; ?>
         <?php endif; ?>
       </div>
+
+      <!-- 2026-10-19: Plate finished -> adds the pieces to inventory through merch_stock_adjust.php
+           (same path as the Inventory page's Add; its history and Undo cover it). -->
+      <dialog id="merch-plate-dialog" style="max-width:440px; border:1px solid #ccc; border-radius:8px; padding:16px 20px;">
+        <p style="margin:0 0 6px; font-weight:bold;" id="merch-pd-title">Plate finished</p>
+        <p style="margin:0 0 10px; color:#666; font-size:0.85em;">Adds these pieces to the shelf. Change a number if the plate came out different (a failed piece, a spare). It does not change any order.</p>
+        <div id="merch-pd-rows"></div>
+        <p id="merch-pd-msg" style="min-height:1.2em; font-size:0.85em; margin:10px 0;"></p>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button type="button" id="merch-pd-cancel" class="btn">Cancel</button>
+          <button type="button" id="merch-pd-ok" class="btn">Add to inventory</button>
+        </div>
+      </dialog>
 
       <!-- 2026-10-05: Ship view's Packing Checklist. packing_slips.php is the
            whole checklist (same page the Pack List footer link opens), so its
@@ -1048,6 +1092,9 @@ $merchEditCatalog = [
           <!-- 2026-10-07 (Steve): live inventory editor (merch_stock_edit.php) - every
                tap saves and is logged; replaces the old upload-a-CSV box. -->
           <a href="merch_stock_edit.php" target="_blank" style="color: var(--accent);">Edit Stock &rarr;</a>
+          &nbsp;&mdash;&nbsp;
+          <!-- 2026-10-19 (Steve): no-charge replacement for a packing miss / broken part - replaces the dummy-order-marked-Paid trick (merch_replacement.php). -->
+          <a href="merch_replacement.php" target="_blank" style="color: var(--accent);">Replacement &rarr;</a>
           &nbsp;&mdash;&nbsp;
           <!-- 2026-09-20 (Steve, item #6): these used to be one click -
                the Shippo CSV download also popped the pack list open in
@@ -1860,6 +1907,9 @@ $merchEditCatalog = [
     // list looks pre-filtered. Falls back to 'all' the first time, or
     // in any other browser/tab.
     let currentView = sessionStorage.getItem('merchAdminView') || 'all';
+    // 2026-10-19: only the four named views (or 'all' = nothing lit) are valid;
+    // a stale 'active' from before that view was retired lands on All.
+    if (['needs-invoicing', 'needs-payment', 'needs-creating', 'needs-shipping'].indexOf(currentView) === -1) currentView = 'all';
 
     // 2026-08-23: "Show cancelled" - independent of the named views
     // (see the filter-bar comment in the PHP above). Persisted the same
@@ -1996,16 +2046,18 @@ $merchEditCatalog = [
       sessionStorage.setItem('merchAdminView', view);
       viewButtons.forEach((btn) => {
         btn.classList.toggle('active', btn.dataset.view === view);
+        btn.setAttribute('aria-pressed', btn.dataset.view === view ? 'true' : 'false');
       });
-      // Only Needs Creating ever shows the "Sort by Print Plate"
-      // checkbox at all; switching to any other view hides the label
-      // and forces the checkbox (and its pane) closed, same as if
-      // you'd manually unchecked it.
+      // 2026-10-19 (Steve): the plate view is now THE Create view - the
+      // "Sort by Print Plate" checkbox is retired (its label stays hidden; the
+      // checkbox itself is kept as the internal on/off the pane code below
+      // reads). Create shows the plate pane; ticking "+ Shirts/Hats/P/U"
+      // swaps to the plain list so those lines (which the plate view
+      // ignores) still have somewhere to be seen. Any other view: pane off.
       if (printPlateLabel) {
-        const isNeedsCreating = view === 'needs-creating';
-        printPlateLabel.style.display = isNeedsCreating ? '' : 'none';
-        if (!isNeedsCreating && printPlateToggle) {
-          printPlateToggle.checked = false;
+        printPlateLabel.style.display = 'none';
+        if (printPlateToggle) {
+          printPlateToggle.checked = (view === 'needs-creating') && !showFocusOut;
           savePrintPlateState();
         }
         updatePrintPlatePaneVisibility();
@@ -2030,9 +2082,6 @@ $merchEditCatalog = [
 
         let show = true;
         switch (view) {
-          case 'active':
-            show = !fulfilled;
-            break;
           case 'needs-invoicing':
             show = !invoiced;
             break;
@@ -2140,61 +2189,84 @@ $merchEditCatalog = [
       }
     } catch (e) { /* nothing saved, or storage unavailable */ }
 
-    // 2026-09-20 (Steve, item #4): per-plate "mark complete" checkboxes
-    // - see the PHP loop above for how each one's data-deltas (this
-    // plate's per-order unit counts) is built. Checking one posts those
-    // as signed deltas to merch_update.php's Qty Created endpoint and
-    // reloads - same "reload on success" pattern as Un-invoice/Item
-    // Edit above, since a completed plate's orders may drop out of the
-    // Needs Creating queue entirely and every plate below it can shift
-    // as a result. Unchecking sends the same deltas negated, so a
-    // mis-click can be undone right up until the reload actually fires.
-    document.querySelectorAll('.print-plate-complete-toggle').forEach((box) => {
-      box.addEventListener('change', () => {
-        let deltaMap;
-        try {
-          deltaMap = JSON.parse(box.dataset.deltas || '{}');
-        } catch (e) {
-          deltaMap = {};
-        }
-        const sign = box.checked ? 1 : -1;
-        const deltas = {};
-        Object.keys(deltaMap).forEach((orderId) => {
-          deltas[orderId] = deltaMap[orderId] * sign;
-        });
-        const previousChecked = !box.checked;
-
-        box.disabled = true;
-        fetch('merch_update.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `field=${encodeURIComponent('Qty Created')}&deltas=${encodeURIComponent(JSON.stringify(deltas))}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
-        })
-          .then((r) => r.json())
-          .then((data) => {
-            if (data.ok) {
-              // 2026-09-26: remember where you were in the plate list -
-              // see the restore next to the first applyView() call above.
-              try {
-                sessionStorage.setItem('merchAdminPlateScroll', JSON.stringify({
-                  page: window.scrollY,
-                  pane: printPlatePane ? printPlatePane.scrollTop : 0
-                }));
-              } catch (e) { /* storage unavailable - reload just starts at the top */ }
-              location.reload();
-            } else {
-              alert('Could not save: ' + (data.error || 'unknown error'));
-              box.checked = previousChecked;
-              box.disabled = false;
-            }
-          })
-          .catch(() => {
-            alert('Could not save - check your connection and try again.');
-            box.checked = previousChecked;
-            box.disabled = false;
+    // 2026-10-19 (Steve's workflow decision): the per-plate "mark complete"
+    // checkbox (2026-09-20) is gone - it marked orders Created without
+    // touching inventory, so the shelf counts drifted. "Finished..." adds the
+    // plate's pieces to inventory (merch_stock_adjust.php, one call per item,
+    // each with its own idempotency token); the plate list then already
+    // subtracts the shelf, and Done (Inventory page) marks orders Created.
+    (function () {
+      const dlg = document.getElementById('merch-plate-dialog');
+      if (!dlg) { return; }
+      const rowsEl = document.getElementById('merch-pd-rows');
+      const msg = document.getElementById('merch-pd-msg');
+      const okBtn = document.getElementById('merch-pd-ok');
+      let cur = null;
+      const tok = () => {
+        const a = new Uint8Array(12);
+        (window.crypto || window.msCrypto).getRandomValues(a);
+        return Array.prototype.map.call(a, (b) => ('0' + b.toString(16)).slice(-2)).join('');
+      };
+      const post = (params) => {
+        const body = new URLSearchParams();
+        Object.keys(params).forEach((k) => body.append(k, params[k]));
+        body.append('csrf_token', MERCH_CSRF_TOKEN);
+        return fetch('merch_stock_adjust.php', { method: 'POST', body: body, credentials: 'same-origin' })
+          .then((r) => r.json().catch(() => ({ ok: false, error: 'Unexpected response (HTTP ' + r.status + ').' })));
+      };
+      document.querySelectorAll('.print-plate-finished').forEach((b) => {
+        b.addEventListener('click', () => {
+          let items;
+          try { items = JSON.parse(b.dataset.items || '[]'); } catch (e) { return; }
+          cur = { color: b.dataset.color, plate: b.dataset.plate, items: items, tokens: items.map(tok) };
+          document.getElementById('merch-pd-title').textContent = 'Plate finished: ' + cur.plate + ' (' + cur.color + ')';
+          rowsEl.innerHTML = '';
+          items.forEach((it, i) => {
+            const d = document.createElement('div'); d.style.margin = '4px 0';
+            const lab = document.createElement('label'); lab.textContent = it.item + '  ';
+            const inp = document.createElement('input');
+            inp.type = 'number'; inp.min = '0'; inp.max = '50'; inp.value = it.qty; inp.id = 'merch-pd-q' + i; inp.style.width = '60px';
+            lab.appendChild(inp); d.appendChild(lab); rowsEl.appendChild(d);
           });
+          msg.textContent = ''; okBtn.disabled = false;
+          dlg.showModal();
+        });
       });
-    });
+      document.getElementById('merch-pd-cancel').addEventListener('click', () => dlg.close());
+      okBtn.addEventListener('click', () => {
+        if (!cur) { return; }
+        okBtn.disabled = true; msg.style.color = '#555'; msg.textContent = 'Saving...';
+        const done = [];
+        let i = 0;
+        const next = () => {
+          if (i >= cur.items.length) {
+            msg.style.color = '#2a7a2a';
+            msg.textContent = 'Added: ' + (done.length ? done.join(', ') : 'nothing (all zero)') + '. Reloading...';
+            try {
+              sessionStorage.setItem('merchAdminPlateScroll', JSON.stringify({ page: window.scrollY, pane: printPlatePane ? printPlatePane.scrollTop : 0 }));
+            } catch (e) { /* storage unavailable - reload just starts at the top */ }
+            setTimeout(() => location.reload(), 800);
+            return;
+          }
+          const it = cur.items[i];
+          const q = parseInt(document.getElementById('merch-pd-q' + i).value, 10);
+          if (!(q > 0)) { i++; next(); return; }
+          post({ action: 'add', item: it.item, color: cur.color, qty: String(q), token: cur.tokens[i] })
+            .then((d) => {
+              if (d.ok) { done.push(q + '\u00d7 ' + it.item); i++; next(); return; }
+              msg.style.color = '#a00';
+              msg.textContent = (d.error || 'Could not save.') + (done.length ? ' Already added: ' + done.join(', ') + ' (see Edit Stock to undo).' : ' Nothing was added.');
+              okBtn.disabled = false;
+            })
+            .catch(() => {
+              msg.style.color = '#a00';
+              msg.textContent = 'Could not reach the server.' + (done.length ? ' Already added: ' + done.join(', ') + '.' : ' Nothing was added.') + ' Check Edit Stock before trying again.';
+              okBtn.disabled = false;
+            });
+        };
+        next();
+      });
+    })();
 
     // 2026-09-20 (Steve, item #5): "A Print button to get a hard copy
     // would also be useful." Scoped to just this pane via the

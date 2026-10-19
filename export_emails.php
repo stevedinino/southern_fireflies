@@ -50,7 +50,7 @@ function export_emails_read_file(string $path): array
     }
 
     $rows = [];
-    while (($row = fgetcsv($handle)) !== false) {
+    while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
         $rows[] = $row;
     }
     fclose($handle);
@@ -112,8 +112,8 @@ header('Content-Type: text/csv');
 header('Content-Disposition: attachment; filename="customer_emails_' . date('Y-m-d_His') . '.csv"');
 
 $out = fopen('php://output', 'w');
-fputcsv($out, ['Email', 'Name']);
+fputcsv($out, ['Email', 'Name'], ',', '"', '\\');
 foreach ($deduped as $row) {
-    fputcsv($out, [merch_csv_safe_cell($row['email']), merch_csv_safe_cell($row['name'])]);
+    fputcsv($out, [merch_csv_safe_cell($row['email']), merch_csv_safe_cell($row['name'])], ',', '"', '\\');
 }
 fclose($out);

@@ -52,7 +52,7 @@ function merch_load_csv(string $csvFile, string $label = 'the file'): array
         die("Could not open {$label}.");
     }
     $rows = [];
-    while (($row = fgetcsv($handle)) !== false) {
+    while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
         $rows[] = $row;
     }
     fclose($handle);

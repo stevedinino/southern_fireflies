@@ -181,7 +181,7 @@ fputcsv($out, [
     'Item Weight Unit', 'Item Price', 'Item Currency', 'Order Weight',
     'Order Weight Unit', 'Package Width', 'Package Height', 'Package Length',
     'Package Dimension Unit', 'Order Amount', 'Order Currency',
-]);
+], ',', '"', '\\');
 
 foreach ($groups as $groupRows) {
     // Lowest OrderID in the group becomes the Shippo Order Number, so
@@ -276,7 +276,7 @@ foreach ($groups as $groupRows) {
             'in',
             round($orderAmount, 2),
             'USD',
-        ]);
+        ], ',', '"', '\\');
     }
 }
 
