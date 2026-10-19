@@ -67,7 +67,7 @@ if ($name && $address && $phone && $email && $event) {
     $handle = fopen($csvFile, 'c+');
     if ($handle && flock($handle, LOCK_EX)) {
         $existingRows = [];
-        while (($existingRow = fgetcsv($handle)) !== false) {
+        while (($existingRow = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
             $existingRows[] = $existingRow;
         }
 

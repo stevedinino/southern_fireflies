@@ -71,7 +71,7 @@ function merch_invoice_stamp_invoice_date(string $csvFile, array $groupOrderIds)
     }
 
     $freshRows = [];
-    while (($row = fgetcsv($handle)) !== false) {
+    while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
         $freshRows[] = $row;
     }
 
@@ -168,7 +168,7 @@ if (!flock($handle, LOCK_EX)) {
 }
 
 $rows = [];
-while (($row = fgetcsv($handle)) !== false) {
+while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
     $rows[] = $row;
 }
 flock($handle, LOCK_UN);

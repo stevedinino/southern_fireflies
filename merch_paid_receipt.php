@@ -63,7 +63,7 @@ if (!$handle) {
     exit;
 }
 $rows = [];
-while (($row = fgetcsv($handle)) !== false) {
+while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
     $rows[] = $row;
 }
 fclose($handle);

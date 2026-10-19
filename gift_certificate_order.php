@@ -130,7 +130,7 @@ if (!flock($handle, LOCK_EX)) {
 
 $csvMaxForType = 0;
 $header = null;
-while (($existingRow = fgetcsv($handle)) !== false) {
+while (($existingRow = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
     if ($header === null) {
         $header = $existingRow;
         // Same Excel-BOM defense as every other CSV reader on this site.

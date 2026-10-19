@@ -47,6 +47,7 @@ require __DIR__ . '/admin_guard.php'; // must come before anything else that mig
 require __DIR__ . '/pricing.php';
 require __DIR__ . '/merch_shipments.php';
 require __DIR__ . '/print_plates.php';
+require __DIR__ . '/filament_unavailable.php'; // 2026-10-19: colors the plan must not ask him to print right now
 require __DIR__ . '/merch_stock.php';
 
 merch_require_admin_redirect('ourmerch.php');
@@ -63,7 +64,7 @@ $closeoutN = max(1, min(60, (int) ($_GET['n'] ?? 10)));
 $priority = (($_GET['prio'] ?? 'age') === 'quick') ? 'quick' : 'age';
 $altPriority = $priority === 'age' ? 'quick' : 'age';
 $qs = fn(array $over) => htmlspecialchars(http_build_query(array_merge(['mode' => $mode, 'n' => $closeoutN, 'prio' => $priority], $over)), ENT_QUOTES, 'UTF-8');
-$build = '2026-10-15-B';
+$build = '2026-10-19-A';
 
 $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
@@ -88,6 +89,12 @@ $ready = $alloc['ready'];
 $partial = $alloc['partial'];
 $blocked = $alloc['blocked'];
 $stockLeft = $alloc['stockLeft'];
+// 2026-10-19 (Steve): colors he can't print right now (filament on order).
+// Stock on the shelf still counts; only PRINTING is affected. Orders still
+// missing pieces of such a color are 'held' and left out of the print plan.
+$unavailRows = merch_unavailable_active_rows(date('Y-m-d'));
+$unavailColors = array_keys($unavailRows);
+[$partialPrintable, $partialHeld] = merch_unavailable_split($partial, $unavailColors);
 $smallestFirstReady = merch_stock_ready_count_smallest_first($shipments, $stock);
 
 $totalPiecesWaiting = 0;
@@ -102,7 +109,8 @@ foreach ($ready as $s) {
 }
 
 // ---- Plan the printing ----------------------------------------
-$rank = merch_stock_closeout_rank($partial, $priority);
+$rank = merch_stock_closeout_rank($partialPrintable, $priority);
+$heldRank = merch_stock_closeout_rank($partialHeld, $priority);
 $altStats = null;
 if ($mode === 'closeout') {
     $chosen = array_slice($rank, 0, $closeoutN);
@@ -111,13 +119,19 @@ if ($mode === 'closeout') {
     // the price of oldest-first (or the saving, if he's on quickest-wins)
     // is visible instead of a guess.
     $altAlloc = merch_stock_allocate($shipments, $stock, $altPriority);
-    $altChosen = array_slice(merch_stock_closeout_rank($altAlloc['partial'], $altPriority), 0, $closeoutN);
+    $altChosen = array_slice(merch_stock_closeout_rank(merch_unavailable_split($altAlloc['partial'], $unavailColors)[0], $altPriority), 0, $closeoutN);
     if (count($altChosen) > 0) {
         $altStats = merch_stock_plan_stats(print_plate_group_queue(merch_stock_print_rows($altChosen)));
     }
 } else {
     $chosen = [];
     $planRows = merch_stock_print_rows(array_merge($partial, $blocked));
+    // Batch mode: leave out the pieces of unavailable colors (counted below).
+    $heldRows = array_values(array_filter($planRows, fn($r) => in_array($r['color'], $unavailColors, true)));
+    $planRows = array_values(array_filter($planRows, fn($r) => !in_array($r['color'], $unavailColors, true)));
+}
+if (!isset($heldRows)) {
+    $heldRows = [];
 }
 $planGroups = print_plate_group_queue($planRows);
 $planStats = merch_stock_plan_stats($planGroups);
@@ -246,6 +260,12 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
   .plate-list li { margin: 3px 0; }
   .plate-label { font-weight: bold; }
   .plate-partial { color: #8a6d00; font-size: 12px; margin-left: 4px; }
+  .unavail { background: #fdecec; border: 1px solid #e5b4b4; color: #7a2323; padding: 8px 12px; border-radius: 3px; margin: 8px 0; font-size: 13px; }
+  .unavail .u-item { display: inline-block; margin: 2px 12px 2px 0; }
+  .unavail button, .unavail select, .unavail input { font-size: 13px; }
+  .plate-done { margin-left: 8px; padding: 1px 8px; font-size: 12px; border: 1px solid #2a7a2a; background: #fff; color: #2a7a2a; border-radius: 3px; cursor: pointer; }
+  dialog#plate-dialog { max-width: 440px; border: 1px solid #ccc; border-radius: 8px; padding: 16px 20px; }
+  dialog#plate-dialog input[type=number] { width: 60px; padding: 3px; }
   .warnbox { background: #fff6e0; border: 1px solid #e8cf8a; color: #6b5416; padding: 8px 12px; border-radius: 3px; margin: 8px 0; font-size: 13px; }
   .hint { background: #eef6ee; border: 1px solid #b9d6b9; color: #2a5a2a; padding: 8px 12px; border-radius: 3px; margin: 8px 0; font-size: 13px; }
   .grid td, .grid th { text-align: center; padding: 4px 6px; }
@@ -324,6 +344,30 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 <?php endif; ?>
 
 <h2>2. What to print next</h2>
+<div class="unavail" id="unavail-box">
+  <strong>Colors not available to print right now</strong> (filament on order). The plan skips them, and orders still needing them wait below. Shelf stock of these colors still counts.
+  <div style="margin-top:6px;">
+    <?php if (empty($unavailRows)): ?>
+      <span class="age">None &mdash; every color is treated as available.</span>
+    <?php else: ?>
+      <?php foreach ($unavailRows as $uc => $ur): ?>
+        <span class="u-item"><strong><?= $h($uc) ?></strong><?= $ur['BackOn'] !== '' ? ' (back ' . $h($ur['BackOn']) . ')' : '' ?>
+          <button type="button" class="u-clear" data-color="<?= $h($uc) ?>">Available again</button></span>
+      <?php endforeach; ?>
+    <?php endif; ?>
+  </div>
+  <div style="margin-top:6px;">
+    Add:
+    <select id="u-color">
+      <?php foreach (merch_stock_stockable_colors(FILAMENT_COLORS, PRINT_PLATE_EXCLUDED_COLORS) as $uc): ?>
+        <?php if (!isset($unavailRows[$uc])): ?><option><?= $h($uc) ?></option><?php endif; ?>
+      <?php endforeach; ?>
+    </select>
+    back on <input type="date" id="u-date" /> <span class="age">(optional &mdash; blank until you clear it)</span>
+    <button type="button" id="u-add">Mark unavailable</button>
+    <span id="u-msg" style="margin-left:8px;"></span>
+  </div>
+</div>
 <div class="toolbar">
   <a class="tab <?= $mode === 'closeout' ? 'on' : '' ?>" href="?<?= $qs(['mode' => 'closeout']) ?>">Close-out: finish the next orders</a>
   <a class="tab <?= $mode === 'batch' ? 'on' : '' ?>" href="?<?= $qs(['mode' => 'batch']) ?>">Batch: everything, by color</a>
@@ -401,13 +445,45 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
                   $bits[] = (int) $data['qty'] . '&times; ' . $h($item) . ' &rarr; ' . implode(', ', $who);
               }
               echo implode(' &nbsp;+&nbsp; ', $bits);
+              $doneItems = [];
+              foreach ($plate['items'] as $item => $data) {
+                  $doneItems[] = ['item' => (string) $item, 'qty' => (int) $data['qty']];
+              }
               ?>
+              <button type="button" class="plate-done" data-color="<?= $h($g['color']) ?>" data-plate="<?= $h($pg['group']) ?>" data-items="<?= $h(json_encode($doneItems)) ?>">Finished&hellip;</button>
             </li>
           <?php endforeach; ?>
         <?php endforeach; ?>
       </ul>
     </div>
   <?php endforeach; ?>
+<?php endif; ?>
+
+<?php
+// 2026-10-19: orders held back because a color they need can't be printed now.
+$heldByColorUnits = [];
+foreach ($heldRows as $hr) {
+    $heldByColorUnits[$hr['color']] = ($heldByColorUnits[$hr['color']] ?? 0) + (int) $hr['qty'];
+}
+?>
+<?php if (!empty($heldRank) || !empty($heldByColorUnits)): ?>
+  <h3>Waiting on an unavailable color</h3>
+  <?php if (!empty($heldRank)): ?>
+    <table>
+      <tr><th>Customer</th><th>Order(s)</th><th>Waiting since</th><th>Already on shelf</th><th>Still missing</th></tr>
+      <?php foreach ($heldRank as $s): ?>
+        <tr>
+          <td><?= $h($s['name'] !== '' ? $s['name'] : '(no name)') ?></td>
+          <td><?= $shortIds($s['orderIds']) ?></td>
+          <td class="age"><?= $h($ageOf($s)) ?></td>
+          <td><?= $s['coveredUnits'] > 0 ? $coveredText($s) : '<span class="age">&mdash;</span>' ?></td>
+          <td><?= $missingText($s) ?></td>
+        </tr>
+      <?php endforeach; ?>
+    </table>
+  <?php else: ?>
+    <p class="note"><?php foreach ($heldByColorUnits as $hc => $hu): ?><strong><?= $h($hc) ?></strong>: <?= (int) $hu ?> piece(s) not planned. <?php endforeach; ?></p>
+  <?php endif; ?>
 <?php endif; ?>
 
 <h2>3. Stock on hand</h2>
@@ -517,6 +593,113 @@ usort($gridColors, function ($a, $b) {
   persist();
 })();
 
+</script>
+
+<!-- 2026-10-19: Plate finished -> adds the pieces to the shelf (inventory.csv) through
+     merch_stock_adjust.php, the same path as the Inventory page's Add, so the history
+     and Undo there cover it. Orders are NOT touched: the planner then covers waiting
+     orders from the shelf, and "Done" in section 1 marks them Created and takes the
+     pieces off the shelf - one path, nothing counted twice. -->
+<dialog id="plate-dialog">
+  <p style="margin:0 0 6px; font-weight:bold;" id="pd-title">Plate finished</p>
+  <p class="note" style="margin:0 0 10px;">Adds these pieces to the shelf. Change a number if the plate came out different (a failed piece, a spare). It does not change any order.</p>
+  <div id="pd-rows"></div>
+  <p id="pd-msg" style="min-height:1.2em; font-size:13px; margin:10px 0;"></p>
+  <div style="display:flex; gap:8px; justify-content:flex-end;">
+    <button type="button" id="pd-cancel">Cancel</button>
+    <button type="button" id="pd-ok" class="done-btn">Add to shelf</button>
+  </div>
+</dialog>
+<script>
+(function () {
+  var csrf = <?= json_encode($csrfToken) ?>;
+  function post(url, params) {
+    var body = new URLSearchParams();
+    Object.keys(params).forEach(function (k) { body.append(k, params[k]); });
+    body.append('csrf_token', csrf);
+    return fetch(url, { method: 'POST', body: body, credentials: 'same-origin' })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Unexpected response (HTTP ' + r.status + ').' }; }); });
+  }
+  function token() {
+    var a = new Uint8Array(12); (window.crypto || window.msCrypto).getRandomValues(a);
+    return Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+  }
+
+  // ---- Colors not available to print ----
+  var um = document.getElementById('u-msg');
+  function uDone(d) { if (d.ok) { location.reload(); } else { um.style.color = '#a00'; um.textContent = d.error || 'Could not save.'; } }
+  var add = document.getElementById('u-add');
+  if (add) {
+    add.addEventListener('click', function () {
+      var c = document.getElementById('u-color');
+      if (!c || !c.value) { return; }
+      um.style.color = '#555'; um.textContent = 'Saving...';
+      post('merch_filament_unavailable.php', { action: 'set', color: c.value, backOn: document.getElementById('u-date').value }).then(uDone)
+        .catch(function () { um.style.color = '#a00'; um.textContent = 'Could not reach the server.'; });
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.u-clear'), function (b) {
+    b.addEventListener('click', function () {
+      post('merch_filament_unavailable.php', { action: 'clear', color: b.getAttribute('data-color') }).then(uDone)
+        .catch(function () { um.style.color = '#a00'; um.textContent = 'Could not reach the server.'; });
+    });
+  });
+
+  // ---- Plate finished ----
+  var dlg = document.getElementById('plate-dialog');
+  var rowsEl = document.getElementById('pd-rows');
+  var msg = document.getElementById('pd-msg');
+  var okBtn = document.getElementById('pd-ok');
+  var cur = null;
+  Array.prototype.forEach.call(document.querySelectorAll('.plate-done'), function (b) {
+    b.addEventListener('click', function () {
+      var items; try { items = JSON.parse(b.getAttribute('data-items')); } catch (e) { return; }
+      cur = { color: b.getAttribute('data-color'), plate: b.getAttribute('data-plate'), items: items, tokens: items.map(token) };
+      document.getElementById('pd-title').textContent = 'Plate finished: ' + cur.plate + ' (' + cur.color + ')';
+      rowsEl.innerHTML = '';
+      items.forEach(function (it, i) {
+        var d = document.createElement('div'); d.style.margin = '4px 0';
+        var lab = document.createElement('label'); lab.textContent = it.item + '  ';
+        var inp = document.createElement('input'); inp.type = 'number'; inp.min = '0'; inp.max = '50'; inp.value = it.qty; inp.id = 'pd-q' + i;
+        lab.appendChild(inp); d.appendChild(lab); rowsEl.appendChild(d);
+      });
+      msg.textContent = ''; okBtn.disabled = false;
+      dlg.showModal();
+    });
+  });
+  document.getElementById('pd-cancel').addEventListener('click', function () { dlg.close(); });
+  okBtn.addEventListener('click', function () {
+    if (!cur) { return; }
+    okBtn.disabled = true; msg.style.color = '#555'; msg.textContent = 'Saving...';
+    var done = [];
+    var i = 0;
+    function next() {
+      if (i >= cur.items.length) {
+        msg.style.color = '#2a7a2a'; msg.textContent = 'Added: ' + (done.length ? done.join(', ') : 'nothing (all zero)') + '. Reloading...';
+        setTimeout(function () { location.reload(); }, 800);
+        return;
+      }
+      var it = cur.items[i];
+      var q = parseInt(document.getElementById('pd-q' + i).value, 10);
+      if (!(q > 0)) { i++; next(); return; }
+      post('merch_stock_adjust.php', { action: 'add', item: it.item, color: cur.color, qty: String(q), token: cur.tokens[i] })
+        .then(function (d) {
+          if (d.ok) { done.push(q + '\u00d7 ' + it.item); i++; next(); }
+          else {
+            msg.style.color = '#a00';
+            msg.textContent = (d.error || 'Could not save.') + (done.length ? ' Already added: ' + done.join(', ') + ' (see the Inventory page to undo).' : ' Nothing was added.');
+            okBtn.disabled = false;
+          }
+        })
+        .catch(function () {
+          msg.style.color = '#a00';
+          msg.textContent = 'Could not reach the server.' + (done.length ? ' Already added: ' + done.join(', ') + '.' : ' Nothing was added.') + ' Check the Inventory page before trying again.';
+          okBtn.disabled = false;
+        });
+    }
+    next();
+  });
+})();
 </script>
 </body>
 </html>

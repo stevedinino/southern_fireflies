@@ -86,13 +86,16 @@ function merch_charges_shipping_basis(float $amount, bool $isShipping, bool $has
         return 'pickup (no shipping)';
     }
     if ($hasStand && abs($amount - 10.0) < 0.005) {
-        return 'box $10 (Tool Stand)';
+        return 'box $10 (Tool Stand + up to 2 small)';
+    }
+    if ($hasStand && abs($amount - 12.0) < 0.005) {
+        return 'box $12 (Tool Stand + 3-4 small)';
     }
     if (abs($amount - 6.0) < 0.005 && !$hasStand) {
         return 'standard $6';
     }
     if (abs($amount - 10.0) < 0.005 && !$hasStand && $totalQty >= 3) {
-        return '$10 (3+ items, not a rule yet)';
+        return 'box $10 (3-4 small items)';
     }
     if ($amount == 0.0) {
         return 'none (pickup/no shipping line)';

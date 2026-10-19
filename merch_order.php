@@ -314,7 +314,7 @@ if (!flock($handle, LOCK_EX)) {
 
 $csvMaxOrderId = 0;
 $header = null;
-while (($existingRow = fgetcsv($handle)) !== false) {
+while (($existingRow = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
     if ($header === null) {
         $header = $existingRow;
         // Excel sometimes saves this file with a UTF-8 BOM glued onto

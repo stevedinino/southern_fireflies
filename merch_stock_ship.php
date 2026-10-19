@@ -105,7 +105,7 @@ $bail = function (int $code, string $msg) use ($mh, $ih): void {
 $origMerch = (string) stream_get_contents($mh);
 rewind($mh);
 $rows = [];
-while (($r = fgetcsv($mh)) !== false) {
+while (($r = fgetcsv($mh, 0, ',', '"', '\\')) !== false) {
     $rows[] = $r;
 }
 if (empty($rows)) {

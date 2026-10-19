@@ -762,6 +762,51 @@ function merch_stock_print_rows(array $shipments): array
 }
 
 /**
+ * 2026-10-19: the Create view's plate pane counts what is already on the
+ * shelf. Needs Creating rows ($rows, same shape ourmerch.php collects for
+ * print_plate_group_queue()) are walked oldest OrderID first and each
+ * line's qty is reduced by whatever the shelf holds for that item+color,
+ * until the shelf is used up. A plate whose pieces are all covered simply
+ * disappears; "Finished..." (shelf +) therefore removes a plate from the
+ * list the same way the old per-plate checkbox did, without marking any
+ * order Created - that only happens when Done takes the pieces back off
+ * the shelf.
+ *
+ * $stock = merch_stock_parse_grid()['stock'] (item => color => count).
+ * Returns ['rows' => reduced rows (zero-qty rows dropped, original order
+ * kept), 'covered' => pieces the shelf already covers].
+ */
+function merch_stock_reduce_print_rows(array $rows, array $stock): array
+{
+    $order = array_keys($rows);
+    usort($order, function ($a, $b) use ($rows) {
+        $c = (int) ($rows[$a]['orderId'] ?? 0) <=> (int) ($rows[$b]['orderId'] ?? 0);
+        return $c !== 0 ? $c : $a <=> $b;
+    });
+    $rem = $stock;
+    $covered = 0;
+    foreach ($order as $i) {
+        $item = (string) $rows[$i]['item'];
+        $color = (string) $rows[$i]['color'];
+        $have = (int) ($rem[$item][$color] ?? 0);
+        if ($have <= 0) {
+            continue;
+        }
+        $take = min($have, (int) $rows[$i]['qty']);
+        $rows[$i]['qty'] = (int) $rows[$i]['qty'] - $take;
+        $rem[$item][$color] = $have - $take;
+        $covered += $take;
+    }
+    $out = [];
+    foreach ($rows as $r) {
+        if ((int) $r['qty'] > 0) {
+            $out[] = $r;
+        }
+    }
+    return ['rows' => $out, 'covered' => $covered];
+}
+
+/**
  * Close-out ordering: shipments that could actually ship once printed
  * (not waiting on a shirt/hat, not Stars & Stripes). $priority 'age'
  * ranks strictly oldest order first; 'quick' (the original rule) ranks by
