@@ -333,6 +333,7 @@ $merchEditCatalog = [
       // customer has been waiting, which orders the plates in the Sort by
       // Print Plate view (see print_plates.php). Optional like the rest.
       $timestampIndex = array_search('Timestamp', $header, true);
+      $retreatIndex = array_search('Retreat', $header, true); // 2026-10-19: replacement orders jump the print queue
 
       // Table render order: MERCH_ADMIN_COLUMN_ORDER's columns first (in
       // that order), then every other column the CSV actually has, in
@@ -606,8 +607,11 @@ $merchEditCatalog = [
                       // paid date, else the order's own timestamp (an
                       // unpaid Pickup). print_plates.php prints the plate
                       // holding the longest-waiting customer first.
-                      'ts' => print_plate_parse_ts($pymtDateIndex !== false ? (string) ($data[$pymtDateIndex] ?? '') : '')
-                          ?? print_plate_parse_ts($timestampIndex !== false ? (string) ($data[$timestampIndex] ?? '') : ''),
+                      // 2026-10-19: a REPLACEMENT order goes first (see merch_stock.php).
+                      'ts' => ($retreatIndex !== false && trim($data[$retreatIndex] ?? '') === MERCH_REPLACEMENT_TAG)
+                          ? MERCH_REPLACEMENT_TS
+                          : (print_plate_parse_ts($pymtDateIndex !== false ? (string) ($data[$pymtDateIndex] ?? '') : '')
+                          ?? print_plate_parse_ts($timestampIndex !== false ? (string) ($data[$timestampIndex] ?? '') : '')),
                   ];
               }
               echo '<tr class="' . ($rowQuantity > 1 ? 'merch-row-multi' : '') . '" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-focus-out="' . ($rowIsFocusOut ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '" data-cancelled="' . ($rowIsCancelled ? '1' : '0') . '" data-quantity="' . $rowQuantity . '">';
