@@ -424,6 +424,9 @@ function merch_stock_load_inventory(string $path): array
  *   'awaitingShip' - shipments whose every piece is already Created but
  *       not yet Fulfilled (printed, just not shipped)
  */
+const MERCH_REPLACEMENT_TAG = 'REPLACEMENT'; // merchandise.csv Retreat value written by merch_replacement.php
+const MERCH_REPLACEMENT_TS = 86400;          // sorts before any real wait (1970-01-02)
+
 function merch_stock_build_shipments(array $rows, array $col, array $validItems, array $excludedColors = []): array
 {
     $get = function (array $row, string $name) use ($col): string {
@@ -471,6 +474,14 @@ function merch_stock_build_shipments(array $rows, array $col, array $validItems,
         $paidTs = merch_stock_parse_ts($get($row, 'Pymt Date'));
         $ageRowTs = $paidTs ?? $rowTs;
         $ageRowBasis = $paidTs !== null ? 'paid' : 'ordered';
+        // 2026-10-19 (Steve): a no-charge REPLACEMENT (merch_replacement.php) jumps
+        // the queue - it is our mistake and the customer already has a short order.
+        // A fixed very old timestamp sorts it ahead of every real wait in every
+        // ranking here and in print_plates.php; the label says "Replacement".
+        if ($get($row, 'Retreat') === MERCH_REPLACEMENT_TAG) {
+            $ageRowTs = MERCH_REPLACEMENT_TS;
+            $ageRowBasis = 'replacement';
+        }
         $baseKey = $name !== '' ? merch_shipment_key($name, $zip) : '';
         $key = ($isShip ? 'ship:' : 'pickup:') . ($baseKey !== '' ? $baseKey : '#' . $orderId);
 
@@ -588,6 +599,9 @@ function merch_stock_age_cmp(array $a, array $b): int
 /** "Paid Sep 30 (4 days)" / "Ordered Sep 30 (4 days)"; '' when there's no date. */
 function merch_stock_age_label(?int $ts, string $basis, ?int $now = null): string
 {
+    if ($basis === 'replacement') {
+        return 'Replacement (first in line)';
+    }
     $t = merch_stock_age_text($ts, $now);
     return $t === '' ? '' : ($basis === 'paid' ? 'Paid ' : 'Ordered ') . $t;
 }

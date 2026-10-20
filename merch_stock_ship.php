@@ -117,7 +117,7 @@ if (isset($header[0])) {
 }
 $statusBefore = merch_status_snapshot($header, $rows); // 2026-10-15 status log
 $col = [];
-foreach (['OrderID', 'Name', 'Zip', 'Item', 'Quantity', 'Color', 'Fulfillment', 'Pymt Date', 'Created', 'Fulfilled', 'Cancelled', 'Qty Created'] as $name) {
+foreach (['OrderID', 'Name', 'Zip', 'Item', 'Quantity', 'Color', 'Fulfillment', 'Pymt Date', 'Created', 'Fulfilled', 'Cancelled', 'Qty Created', 'Retreat'] as $name) {
     $col[$name] = array_search($name, $header, true);
 }
 foreach (['OrderID', 'Quantity', 'Created', 'Qty Created'] as $must) {

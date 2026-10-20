@@ -77,7 +77,7 @@ $stock = $parsed['stock'];
 $loaded = merch_load_csv(__DIR__ . '/merchandise.csv', 'merchandise.csv');
 $col = merch_csv_column_map(
     $loaded['header'],
-    ['OrderID', 'Name', 'Zip', 'Item', 'Quantity', 'Color', 'Size', 'Sleeve', 'Fulfillment', 'Pymt Date', 'Created', 'Fulfilled', 'Cancelled', 'Qty Created', 'Timestamp'],
+    ['OrderID', 'Name', 'Zip', 'Item', 'Quantity', 'Color', 'Size', 'Sleeve', 'Fulfillment', 'Pymt Date', 'Created', 'Fulfilled', 'Cancelled', 'Qty Created', 'Timestamp', 'Retreat'],
     ['OrderID', 'Name', 'Item', 'Fulfillment', 'Pymt Date', 'Created'],
     'merchandise.csv'
 );
