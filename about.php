@@ -9,25 +9,26 @@
   <link rel="icon" href="images/favicon.png" type="image/png" />
   <link rel="stylesheet" href="styles/base.css" />
   <link rel="stylesheet" href="styles/site.css" />
+  <link rel="stylesheet" href="styles/pages.css" />
 </head>
-<body>
+<body class="info-page">
   <header>
     <div class="nav-wrapper">
       <button class="menu-toggle" aria-label="Toggle menu">&#9776;</button>
       <nav class="main-nav">
         <ul class="nav-links">
-          <li><a href="index.php">Home</a></li>
+          <li><a href="index.php">Events</a></li>
           <li><a href="merch.php">Merch</a></li>
-          <li><a href="cancellation.php">Our Policies</a></li>
-          <li><a href="gallery.php">Gallery</a></li>
           <li><a href="about.php" aria-current="page">About</a></li>
         </ul>
       </nav>
     </div>
   </header>
 
-  <div class="content-wrapper">
-    <div class="page-container">
+  <div class="content-wrapper info-wrap">
+    <img src="images/home-art-left.png" alt="" class="info-art info-art-left" />
+    <img src="images/home-art-right.png" alt="" class="info-art info-art-right" />
+    <div class="page-container info-body">
       <?= merch_load_string('pages/about-body.html') ?>
     </div>
   </div>

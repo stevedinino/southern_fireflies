@@ -9,17 +9,16 @@
   <link rel="icon" href="images/favicon.png" type="image/png" />
   <link rel="stylesheet" href="styles/base.css" />
   <link rel="stylesheet" href="styles/site.css" />
+  <link rel="stylesheet" href="styles/pages.css" />
 </head>
-<body>
+<body class="info-page">
   <header>
     <div class="nav-wrapper">
       <button class="menu-toggle" aria-label="Toggle menu">&#9776;</button>
       <nav class="main-nav">
         <ul class="nav-links">
-          <li><a href="index.php">Home</a></li>
+          <li><a href="index.php">Events</a></li>
           <li><a href="merch.php">Merch</a></li>
-          <li><a href="cancellation.php" aria-current="page">Our Policies</a></li>
-          <li><a href="gallery.php">Gallery</a></li>
           <li><a href="about.php">About</a></li>
         </ul>
       </nav>

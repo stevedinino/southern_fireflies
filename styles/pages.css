@@ -1,0 +1,178 @@
+/* ============================================================================
+   pages.css - the reading pages (About, Our Policies), 2026-10-22. Same calm
+   cream / sage / serif look as the Events and Merch pages. Scoped to
+   body.info-page. Loaded after base.css and site.css.
+   ============================================================================ */
+
+body.info-page {
+  --info-cream: #fdf8ef;
+  --info-card: #fffcf6;
+  --info-line: #ece3d4;
+  --info-sage: #7f9473;
+  --info-sage-dark: #62775a;
+  --info-ink: #55604d;
+  --info-muted: #8b9283;
+  --info-serif: Georgia, 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+  background: var(--info-cream);
+  color: var(--info-ink);
+}
+
+body.info-page header { background: var(--info-cream); }
+body.info-page .nav-wrapper { max-width: 1280px; }
+body.info-page .content-wrapper { max-width: 1280px; padding-left: 28px; padding-right: 28px; }
+
+.info-wrap { position: relative; }
+.info-body { max-width: 860px; margin: 0 auto; }
+
+/* Rose and jar tucked beside the title (wide screens only). */
+.info-art {
+  position: absolute;
+  top: 6px;
+  height: 150px;
+  width: auto;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+.info-art-left { left: calc(50% - 560px); }
+.info-art-right { right: calc(50% - 560px); }
+
+body.info-page .page-container { background: none; box-shadow: none; padding: 0; border-radius: 0; }
+
+body.info-page .info-body h1 {
+  margin: 22px 0 14px;
+  text-align: center;
+  font-family: var(--info-serif);
+  font-size: 1.45rem;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--info-sage-dark);
+}
+
+body.info-page .info-body h1::after {
+  content: '\2661';
+  display: block;
+  margin: 10px auto 0;
+  color: #d99572;
+  font-size: 0.9rem;
+  letter-spacing: 0;
+}
+
+.info-lede {
+  max-width: 640px;
+  margin: 18px auto 8px;
+  text-align: center;
+  font-family: var(--info-serif);
+  font-size: 1.2rem;
+  line-height: 1.6;
+  color: var(--info-ink);
+}
+
+.info-note {
+  margin: 0 auto 30px;
+  text-align: center;
+  font-family: var(--info-serif);
+  font-style: italic;
+  color: var(--info-muted);
+}
+
+/* Photo + text cards */
+.info-card {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  align-items: center;
+  gap: 30px;
+  margin: 0 0 26px;
+  padding: 18px;
+  background: var(--info-card);
+  border: 1px solid var(--info-line);
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(98, 119, 90, 0.10);
+}
+
+.info-card-flip { grid-template-columns: minmax(0, 1fr) 250px; }
+.info-card-flip .info-photo { order: 2; }
+
+.info-photo {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  object-position: 50% 18%;
+  margin: 0;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.info-card-text h2 {
+  margin: 0 0 10px;
+  font-family: var(--info-serif);
+  font-size: 1.35rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  color: var(--info-sage-dark);
+}
+
+.info-card-text p {
+  margin: 0;
+  font-family: var(--info-serif);
+  font-size: 1.08rem;
+  line-height: 1.65;
+}
+
+/* Policies page: the same long text, laid out as one calm card. */
+body.info-page .page-container > h1,
+body.info-page .page-container > h2,
+body.info-page .page-container > p,
+body.info-page .page-container > ul,
+body.info-page .page-container > hr { max-width: 760px; margin-left: auto; margin-right: auto; }
+
+body.info-page .page-container > h1 {
+  margin-top: 22px;
+  text-align: center;
+  font-family: var(--info-serif);
+  font-size: 1.45rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  color: var(--info-sage-dark);
+}
+
+body.info-page .page-container > h2 {
+  margin-top: 26px;
+  margin-bottom: 8px;
+  font-family: var(--info-serif);
+  font-size: 1.2rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--info-sage-dark);
+}
+
+body.info-page .page-container > p,
+body.info-page .page-container > ul {
+  font-family: var(--info-serif);
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+body.info-page .page-container > hr {
+  border: 0;
+  height: 1px;
+  background: var(--info-line);
+  margin-top: 22px;
+}
+
+body.info-page .site-footer { max-width: 1280px; border-top-color: var(--info-line); }
+
+@media (max-width: 1240px) {
+  .info-art { display: none; }
+}
+
+@media (max-width: 768px) {
+  body.info-page .content-wrapper { padding-left: 14px; padding-right: 14px; }
+  .info-card,
+  .info-card-flip { grid-template-columns: 1fr; gap: 14px; padding: 12px; }
+  .info-card-flip .info-photo { order: 0; }
+  .info-photo { aspect-ratio: 1 / 1; object-position: 50% 15%; }
+  .info-lede { font-size: 1.08rem; }
+}

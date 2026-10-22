@@ -1,0 +1,216 @@
+/* ============================================================================
+   home.css - the Events (home) page look, 2026-10-22 iteration 1. Same calm
+   cream / sage / serif feel as the Merch page (shop.css). Everything is
+   scoped to body.home-page so no other page is touched. Loaded after
+   base.css and site.css.
+
+   Flower / jar art: when images/home-art-left.png and/or
+   images/home-art-right.png exist (transparent PNGs), index.php shows them
+   on either side of the banner automatically. No code change needed.
+   ============================================================================ */
+
+body.home-page {
+  --home-cream: #fdf8ef;
+  --home-card: #fffcf6;
+  --home-line: #ece3d4;
+  --home-sage: #7f9473;
+  --home-sage-dark: #62775a;
+  --home-ink: #55604d;
+  --home-muted: #8b9283;
+  --home-peach: #fbebe1;
+  --home-serif: Georgia, 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+  background: var(--home-cream);
+  color: var(--home-ink);
+}
+
+body.home-page header { background: var(--home-cream); }
+body.home-page .nav-wrapper { max-width: 1280px; }
+body.home-page .content-wrapper { max-width: 1280px; padding-left: 28px; padding-right: 28px; }
+
+/* ------------------------------ Hero ------------------------------ */
+.home-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 760px) minmax(0, 1fr);
+  align-items: center;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 14px 28px 6px;
+}
+
+.home-hero-center { text-align: center; grid-column: 2; position: relative; z-index: 1; }
+
+.home-hero-art { display: block; max-height: 235px; width: auto; max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; }
+.home-hero-art-left { grid-column: 1; grid-row: 1; justify-self: end; margin-right: -90px; position: relative; z-index: 2; }
+.home-hero-art-right { grid-column: 3; grid-row: 1; justify-self: start; margin-left: -90px; position: relative; z-index: 2; }
+
+body.home-page .home-logo { width: 100%; max-width: 700px; margin: 0 auto 4px; border-radius: 0; box-shadow: none; }
+
+body.home-page .home-tagline {
+  max-width: 520px;
+  margin: 0 auto;
+  font-family: var(--home-serif);
+  font-style: italic;
+  font-size: 1.08rem;
+  line-height: 1.45;
+  color: var(--home-ink);
+}
+
+.home-orn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  max-width: 300px;
+  margin: 14px auto 0;
+  color: #d99572;
+  font-size: 0.9rem;
+}
+.home-orn::before, .home-orn::after { content: ''; flex: 1; height: 1px; background: var(--home-line); }
+
+/* ------------------------------ Section headings ------------------------------ */
+body.home-page .save-the-dates { margin-top: 10px; }
+body.home-page .save-the-dates h1 {
+  margin: 14px 0 2px;
+  font-family: var(--home-serif);
+  font-size: 1.45rem;
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--home-sage-dark);
+}
+body.home-page .gallery-intro {
+  margin: 0 0 4px;
+  text-align: center;
+  font-family: var(--home-serif);
+  font-style: italic;
+  color: var(--home-muted);
+}
+
+/* ------------------------------ Event cards ------------------------------ */
+body.home-page .std-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 26px;
+  margin-top: 18px;
+}
+
+body.home-page .std-card { flex: 0 1 calc((100% - 52px) / 3); max-width: 340px; width: auto; }
+
+body.home-page .std-card {
+  padding: 12px 12px 14px;
+  background: var(--home-card);
+  border: 1px solid var(--home-line);
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(98, 119, 90, 0.10);
+  overflow: hidden;
+}
+body.home-page .std-card:hover,
+body.home-page .std-card:focus-visible {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(98, 119, 90, 0.18);
+}
+
+body.home-page .std-thumb { border-radius: 9px; margin-bottom: 12px; }
+
+body.home-page .std-caption {
+  font-family: var(--home-serif);
+  font-weight: 400;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  color: var(--home-ink);
+}
+body.home-page .std-subcaption {
+  margin-top: 3px;
+  font-family: var(--home-serif);
+  font-size: 0.92rem;
+  color: var(--home-muted);
+}
+
+.std-pill {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 5px 22px;
+  border-radius: 999px;
+  background: var(--home-sage);
+  color: #fff;
+  font-size: 0.85rem;
+}
+.std-pill-sold { background: #b9a595; }
+
+/* Sold-out stamp, a round seal over the corner of the photo. */
+body.home-page .std-badge-sold-out {
+  top: 18px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 78px;
+  height: 78px;
+  padding: 0;
+  border: 3px double #fff;
+  border-radius: 50%;
+  background: rgba(98, 119, 90, 0.92);
+  font-family: var(--home-serif);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  line-height: 1.15;
+  text-align: center;
+  text-transform: uppercase;
+  transform: rotate(-12deg);
+}
+
+body.home-page .std-thumb-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--home-cream);
+  color: #d99572;
+  font-size: 2rem;
+}
+
+/* Past events: same cards, a little smaller, no pill. */
+body.home-page .past-events { margin-top: 36px; }
+body.home-page .past-events .std-grid { gap: 20px; }
+body.home-page .past-events .std-card { flex-basis: calc((100% - 80px) / 5); max-width: 240px; }
+
+/* ------------------------------ Gift certificate banner ------------------------------ */
+body.home-page .giftcert-banner {
+  background: var(--home-card);
+  border: 2px dashed #b5c3a9;
+  border-radius: 14px;
+  padding: 16px 24px;
+  margin: 8px auto 0;
+  max-width: 1072px; /* same width as three cards across */
+}
+body.home-page .giftcert-banner p {
+  font-family: var(--home-serif);
+  font-size: 1.05rem;
+  color: var(--home-ink);
+}
+body.home-page .giftcert-banner .btn {
+  border-radius: 8px;
+  background: var(--home-sage);
+  font-family: inherit;
+}
+body.home-page .giftcert-banner .btn:hover { background: var(--home-sage-dark); }
+
+body.home-page .site-footer { max-width: 1280px; border-top-color: var(--home-line); }
+
+/* ------------------------------ Phones ------------------------------ */
+@media (max-width: 768px) {
+  body.home-page .content-wrapper { padding-left: 14px; padding-right: 14px; }
+  .home-hero { grid-template-columns: 1fr; padding: 10px 14px 4px; }
+  .home-hero-center { grid-column: 1; }
+  .home-hero-art { display: none; }
+  body.home-page .std-grid { gap: 12px; }
+  body.home-page .std-card,
+  body.home-page .past-events .std-card { flex-basis: calc(50% - 6px); max-width: none; }
+  body.home-page .std-badge-sold-out { width: 62px; height: 62px; top: 12px; right: 12px; font-size: 0.66rem; }
+  body.home-page .save-the-dates h1 { font-size: 1.2rem; }
+}
+@media (max-width: 420px) {
+  body.home-page .std-grid { gap: 10px; }
+  body.home-page .std-card,
+  body.home-page .past-events .std-card { flex-basis: calc(50% - 5px); padding: 8px 8px 10px; }
+}

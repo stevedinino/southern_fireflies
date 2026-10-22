@@ -63,7 +63,9 @@ return [
         'archived' => true,
         'registerLabel' => null,
         'flyerImage' => null,
-        'thumbImage' => null,
+        // No flyer for this one (it predates the flyer system) - a photo from
+        // the retreat's own backdrop stands in as the Past Events card image.
+        'thumbImage' => 'events/chasin-fireflies-apr-2026/flyer_thumb.jpg',
         'soldOut' => null,
         'costText' => null,
         'scheduleText' => null,

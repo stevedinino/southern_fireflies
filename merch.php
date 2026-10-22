@@ -1,19 +1,139 @@
-<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; require __DIR__ . '/events/events_helpers.php'; $merchPickupEvents = events_upcoming(); // Build: 2026-09-25-A ?>
+<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; require __DIR__ . '/events/events_helpers.php'; $merchPickupEvents = events_upcoming(); // Build: 2026-10-21-A ?>
 <?php
-// 2026-08-25 (Steve): the pickup dropdown below used to just say "I'll
-// pick it up at a retreat" with no way to say WHICH one - fine when
-// there was only ever one retreat's worth of pending pickup orders at a
-// time, but with several retreats' orders now sitting in the CSV at
-// once, Steve had no way to tell who's expecting items at tomorrow's
-// event vs. a later one. $merchPickupEvents (required above) is the
-// SAME list index.php's Save-the-Date grid reads (events_upcoming(),
-// events/events_helpers.php) - one source, no second copy of retreat
-// names/dates to keep in sync by hand. Not filtered by soldOut:
-// registration being full doesn't mean someone who already registered
-// can't still pick up merch there. It IS filtered to non-archived
-// events, same as the homepage grid - once Steve marks a retreat
-// archived (events-data.php), it drops off this list too, so nobody's
-// offered pickup at an event that's long over.
+require_once __DIR__ . '/sff_timezone.php';
+require_once __DIR__ . '/filament_unavailable.php';
+
+// ============================================================
+// 2026-10-21 (shop redesign, Phase 1): the merch page is now a single
+// browse-and-build page instead of cards that open pop-up forms.
+//   - Every card carries its own Color / Size / Sleeve / Quantity
+//     controls and an "Add to list" button.
+//   - "Your list" lives in a sticky sidebar (desktop) or a bottom bar
+//     that opens the same panel (phone) - no list modal, no item modal.
+//   - "Request this list" reveals the contact / shipping step inside
+//     that same panel; Submit stays disabled until it is complete.
+//   - Totals are shown per invoice group (3D-printed items / shirts &
+//     hats), priced server-side by merch_list_price.php.
+//   - The order itself is unchanged: the same `list` JSON + contact
+//     fields POST to merch_order.php.
+// Card photos are one still image per item (merch_items.php:
+// merch_items_card_face()); photos and videos open in the existing
+// viewer. Shop styles are in styles/shop.css.
+// ============================================================
+
+// Pickup-retreat choices: the SAME list index.php's Save-the-Date grid
+// reads (events_upcoming(), events/events_helpers.php) - one source,
+// not a second copy of retreat names/dates to keep in sync by hand.
+// (Not filtered by soldOut; filtered to non-archived events, so nobody
+// is offered pickup at an event that's long over.)
+
+// Filament colors that can't be printed right now (filament_unavailable.csv,
+// maintained from the Stock & Print Plan page). Keyed by the color's NAME
+// without its "#NN " number, lower-cased, so it matches however the CSV
+// spells it ("Hot Pink" or "#08 Hot Pink"). Value = the short note shown
+// next to the greyed-out choice.
+$shopUnavailableColors = [];
+foreach (merch_unavailable_active_rows(date('Y-m-d')) as $unavailColor => $unavailRow) {
+    $unavailKey = strtolower(trim(preg_replace('/^#\d+\s*/', '', (string) $unavailColor)));
+    $backOn = $unavailRow['BackOn'] ?? '';
+    $shopUnavailableColors[$unavailKey] = ($backOn !== '' && strtotime($backOn) !== false)
+        ? 'back ' . date('M j', strtotime($backOn))
+        : 'unavailable right now';
+}
+
+/** Short price line for a card, e.g. "$12" or "$22 short / $26 long sleeve". */
+function shop_card_price(string $item): string
+{
+    if (!isset(MERCH_PRICES[$item])) {
+        return '';
+    }
+    $base = MERCH_PRICES[$item];
+    if (is_array($base)) {
+        return '$' . $base['Short Sleeve'] . ' short &middot; $' . $base['Long Sleeve'] . ' long';
+    }
+    return '$' . $base;
+}
+
+// Sort the catalog into the page's sections. Printed vs. shirts & hats
+// is the same split the invoices use (merch_is_printed_item()); display-
+// only cards (Gift Certificates) go in a short closing section.
+$shopSections = [
+    'printed' => ['title' => '3D-printed gadgets', 'items' => []],
+    'apparel' => ['title' => 'Shirts &amp; hats', 'items' => []],
+    'other' => ['title' => '', 'items' => []],
+];
+foreach (merch_catalog() as $shopEntry) {
+    if ($shopEntry['attrs'] === null) {
+        // Display-only card (Gift Certificates): sits in the 3D-printed grid,
+        // filling the last slot, rather than in a section of its own.
+        $shopSections['printed']['items'][] = $shopEntry;
+    } elseif (merch_is_printed_item($shopEntry['name'])) {
+        $shopSections['printed']['items'][] = $shopEntry;
+    } else {
+        $shopSections['apparel']['items'][] = $shopEntry;
+    }
+}
+
+function shop_render_card(array $merchItem): void
+{
+    $itemName = $merchItem['name'];
+    $media = $merchItem['media'];
+    $card = $merchItem['card'];
+    $orderable = $merchItem['attrs'] !== null;
+
+    // Gallery the photo opens. A folder with only a 00-card image has no
+    // gallery media, so fall back to a one-slide gallery of the card face.
+    $gallery = $media;
+    if (!$gallery && $card !== null) {
+        $gallery = [['type' => 'image', 'src' => $card['src'], 'poster' => null, 'alt' => $card['alt']]];
+    }
+    $galleryJson = htmlspecialchars(json_encode($gallery), ENT_QUOTES, 'UTF-8');
+    $videoCount = 0;
+    foreach ($media as $m) {
+        if ($m['type'] === 'video') { $videoCount++; }
+    }
+    $esc = fn($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+    ?>
+        <article class="shop-card" data-item="<?= $esc($itemName) ?>"<?= $card !== null ? ' data-thumb="' . $esc($card['src']) . '"' : '' ?><?= $orderable ? '' : ' data-display-only="1"' ?>>
+          <div class="shop-card-media">
+            <?php if ($card !== null): ?>
+            <button type="button" class="shop-card-photo" data-gallery="<?= $galleryJson ?>" aria-label="See larger photos of <?= $esc($itemName) ?>">
+              <img src="<?= $esc($card['src']) ?>" alt="<?= $esc($card['alt']) ?>" loading="lazy" />
+            </button>
+            <?php else: ?>
+            <div class="shop-card-photo shop-card-photo-empty" aria-hidden="true"><span>Photo coming soon</span></div>
+            <?php endif; ?>
+            <?php if ($videoCount > 0): ?><span class="shop-card-badge" aria-hidden="true">&#9654; Video</span><?php endif; ?>
+            <button type="button" class="shop-details-link" aria-label="Details about <?= $esc($itemName) ?>">Details</button>
+          </div>
+
+          <div class="shop-card-body">
+            <div class="shop-card-titlerow">
+              <h3 class="shop-card-name"><?= $esc($itemName) ?></h3>
+              <?php if ($orderable): ?><span class="shop-card-price"><?= shop_card_price($itemName) ?></span><?php endif; ?>
+            </div>
+            <div class="shop-card-desc" hidden><?= $merchItem['description'] ?></div>
+
+            <?php if ($orderable): ?>
+            <div class="shop-card-controls">
+              <div class="shop-fields"></div>
+              <div class="shop-actionrow">
+                <input type="number" class="shop-qty-input" min="1" max="<?= (int) MAX_QUANTITY ?>" value="1" inputmode="numeric" aria-label="Quantity of <?= $esc($itemName) ?>" />
+                <button type="button" class="shop-add-btn" aria-label="Add <?= $esc($itemName) ?> to your list">Add <span aria-hidden="true">&rarr;</span></button>
+              </div>
+              <p class="shop-card-msg" role="status" aria-live="polite"></p>
+            </div>
+            <?php elseif ($merchItem['link'] !== null): ?>
+            <div class="shop-card-controls">
+              <a href="<?= $esc($merchItem['link']) ?>" class="shop-link-cta"><?= $esc($merchItem['linkText']) ?> <span aria-hidden="true">&rarr;</span></a>
+            </div>
+            <?php endif; ?>
+          </div>
+        </article>
+    <?php
+}
+
+$shopFullSetRule = MERCH_FULL_SET_DISCOUNTS[0] ?? null;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -24,6 +144,7 @@
   <link rel="icon" href="images/favicon.png" type="image/png" />
   <link rel="stylesheet" href="styles/base.css" />
   <link rel="stylesheet" href="styles/merch.css" />
+  <link rel="stylesheet" href="styles/shop.css" />
 </head>
 <body class="merch-page">
   <header>
@@ -31,298 +152,209 @@
       <button class="menu-toggle" aria-label="Toggle menu">&#9776;</button>
       <nav class="main-nav">
         <ul class="nav-links">
-          <li><a href="index.php">Home</a></li>
+          <li><a href="index.php">Events</a></li>
           <li><a href="merch.php" aria-current="page">Merch</a></li>
-          <li><a href="cancellation.php">Our Policies</a></li>
-          <li><a href="gallery.php">Gallery</a></li>
           <li><a href="about.php">About</a></li>
         </ul>
       </nav>
-      <!-- List bar (2026-09-14, moved into the header 2026-09-14): a
-           small persistent button in the upper-right of the header,
-           next to the nav links, once at least one item has been added
-           - so a customer can keep browsing the grid below and still
-           see (and get back to) their in-progress list. Sits in the
-           sticky header, so it stays reachable without scrolling back
-           up, the same as the nav links themselves. Hidden entirely
-           while the list is empty - see renderList() below. -->
-      <div id="list-bar" class="list-bar" hidden>
-        <button type="button" id="list-bar-open" class="list-bar-open">
-          <span id="list-bar-count">0 items</span>
-          <span id="list-bar-total" class="list-bar-total"></span>
-          <span class="list-bar-view">View List &rarr;</span>
-        </button>
-      </div>
     </div>
   </header>
 
-  <!-- Page banner - sits above the announcement block, before any merch
-       content. Styling lives in layout.css (.merch-banner-wrapper /
-       .merch-banner-img) alongside the rest of the merch page rules. -->
-  <div class="merch-banner-wrapper">
-    <img
-      src="images/mr_firefly_banner.jpg"
-      alt="Mr. Firefly's 3D Printed Gadgets"
-      class="merch-banner-img"
-    />
-  </div>
+  <div class="content-wrapper shop-wrap">
+    <?= merch_load_string('pages/merch-intro') ?>
+    <div class="shop-layout">
 
-  <!-- Wrapped in its own .content-wrapper so this gets the exact same
-       max-width + centering + side-gutter behavior as every other boxed
-       block on the page, instead of running full-bleed edge to edge. -->
-  <!-- Merch-page promo banner (2026-09-30, Blade Holder + "buy the set"
-       launch) - this used to be the same gift-certificate banner shared
-       with index.php/retreat-register.php (pages/giftcert-banner, see
-       those files), but Steve wants THIS page promoting the bundle deal
-       instead while the other two keep advertising gift certificates -
-       so this is now its own string (pages/merch-bundle-banner), not a
-       reworded copy of the shared one. Reuses .giftcert-banner's box
-       styling (layout.css) for the same "own callout, not folded into
-       the how-this-works notice box" visual treatment - no CSS change
-       needed, just a different string and no button (nothing to link
-       to; the deal is fulfilled by the item cards on this same page).
-       The item-grid Gift Certificates card (items/ catalog, "class:
-       none") is untouched - Steve confirmed that one stays as-is. -->
-  <div class="content-wrapper">
-    <div class="giftcert-banner">
-      <p><?= merch_load_string('pages/merch-bundle-banner') ?></p>
-    </div>
-  </div>
-
-  <div class="content-wrapper">
-    <div class="demand-banner">
-      <p><?= merch_load_string('pages/merch-banner') ?></p>
-    </div>
-  </div>
-
-  <div class="content-wrapper">
-    <div class="page-container merch-page-container">
-      <?= merch_load_string('pages/merch-intro') ?>
-
-      <!-- Both color notes share one box, stacked at the top, with their
-           chart triggers side by side underneath. The Gildan garment
-           colors and the 3D-print filament colors are still two entirely
-           separate lists - each keeps its own chart image, its own note
-           string, and its own <select> in the request modal (see
-           GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS below) - only the
-           layout is merged. -->
-      <div class="merch-color-note">
-        <p><?= merch_load_string('pages/merch-color-note') ?></p>
-        <p><?= merch_load_string('pages/merch-filament-color-note') ?></p>
-
-        <div class="merch-color-chart-row">
-          <button type="button" id="gildan-color-chart-open" class="merch-color-chart-trigger">
-            <img src="images/color-chart-thumb.jpg" alt="Gildan 64000 color chart - click to view full size" />
-            <span>Tap to view shirt &amp; hat color chart</span>
-          </button>
-
-          <button type="button" id="filament-color-chart-open" class="merch-color-chart-trigger">
-            <img src="images/filament-color-chart-thumb.jpg" alt="3D print filament color chart - click to view full size" />
-            <span>Tap to view filament color chart</span>
-          </button>
+      <main class="shop-main" id="shop-main">
+        <!-- Hero: logo over the left of the vase photo (images/shop-hero.jpg
+             blends into the page cream on its left edge). -->
+        <div class="shop-hero">
+          <img class="shop-hero-photo" src="images/shop-hero.jpg" alt="" />
+          <img class="shop-hero-logo" src="images/mr-firefly-logo.png" alt="Mr. Firefly's 3D Printed Gadgets" />
         </div>
-      </div>
-
-      <div class="merch-grid">
-
-        <?php
-        // ============================================================
-        // ONE renderer for every card (2026-08-21 redesign) - the cards
-        // are driven entirely by the /items/ folders via merch_catalog()
-        // (merch_items.php). Folder order = page order (the 10/20/.../99
-        // numeric prefixes); each folder's media files, in filename
-        // order, are the card's gallery, and the FIRST media entry is
-        // the card's face. Adding an item, a photo, or a video is a
-        // file drop, not a code change - see merch_items.php's header
-        // for the folder format.
-        //
-        // Every card follows the same pattern (this replaced five
-        // hand-copied variants - video-only, single photo, wide photo,
-        // multi-photo gallery, gallery-plus-text-link - task #11/#12,
-        // 2026-08-20):
-        //   - fixed-aspect media slot (uniform card heights: task #12).
-        //     A video plays inline right in the slot - the demo videos
-        //     are the sales pitch for the cutter holders, so they are
-        //     deliberately NOT demoted to a click-to-open poster.
-        //   - a "See all ..." gallery link whenever there's more than
-        //     one media file - opens the shared lightbox, which now
-        //     handles video slides too. This replaced the temporary
-        //     "Stars & Stripes example" text link (2026-08-20): the
-        //     sample photos are just gallery slides now.
-        //   - display-only folders (class "none" in item.txt, e.g.
-        //     More Coming Soon) render with no price and no Request
-        //     button; everything else gets both.
-        //
-        // The data-gallery JSON is built with json_encode()+
-        // htmlspecialchars() rather than typed out by hand, so a stray
-        // quote in a filename or caption can never break the attribute.
-        // ============================================================
-        foreach (merch_catalog() as $merchItem):
-            $itemName = $merchItem['name'];
-            $media = $merchItem['media'];
-            $first = $media[0] ?? null;
-            $orderable = $merchItem['attrs'] !== null;
-            $galleryJson = htmlspecialchars(json_encode($media), ENT_QUOTES, 'UTF-8');
-
-            $imageCount = 0;
-            $videoCount = 0;
-            foreach ($media as $m) {
-                if ($m['type'] === 'video') { $videoCount++; } else { $imageCount++; }
-            }
-            if ($videoCount > 0 && $imageCount > 0) {
-                $galleryLabel = 'See all photos &amp; video (' . count($media) . ')';
-            } elseif ($imageCount > 1) {
-                $galleryLabel = 'See all ' . $imageCount . ' photos';
-            } else {
-                // All-video folder (no photos yet) - generic label so it
-                // never reads "See all 0 photos".
-                $galleryLabel = 'See gallery (' . count($media) . ')';
-            }
-        ?>
-        <div class="merch-card">
-          <div class="merch-media-slot<?= ($first !== null && $first['type'] === 'video') ? ' merch-video-wrapper' : '' ?>">
-            <?php if ($first === null): ?>
-              <!-- No media in this item's folder (yet) - the empty slot
-                   keeps the card's shape so the grid stays uniform. -->
-            <?php elseif ($first['type'] === 'video'): ?>
-              <video class="merch-video" controls playsinline preload="metadata"<?= $first['poster'] !== null ? ' poster="' . htmlspecialchars($first['poster'], ENT_QUOTES, 'UTF-8') . '"' : '' ?>>
-                <source src="<?= htmlspecialchars($first['src'], ENT_QUOTES, 'UTF-8') ?>" type="video/mp4" />
-                Your browser doesn't support embedded video.
-                <a href="<?= htmlspecialchars($first['src'], ENT_QUOTES, 'UTF-8') ?>">Download the video</a> instead.
-              </video>
-            <?php else: ?>
-              <img src="<?= htmlspecialchars($first['src'], ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($first['alt'], ENT_QUOTES, 'UTF-8') ?>" class="merch-photo" data-gallery="<?= $galleryJson ?>" />
-            <?php endif; ?>
-          </div>
-          <h2><?= htmlspecialchars($itemName, ENT_QUOTES, 'UTF-8') ?></h2>
-          <p class="merch-desc"><?= $merchItem['description'] ?></p>
-          <p class="merch-price"><?= $orderable ? merch_price_display($itemName) : '&nbsp;' ?></p>
-          <!-- 2026-09-14: buttons live in their own margin-top:auto
-               footer so they sit flush with the card's bottom edge no
-               matter how many of them a given card has (0, 1, or 2) -
-               otherwise a card with just one button (or none, e.g. "More
-               Coming Soon") left it sitting higher than a card with two,
-               even though .merch-card's fixed height already made the
-               cards themselves match (see the "uniform card sizes" notes
-               in styles/layout.css). -->
-          <div class="merch-card-actions">
-          <?php if (count($media) > 1): ?>
-            <button type="button" class="btn btn-secondary full-width merch-gallery-link" data-gallery="<?= $galleryJson ?>"><?= $galleryLabel ?> &rarr;</button>
-          <?php elseif ($first !== null && $first['type'] !== 'video'): ?>
-            <!-- A single-photo card otherwise had no button here at all,
-                 so its "Add To Your List" button sat higher than a
-                 multi-photo card's - see the "See all N photos" button
-                 above. This is the same .merch-gallery-link (same JS
-                 wiring, just a 1-slide array) purely so every card's
-                 button row lines up; clicking the photo itself already
-                 did this. Deliberately NOT shown for a single-video card
-                 (below) - the video's own on-screen controls already
-                 offer a fullscreen/enlarge affordance. -->
-            <button type="button" class="btn btn-secondary full-width merch-gallery-link" data-gallery="<?= $galleryJson ?>">Click photo to enlarge &rarr;</button>
+<?php foreach ($shopSections as $sectionKey => $section): ?>
+<?php if (!$section['items']) { continue; } ?>
+        <section class="shop-section"<?= $sectionKey === 'printed' ? ' aria-label="3D-printed gadgets"' : ' aria-labelledby="shop-sec-' . $sectionKey . '"' ?>>
+          <?php if ($sectionKey === 'printed'): ?>
+          <?php $shopAnnouncement = trim(merch_load_string('pages/merch-announcement')); ?>
+          <?php if ($shopAnnouncement !== ''): ?>
+          <p class="shop-announce" id="shop-sec-<?= $sectionKey ?>"><?= $shopAnnouncement ?></p>
           <?php endif; ?>
-          <?php if ($orderable): ?>
-            <button type="button" class="btn full-width merch-request-btn" data-item="<?= htmlspecialchars($itemName, ENT_QUOTES, 'UTF-8') ?>">Add To Your List</button>
-          <?php elseif ($merchItem['link'] !== null): ?>
-            <!-- Display-only card with an optional link button (see
-                 merch_items.php's file header) - currently just the Gift
-                 Certificates card, but folder-driven so any future
-                 "class: none" card can opt in the same way. -->
-            <a href="<?= htmlspecialchars($merchItem['link'], ENT_QUOTES, 'UTF-8') ?>" class="btn full-width"><?= htmlspecialchars($merchItem['linkText'], ENT_QUOTES, 'UTF-8') ?></a>
+          <?php elseif ($section['title'] !== ''): ?>
+          <h2 class="shop-section-title" id="shop-sec-<?= $sectionKey ?>"><?= $section['title'] ?></h2>
           <?php endif; ?>
+          <div class="shop-grid">
+<?php foreach ($section['items'] as $shopItem) { shop_render_card($shopItem); } ?>
           </div>
+        </section>
+<?php endforeach; ?>
+      </main>
+
+      <!-- Your list: sticky sidebar on desktop; on phones it is a panel
+           that slides up from the bottom bar below. The checkout form is
+           inside it, hidden until "Request this list" is pressed. -->
+      <aside class="shop-list" id="shop-list" aria-label="Your list">
+        <div class="shop-list-head">
+          <h2>Your list</h2>
+          <button type="button" class="shop-info-link shop-howlink" data-info="how">How this works</button>
+          <button type="button" class="shop-list-close" id="shop-list-close" aria-label="Close your list">&times;</button>
         </div>
-        <?php endforeach; ?>
 
-      </div>
+        <p class="shop-list-charts">Color charts:
+          <button type="button" class="shop-chart-link" data-chart="filament">Printed items</button> &middot;
+          <button type="button" class="shop-chart-link" data-chart="gildan">Shirts &amp; hats</button>
+        </p>
 
+        <p class="shop-list-empty" id="list-empty">Nothing here yet. Choose a color and press <strong>Add</strong> on any item.</p>
+        <div id="list-groups"></div>
+        <div class="shop-list-hint" id="list-set-hint"><span class="shop-spark" aria-hidden="true">&#10022;</span><div id="list-set-text"></div></div>
+
+        <button type="button" class="shop-primary-btn" id="request-btn" disabled>Request this list <span aria-hidden="true">&rarr;</span></button>
+        <p class="shop-list-note" id="list-invoice-note" hidden></p>
+
+        <form action="merch_order.php" method="POST" id="merch-checkout-form" class="shop-checkout" novalidate hidden>
+          <input type="hidden" name="list" id="list-payload-field" value="" />
+          <h3 id="checkout-heading" tabindex="-1">Where should we send it?</h3>
+
+          <!-- Honeypot (merch_order.php): invisible to people, tempting to
+               form-filling bots. Anything typed here is silently dropped. -->
+          <div class="shop-hp" aria-hidden="true">
+            <label for="merch-website">Leave this field empty</label>
+            <input type="text" name="website" id="merch-website" value="" tabindex="-1" autocomplete="off" />
+          </div>
+
+          <label for="merch-name">Your name</label>
+          <input type="text" name="name" id="merch-name" autocomplete="name" required />
+
+          <label for="merch-email">Email address</label>
+          <input type="email" name="email" id="merch-email" autocomplete="email" inputmode="email" required />
+
+          <label for="merch-phone">Phone <span class="shop-optional">(optional)</span></label>
+          <input type="tel" name="phone" id="merch-phone" autocomplete="tel" />
+
+          <label for="merch-fulfillment">How would you like to receive this?</label>
+          <select name="fulfillment" id="merch-fulfillment" required>
+            <option value="Ship" selected>Ship to me</option>
+            <option value="Pickup at retreat">I'll pick it up at a retreat</option>
+          </select>
+
+          <div id="shipping-fields">
+            <label for="merch-address">Street address</label>
+            <input type="text" name="address" id="merch-address" autocomplete="street-address" required />
+            <div class="shop-address-row">
+              <div>
+                <label for="merch-city">City</label>
+                <input type="text" name="city" id="merch-city" autocomplete="address-level2" required />
+              </div>
+              <div>
+                <label for="merch-state">State</label>
+                <select name="state" id="merch-state" autocomplete="address-level1" required>
+                  <option value="" selected disabled>Select&hellip;</option>
+        <option value="AL">Alabama</option>
+        <option value="AZ">Arizona</option>
+        <option value="AR">Arkansas</option>
+        <option value="CA">California</option>
+        <option value="CO">Colorado</option>
+        <option value="CT">Connecticut</option>
+        <option value="DE">Delaware</option>
+        <option value="DC">District of Columbia</option>
+        <option value="FL">Florida</option>
+        <option value="GA">Georgia</option>
+        <option value="ID">Idaho</option>
+        <option value="IL">Illinois</option>
+        <option value="IN">Indiana</option>
+        <option value="IA">Iowa</option>
+        <option value="KS">Kansas</option>
+        <option value="KY">Kentucky</option>
+        <option value="LA">Louisiana</option>
+        <option value="ME">Maine</option>
+        <option value="MD">Maryland</option>
+        <option value="MA">Massachusetts</option>
+        <option value="MI">Michigan</option>
+        <option value="MN">Minnesota</option>
+        <option value="MS">Mississippi</option>
+        <option value="MO">Missouri</option>
+        <option value="MT">Montana</option>
+        <option value="NE">Nebraska</option>
+        <option value="NV">Nevada</option>
+        <option value="NH">New Hampshire</option>
+        <option value="NJ">New Jersey</option>
+        <option value="NM">New Mexico</option>
+        <option value="NY">New York</option>
+        <option value="NC">North Carolina</option>
+        <option value="ND">North Dakota</option>
+        <option value="OH">Ohio</option>
+        <option value="OK">Oklahoma</option>
+        <option value="OR">Oregon</option>
+        <option value="PA">Pennsylvania</option>
+        <option value="RI">Rhode Island</option>
+        <option value="SC">South Carolina</option>
+        <option value="SD">South Dakota</option>
+        <option value="TN">Tennessee</option>
+        <option value="TX">Texas</option>
+        <option value="UT">Utah</option>
+        <option value="VT">Vermont</option>
+        <option value="VA">Virginia</option>
+        <option value="WA">Washington</option>
+        <option value="WV">West Virginia</option>
+        <option value="WI">Wisconsin</option>
+        <option value="WY">Wyoming</option>
+                </select>
+              </div>
+              <div>
+                <label for="merch-zip">ZIP code</label>
+                <input type="text" name="zip" id="merch-zip" autocomplete="postal-code" inputmode="numeric" maxlength="10" required />
+              </div>
+            </div>
+          </div>
+
+          <p class="shop-list-note" id="ship-region-note">Alaska, Hawaii or Canada? Please email us before sending, so we can quote shipping first.</p>
+
+          <div id="retreat-fields" hidden>
+            <label for="merch-retreat">Which retreat will you pick this up at?</label>
+            <select name="retreat" id="merch-retreat">
+              <option value="" selected disabled>Select a retreat&hellip;</option>
+<?php foreach ($merchPickupEvents as $merchPickupEvent): ?>
+<?php $merchPickupEventLabel = trim($merchPickupEvent['dateRange']) . ' – ' . trim($merchPickupEvent['title']); ?>
+              <option value="<?= htmlspecialchars($merchPickupEventLabel, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($merchPickupEventLabel, ENT_QUOTES, 'UTF-8') ?></option>
+<?php endforeach; ?>
+            </select>
+          </div>
+
+          <label for="merch-message">Notes <span class="shop-optional">(anything else we should know?)</span></label>
+          <textarea name="message" id="merch-message" rows="3" maxlength="<?= NOTES_MAX_LENGTH ?>"></textarea>
+
+          <!-- 2026-09-25 (Steve): confirmation and invoice emails were
+               landing in customers' spam/junk folders. The sender address
+               comes from config.php's MAIL_FROM_ADDRESS so it can never
+               drift from what the emails are actually sent from. -->
+          <p class="shop-list-note" id="list-spam-note">We'll email you a confirmation of this request, and your invoice later on. Those emails sometimes land in spam or junk folders, so if you don't see them, please check there<?= defined('MAIL_FROM_ADDRESS') ? ' for messages from <strong>' . htmlspecialchars(MAIL_FROM_ADDRESS, ENT_QUOTES, 'UTF-8') . '</strong>' : '' ?>.</p>
+
+          <p class="shop-submit-hint" id="submit-hint" role="status" aria-live="polite"></p>
+          <button type="submit" class="shop-primary-btn" id="list-submit-btn" disabled>Submit my request</button>
+          <button type="button" class="shop-link-btn" id="checkout-back-btn">&larr; Back to my list</button>
+        </form>
+      </aside>
     </div>
   </div>
 
-  <!-- Photo viewer - shared by the color chart and product photos, informational only, not tied to ordering.
-       Prev/next/counter are hidden by default and only shown when opened as a
-       gallery (an image or gallery link with a data-gallery attribute) - a
-       plain single photo or the color chart still opens exactly as before, no
-       arrows shown. 2026-08-21: a gallery slide can now be a video too
-       ({type: "video"} in the data-gallery JSON) - the viewer swaps the <img>
-       for the <video> below on those slides, pausing playback whenever the
-       slide changes or the viewer closes. The caption line under the counter
-       surfaces each slide's caption text (from the item folder's
-       captions.txt) visibly - e.g. the Stars & Stripes sample slides name
-       the option and its surcharge. -->
-  <div id="photo-viewer-modal" class="lightbox" hidden>
-    <button id="photo-viewer-close" class="lightbox-close" type="button" aria-label="Close photo viewer">&times;</button>
-    <button id="photo-viewer-prev" class="lightbox-nav lightbox-nav-prev" type="button" aria-label="Previous photo" hidden>&#10094;</button>
-    <img id="photo-viewer-image" src="" alt="" class="lightbox-image" />
-    <video id="photo-viewer-video" class="lightbox-image" controls playsinline preload="metadata" hidden></video>
-    <button id="photo-viewer-next" class="lightbox-nav lightbox-nav-next" type="button" aria-label="Next photo" hidden>&#10095;</button>
-    <div id="photo-viewer-counter" class="photo-viewer-counter" hidden></div>
-    <div id="photo-viewer-caption" class="photo-viewer-caption" hidden></div>
+  <!-- Phone: bottom bar that opens the list panel. Hidden on wide
+       screens (the sidebar is always visible there) and while the list
+       is empty. -->
+  <div class="shop-bar" id="shop-bar" hidden>
+    <div class="shop-bar-summary">
+      <span id="shop-bar-count">0 items</span>
+      <span id="shop-bar-total" class="shop-bar-total"></span>
+    </div>
+    <button type="button" class="shop-primary-btn shop-bar-btn" id="shop-bar-open">View my list</button>
   </div>
+  <div class="shop-scrim" id="shop-scrim" hidden></div>
 
-  <!-- Request modal: captures full shipping info since most requests now ship rather than get picked up at a retreat -->
-  <!-- 2026-08-29 (Finding 19, a11y): role="dialog"/aria-modal/
-       aria-labelledby so assistive tech actually treats this as a
-       dialog (previously just a styled <div>, indistinguishable from
-       page content to a screen reader) - see openMerchModal()/
-       closeMerchModal() below for the focus trap that goes with it
-       (moving focus in on open, cycling Tab within the modal while
-       it's open, and returning focus to whichever "Add To Your List"
-       button opened it on close). -->
-  <div id="merch-modal" class="lightbox merch-modal" role="dialog" aria-modal="true" aria-labelledby="merch-modal-heading" hidden>
-    <button id="merch-modal-close" class="lightbox-close" type="button" aria-label="Close request form">&times;</button>
-    <div class="merch-modal-content">
-      <h2 id="merch-modal-heading">Request: <span id="merch-modal-item"></span></h2>
-
-      <!-- 2026-09-14 (multi-item list): this form used to also capture
-           Name/Fulfillment/Address/Retreat/Email/Phone and submit
-           straight to merch_order.php - one item, one full checkout,
-           every time. Those shared fields now live ONCE in the list/
-           checkout modal below (#list-modal) instead of being re-asked
-           for every item, per the thought-experiment doc's own design
-           ("fill out contact/shipping once, submit the whole list").
-           This form is JS-only now (no action/method - see
-           addItemFormToList() below): it just adds/updates one line in
-           the in-memory list, it never submits anywhere itself. -->
-      <form id="merch-item-form" novalidate>
-        <input type="hidden" name="item" id="merch-item-field" value="" />
-
-        <div id="size-field-wrapper" hidden>
-          <label for="merch-size" class="four-day-label">Size</label>
-          <select name="size" id="merch-size">
-            <option value="">Select a size&hellip;</option>
-            <option value="S">S</option>
-            <option value="M">M</option>
-            <option value="L">L</option>
-            <option value="XL">XL</option>
-            <option value="2XL">2XL</option>
-            <option value="3XL">3XL (+$3)</option>
-            <option value="4XL">4XL (+$3)</option>
-            <option value="5XL">5XL (+$3)</option>
-          </select>
-        </div>
-
-        <div id="sleeve-field-wrapper" hidden>
-          <label for="merch-sleeve" class="four-day-label">Sleeve Length</label>
-          <select name="sleeve" id="merch-sleeve">
-            <option value="">Select sleeve length&hellip;</option>
-            <option value="Short Sleeve">Short Sleeve</option>
-            <option value="Long Sleeve">Long Sleeve</option>
-          </select>
-        </div>
-
-        <div id="color-field-wrapper" hidden>
-          <label for="merch-color-gildan" class="four-day-label" id="color-field-label">Color choice</label>
-
-          <!-- Gildan garment colors - shirts and the hat. The wrapper div
-               (not the <select> itself) is what gets hidden in JS - a bare
-               [hidden] select loses out to the ".merch-modal-content select
-               { display: block }" rule below on specificity, so it has to be
-               a div like the size/sleeve fields use. disabled/required still
-               go on the <select> directly so only one of the two selects
-               (see GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS below) is ever
-               part of the form submission - both share name="color". -->
-          <div id="gildan-color-wrapper">
-          <select name="color" id="merch-color-gildan">
+  <!-- Option lists for the per-card Color choice, cloned in by the script
+       below. Numbering/grouping matches the color chart images exactly
+       (keep them in sync if a chart is ever renumbered). Rainbow and
+       Stars & Stripes are added in script for the items eligible for them
+       (RAINBOW_ELIGIBLE_ITEMS / STARS_STRIPES_ELIGIBLE_ITEMS, pricing.php). -->
+  <template id="tpl-color-gildan">
               <option value="">Select a color&hellip;</option>
               <optgroup label="Whites & Grays">
                 <option value="#01 White">#01 &ndash; White</option>
@@ -414,19 +446,8 @@
                 <option value="#69 Dark Chocolate">#69 &ndash; Dark Chocolate</option>
                 <option value="#70 Black">#70 &ndash; Black</option>
               </optgroup>
-              <option value="Not applicable / no color choice">Not applicable</option>
-          </select>
-          </div>
-
-          <!-- 3D-print filament colors - the cutter holders, tape gun holder,
-               and tool holder stand. Numbering/grouping here matches
-               filament-color-chart.jpg exactly (#1 Red through #28 Copper) -
-               keep the two in sync if the chart is ever renumbered. Rainbow
-               lives here (not in the Gildan list above) since it's a filament
-               print option, not a garment color; RAINBOW_ELIGIBLE_ITEMS in
-               pricing.php controls which items actually see it. -->
-          <div id="filament-color-wrapper" hidden>
-          <select name="color" id="merch-color-filament" disabled>
+  </template>
+  <template id="tpl-color-filament">
               <option value="">Select a color&hellip;</option>
               <optgroup label="Warm Colors">
                 <option value="#01 Red">#01 &ndash; Red</option>
@@ -463,199 +484,64 @@
                 <!-- 2026-10-05 (Steve): Copper, #28. Chart image gained a fourth row for it. -->
                 <option value="#28 Copper">#28 &ndash; Copper</option>
               </optgroup>
-              <option value="Rainbow (+$2)" id="color-option-rainbow" hidden>Rainbow (+$2)</option>
-              <option value="Stars &amp; Stripes (+$7)" id="color-option-stars-stripes" hidden>Stars &amp; Stripes (+$7)</option>
-              <option value="Not applicable / no color choice">Not applicable</option>
-          </select>
-          </div>
-        </div>
+  </template>
 
-        <label for="merch-quantity" class="four-day-label">Quantity</label>
-        <input type="number" name="quantity" id="merch-quantity" min="1" max="<?= MAX_QUANTITY ?>" value="1" required />
-
-        <!-- 2026-08-29 (Finding 19, a11y): aria-live so a screen reader
-             announces the running estimate as quantity/color/size
-             change, instead of the total silently updating with
-             nothing read aloud. "polite" (not "assertive") so it waits
-             for a pause rather than interrupting whatever field the
-             customer is still typing into. 2026-09-14: this is now a
-             per-ITEM subtotal only (no tax/shipping) - those are list-
-             level figures computed once at checkout, when the real
-             combined total (bundle discounts, shared shipping tier)
-             is known - see #list-estimate below. -->
-        <div id="merch-estimate" class="merch-estimate" aria-live="polite"></div>
-
-        <button type="submit" class="btn full-width" id="merch-item-submit">Add To Your List</button>
-      </form>
+  <!-- Details: description (and a way into the photos) for one item. -->
+  <div id="details-modal" class="lightbox" role="dialog" aria-modal="true" aria-labelledby="details-title" hidden>
+    <div class="shop-details">
+      <button type="button" class="shop-details-close" id="details-close" aria-label="Close details">&times;</button>
+      <h2 id="details-title"></h2>
+      <p class="shop-details-price" id="details-price"></p>
+      <div class="shop-details-body" id="details-body"></div>
+      <button type="button" class="btn btn-secondary full-width" id="details-photos" hidden>See photos &amp; video</button>
+      <button type="button" class="btn full-width" id="details-done">Close</button>
     </div>
   </div>
 
-  <!-- List / checkout modal (2026-09-14): the "browse, add several
-       items to a running list, fill out contact/shipping once, submit
-       the whole list" flow from the thought-experiment doc. Reuses the
-       same .lightbox/.merch-modal-content dialog pattern (and the same
-       focus-trap/Escape/backdrop-click handling) as the item-add modal
-       and the photo viewer above - see openListModal()/closeListModal()
-       below. -->
-  <div id="list-modal" class="lightbox merch-modal" role="dialog" aria-modal="true" aria-labelledby="list-modal-heading" hidden>
-    <button id="list-modal-close" class="lightbox-close" type="button" aria-label="Close list">&times;</button>
-    <div class="merch-modal-content list-modal-content">
-      <h2 id="list-modal-heading">Your List</h2>
-
-      <div id="list-lines"></div>
-      <p id="list-empty-note" class="merch-estimate-note" hidden>Your list is empty - close this and tap &ldquo;Add To Your List&rdquo; on anything you'd like to add.</p>
-
-      <form action="merch_order.php" method="POST" id="merch-checkout-form">
-        <input type="hidden" name="list" id="list-payload-field" value="" />
-
-        <!-- 2026-08-29 (Finding 19, a11y): every field below that used to
-             rely on its placeholder alone now has a real <label>,
-             visually hidden (styles/layout.css's .visually-hidden - the
-             same utility already used elsewhere on this site) so the
-             look of the form is unchanged but a screen reader announces
-             a real name for the field instead of nothing at all - a
-             placeholder isn't a label and most screen readers don't
-             treat it as one. -->
-        <label for="merch-name" class="visually-hidden">Full Name</label>
-        <input type="text" name="name" id="merch-name" placeholder="Full Name" required />
-
-        <label for="merch-fulfillment" class="four-day-label">How would you like to receive this?</label>
-        <select name="fulfillment" id="merch-fulfillment" required>
-          <option value="Ship" selected>Ship to me</option>
-          <option value="Pickup at retreat">I'll pick it up at a retreat</option>
-        </select>
-
-        <div id="shipping-fields">
-          <label for="merch-address" class="visually-hidden">Street Address</label>
-          <input type="text" name="address" id="merch-address" placeholder="Street Address" required />
-          <div class="address-row">
-            <label for="merch-city" class="visually-hidden">City</label>
-            <input type="text" name="city" id="merch-city" placeholder="City" required />
-            <label for="merch-state" class="visually-hidden">State</label>
-            <select name="state" id="merch-state" required>
-              <option value="" selected disabled>Select a state&hellip;</option>
-              <option value="AL">Alabama</option>
-              <option value="AZ">Arizona</option>
-              <option value="AR">Arkansas</option>
-              <option value="CA">California</option>
-              <option value="CO">Colorado</option>
-              <option value="CT">Connecticut</option>
-              <option value="DE">Delaware</option>
-              <option value="DC">District of Columbia</option>
-              <option value="FL">Florida</option>
-              <option value="GA">Georgia</option>
-              <option value="ID">Idaho</option>
-              <option value="IL">Illinois</option>
-              <option value="IN">Indiana</option>
-              <option value="IA">Iowa</option>
-              <option value="KS">Kansas</option>
-              <option value="KY">Kentucky</option>
-              <option value="LA">Louisiana</option>
-              <option value="ME">Maine</option>
-              <option value="MD">Maryland</option>
-              <option value="MA">Massachusetts</option>
-              <option value="MI">Michigan</option>
-              <option value="MN">Minnesota</option>
-              <option value="MS">Mississippi</option>
-              <option value="MO">Missouri</option>
-              <option value="MT">Montana</option>
-              <option value="NE">Nebraska</option>
-              <option value="NV">Nevada</option>
-              <option value="NH">New Hampshire</option>
-              <option value="NJ">New Jersey</option>
-              <option value="NM">New Mexico</option>
-              <option value="NY">New York</option>
-              <option value="NC">North Carolina</option>
-              <option value="ND">North Dakota</option>
-              <option value="OH">Ohio</option>
-              <option value="OK">Oklahoma</option>
-              <option value="OR">Oregon</option>
-              <option value="PA">Pennsylvania</option>
-              <option value="RI">Rhode Island</option>
-              <option value="SC">South Carolina</option>
-              <option value="SD">South Dakota</option>
-              <option value="TN">Tennessee</option>
-              <option value="TX">Texas</option>
-              <option value="UT">Utah</option>
-              <option value="VT">Vermont</option>
-              <option value="VA">Virginia</option>
-              <option value="WA">Washington</option>
-              <option value="WV">West Virginia</option>
-              <option value="WI">Wisconsin</option>
-              <option value="WY">Wyoming</option>
-            </select>
-            <label for="merch-zip" class="visually-hidden">ZIP Code</label>
-            <input type="text" name="zip" id="merch-zip" placeholder="ZIP" required />
-          </div>
-        </div>
-
-        <div id="retreat-fields" hidden>
-          <label for="merch-retreat" class="four-day-label">Which retreat will you pick this up at?</label>
-          <select name="retreat" id="merch-retreat">
-            <option value="" selected disabled>Select a retreat&hellip;</option>
-<?php foreach ($merchPickupEvents as $merchPickupEvent): ?>
-<?php $merchPickupEventLabel = trim($merchPickupEvent['dateRange']) . ' – ' . trim($merchPickupEvent['title']); ?>
-            <option value="<?= htmlspecialchars($merchPickupEventLabel, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($merchPickupEventLabel, ENT_QUOTES, 'UTF-8') ?></option>
-<?php endforeach; ?>
-          </select>
-        </div>
-
-        <label for="merch-email" class="visually-hidden">Email Address</label>
-        <input type="email" name="email" id="merch-email" placeholder="Email Address" required />
-        <label for="merch-phone" class="visually-hidden">Phone Number (optional)</label>
-        <input type="tel" name="phone" id="merch-phone" placeholder="Phone Number (optional)" />
-
-        <label for="merch-message" class="visually-hidden">Notes - anything else we should know?</label>
-        <textarea name="message" id="merch-message" placeholder="Notes - anything else we should know?" rows="3" maxlength="<?= NOTES_MAX_LENGTH ?>"></textarea>
-
-        <!-- 2026-09-14: the REAL combined total for everything in the
-             list - bundle discounts and the shared shipping tier both
-             depend on the whole list at once, so this is priced
-             server-side (merch_list_price.php, same
-             merch_group_calculate() the admin invoice button uses)
-             rather than re-derived a second time in JS. Recomputed
-             whenever the list or Fulfillment choice changes - see
-             refreshListPricing() below. -->
-        <div id="list-estimate" class="merch-estimate" aria-live="polite"></div>
-
-        <!-- 2026-09-25 (Steve): confirmation and invoice emails were
-             landing in customers' spam/junk folders, and customers then
-             wondered whether the request had gone through. A plain note
-             right above the Submit button; the sender address comes from
-             config.php's MAIL_FROM_ADDRESS so it can never drift from
-             what the emails are actually sent from. Static text, so it
-             sits outside #list-estimate (which JS rewrites on every list
-             change). -->
-        <p class="merch-estimate-note" id="list-spam-note">Heads up: we'll email you a confirmation of this request, and your invoice later on. Those emails sometimes land in spam or junk folders, so if you don't see them, please check there<?= defined('MAIL_FROM_ADDRESS') ? ' for messages from <strong>' . htmlspecialchars(MAIL_FROM_ADDRESS, ENT_QUOTES, 'UTF-8') . '</strong>' : '' ?>.</p>
-
-        <!-- Lets a customer close this modal to add/browse more items
-             without submitting - separate from the small "x" close
-             button up top, and deliberately type="button" so it can
-             never trigger the form's real submit. Does the exact same
-             thing as list-modal-close (closeListModal()) - just a more
-             obvious, thumb-friendly target sitting right next to Submit
-             Order, since a shopper mid-checkout is the person most
-             likely to realize they forgot something. -->
-        <button type="button" class="btn btn-secondary full-width" id="list-keep-browsing-btn">Keep Browsing</button>
-
-        <button type="submit" class="btn full-width" id="list-submit-btn">Submit Order</button>
-      </form>
+  <!-- Small info dialogs opened from the list panel ("How this works",
+       "Shipping"). Text comes from strings/pages/merch-how-it-works and
+       merch-shipping-note; both are rendered here hidden and copied in. -->
+  <template id="tpl-info-how"><?= merch_load_string('pages/merch-how-it-works') ?></template>
+  <template id="tpl-info-shipping"><?= merch_load_string('pages/merch-shipping-note') ?></template>
+  <div id="info-modal" class="lightbox" role="dialog" aria-modal="true" aria-labelledby="info-title" hidden>
+    <div class="shop-details">
+      <button type="button" class="shop-details-close" id="info-close" aria-label="Close">&times;</button>
+      <h2 id="info-title"></h2>
+      <div class="shop-details-body" id="info-body"></div>
+      <button type="button" class="btn full-width" id="info-done">Close</button>
     </div>
+  </div>
+
+  <!-- Photo viewer - shared by the color charts and product photos,
+       informational only. Prev/next/counter show only when opened as a
+       gallery; a gallery slide can be a photo or a video; the caption
+       line shows each slide's caption (the item folder's captions.txt). -->
+  <div id="photo-viewer-modal" class="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer" hidden>
+    <button id="photo-viewer-close" class="lightbox-close" type="button" aria-label="Close photo viewer">&times;</button>
+    <button id="photo-viewer-prev" class="lightbox-nav lightbox-nav-prev" type="button" aria-label="Previous photo" hidden>&#10094;</button>
+    <img id="photo-viewer-image" src="" alt="" class="lightbox-image" />
+    <video id="photo-viewer-video" class="lightbox-image" controls playsinline preload="metadata" hidden></video>
+    <button id="photo-viewer-next" class="lightbox-nav lightbox-nav-next" type="button" aria-label="Next photo" hidden>&#10095;</button>
+    <div id="photo-viewer-counter" class="photo-viewer-counter" hidden></div>
+    <div id="photo-viewer-caption" class="photo-viewer-caption" hidden></div>
   </div>
 
   <script>
-    // Same pricing data pricing.php uses server-side, handed to JS for
-    // two things: the per-item subtotal preview in the add-to-list
-    // modal (calculateItemSubtotal() below - unit price + surcharges
-    // only, hand-mirrored from merch_unit_price(); if you ever change
-    // a surcharge *rule*, not just a price, update both places), and
-    // reading item/color/size lists (GILDAN_COLOR_ITEMS etc. below).
-    // 2026-09-14: the COMBINED list total (tax, shipping tiers, bundle
-    // discounts) is no longer hand-mirrored here at all - that's priced
-    // server-side by merch_list_price.php instead, precisely because
-    // that math is too easy to let drift out of sync by hand - see that
-    // file's header comment.
+    // Pricing data pricing.php uses server-side, handed to JS for the
+    // per-line price shown in the list (calculateItemSubtotal() below -
+    // unit price + surcharges only, hand-mirrored from merch_unit_price();
+    // if you ever change a surcharge *rule*, not just a price, update both
+    // places) and for the item/color lists. The COMBINED totals (tax,
+    // shipping tiers, bundle and full-set discounts) are NOT mirrored
+    // here - they're priced server-side by merch_list_price.php.
     const MERCH_PRICING = <?php echo json_encode(merch_pricing_for_js()); ?>;
+    // The "buy the whole set" rule, for the nudge in the list (the discount
+    // itself is applied server-side).
+    const FULL_SET_RULE = <?php echo json_encode($shopFullSetRule); ?>;
+    // Filament colors not printable right now: lower-cased name -> short note.
+    // Item pairs with a flat "buy both" discount (e.g. Tape Gun Holder + Add-On).
+    const BUNDLES = <?php echo json_encode(MERCH_BUNDLES); ?>;
+    const UNAVAILABLE_COLORS = <?php echo json_encode((object) $shopUnavailableColors); ?>;
 
     const menuToggle = document.querySelector('.menu-toggle');
     const navLinks = document.querySelector('.nav-links');
@@ -663,7 +549,54 @@
       navLinks.classList.toggle('show');
     });
 
-    // Photo viewer - shared by color chart button + every product photo (informational, no request tied to it)
+    // ============================================================
+    // Small helpers
+    // ============================================================
+    function formatMoney(n) {
+      return '$' + Number(n).toFixed(2);
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      }[ch]));
+    }
+
+    function pluralItems(n) {
+      return `${n} item${n === 1 ? '' : 's'}`;
+    }
+
+    // Tab trap for every dialog-like layer (details, photo viewer, and the
+    // list panel when it is a phone sheet). Recomputed on every Tab press
+    // since which controls are visible changes.
+    function focusableWithin(el) {
+      const focusable = el.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      return Array.from(focusable).filter((node) => node.offsetParent !== null);
+    }
+
+    function trapTabWithin(el, event) {
+      if (event.key !== 'Tab') return;
+      const visible = focusableWithin(el);
+      if (visible.length === 0) return;
+      const first = visible[0];
+      const last = visible[visible.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    // ============================================================
+    // Photo viewer - color charts + every card photo (informational).
+    // A gallery slide can be a video ({type:'video', src, poster, alt});
+    // the <img> and <video> swap places per slide and a playing video is
+    // paused whenever the slide changes or the viewer closes.
+    // ============================================================
     const photoViewerModal = document.getElementById('photo-viewer-modal');
     const photoViewerImage = document.getElementById('photo-viewer-image');
     const photoViewerVideo = document.getElementById('photo-viewer-video');
@@ -672,24 +605,12 @@
     const photoViewerNext = document.getElementById('photo-viewer-next');
     const photoViewerCounter = document.getElementById('photo-viewer-counter');
     const photoViewerCaption = document.getElementById('photo-viewer-caption');
-    const gildanColorChartOpen = document.getElementById('gildan-color-chart-open');
-    const filamentColorChartOpen = document.getElementById('filament-color-chart-open');
-
-    // Gallery state - empty array means "single image, no nav arrows."
-    // A single openPhotoViewer(src, alt) call (no gallery array) behaves
-    // exactly as it always has; passing a gallery array is what turns on
-    // the prev/next/counter UI. Since 2026-08-21 a slide can be a video
-    // ({type: 'video', src, poster, alt} - the shape merch_items.php
-    // emits into data-gallery) - the <img> and <video> swap places per
-    // slide, and whichever video was playing is paused the moment the
-    // slide changes or the viewer closes.
     let gallerySlides = [];
     let galleryIndex = 0;
+    let photoViewerReturnFocus = null;
 
     function stopViewerVideo() {
-      if (!photoViewerVideo.hidden) {
-        photoViewerVideo.pause();
-      }
+      if (!photoViewerVideo.hidden) photoViewerVideo.pause();
     }
 
     function renderGallerySlide() {
@@ -700,10 +621,8 @@
       photoViewerVideo.hidden = !isVideo;
       if (isVideo) {
         photoViewerImage.src = '';
-        if (photoViewerVideo.src !== slide.src) {
-          photoViewerVideo.src = slide.src;
-        }
-        if (slide.poster) photoViewerVideo.poster = slide.poster;
+        if (photoViewerVideo.getAttribute('src') !== slide.src) photoViewerVideo.src = slide.src;
+        if (slide.poster) photoViewerVideo.poster = slide.poster; else photoViewerVideo.removeAttribute('poster');
         photoViewerVideo.setAttribute('aria-label', slide.alt || '');
       } else {
         photoViewerVideo.removeAttribute('src');
@@ -716,6 +635,7 @@
     }
 
     function openPhotoViewer(src, alt) {
+      photoViewerReturnFocus = document.activeElement;
       gallerySlides = [];
       stopViewerVideo();
       photoViewerVideo.hidden = true;
@@ -729,10 +649,13 @@
       photoViewerCaption.hidden = true;
       photoViewerModal.hidden = false;
       document.body.classList.add('lightbox-open');
+      photoViewerClose.focus();
     }
 
-    // slides: array of {type?, src, poster?, alt}. startIndex: which one to open on.
+    // slides: array of {type?, src, poster?, alt}
     function openPhotoGallery(slides, startIndex) {
+      if (!slides || slides.length === 0) return;
+      photoViewerReturnFocus = document.activeElement;
       gallerySlides = slides;
       galleryIndex = startIndex || 0;
       renderGallerySlide();
@@ -742,6 +665,7 @@
       photoViewerCounter.hidden = !hasMultiple;
       photoViewerModal.hidden = false;
       document.body.classList.add('lightbox-open');
+      photoViewerClose.focus();
     }
 
     function showPrevPhoto() {
@@ -765,38 +689,27 @@
       photoViewerImage.hidden = false;
       photoViewerCaption.hidden = true;
       gallerySlides = [];
-      document.body.classList.remove('lightbox-open');
+      // Stay "locked" if a details dialog or the phone list sheet is
+      // still open underneath.
+      syncBodyLock();
+      if (photoViewerReturnFocus && document.contains(photoViewerReturnFocus)) {
+        photoViewerReturnFocus.focus();
+      }
+      photoViewerReturnFocus = null;
     }
 
-    gildanColorChartOpen.addEventListener('click', () => {
-      openPhotoViewer('images/color-chart.jpg', 'Gildan 64000 color chart with numbered swatches');
+    // The two color charts open from a small "chart" link beside each
+    // card's Color choice (see makeField() below).
+    document.querySelectorAll('.shop-chart-link[data-chart]').forEach((btn) => {
+      btn.addEventListener('click', () => openPhotoViewer(...COLOR_CHARTS[btn.dataset.chart]));
     });
+    const COLOR_CHARTS = {
+      gildan: ['images/color-chart.jpg', 'Gildan 64000 color chart with numbered swatches'],
+      filament: ['images/filament-color-chart.jpg', 'Filament color chart with numbered, named swatches'],
+    };
 
-    filamentColorChartOpen.addEventListener('click', () => {
-      openPhotoViewer('images/filament-color-chart.jpg', 'Filament color chart with numbered, named swatches');
-    });
-
-    // Every product photo on the page opens the zoom viewer when clicked.
-    // A photo with a data-gallery attribute (JSON array of {type, src,
-    // poster, alt} - built by merch_items.php from the item's folder)
-    // opens as a scrollable gallery instead of a single fixed image.
-    document.querySelectorAll('.merch-photo').forEach((img) => {
-      img.classList.add('zoomable');
-      img.addEventListener('click', () => {
-        if (img.dataset.gallery) {
-          openPhotoGallery(JSON.parse(img.dataset.gallery), 0);
-        } else {
-          openPhotoViewer(img.src, img.alt);
-        }
-      });
-    });
-
-    // "See all N photos" link under any card whose folder has more than
-    // one media file - same gallery, same JSON, just a text trigger.
-    // On video-first cards this is the ONLY gallery trigger, since the
-    // inline player owns clicks on the media slot itself. (Replaced the
-    // temporary per-card "Stars & Stripes example" links, 2026-08-21.)
-    document.querySelectorAll('.merch-gallery-link').forEach((btn) => {
+    // Clicking a card photo opens its gallery (photos, then videos).
+    document.querySelectorAll('.shop-card-photo[data-gallery]').forEach((btn) => {
       btn.addEventListener('click', () => {
         openPhotoGallery(JSON.parse(btn.dataset.gallery), 0);
       });
@@ -808,98 +721,211 @@
     photoViewerModal.addEventListener('click', (event) => {
       if (event.target === photoViewerModal) closePhotoViewer();
     });
-    document.addEventListener('keydown', (event) => {
-      if (photoViewerModal.hidden) return;
-      if (event.key === 'ArrowLeft') showPrevPhoto();
-      if (event.key === 'ArrowRight') showNextPhoto();
-    });
 
     // ============================================================
-    // Card description fade (2026-09-14 uniform card sizes follow-up) -
-    // .merch-desc-has-more (styles/layout.css) is what actually draws
-    // the bottom fade; this just decides, per card, whether that class
-    // belongs on it right now. Re-checked on scroll (so the fade drops
-    // once a card is scrolled to its own true end, and comes back if
-    // scrolled back up) and on resize (narrower cards wrap to more
-    // lines, which can turn a description that fit into one that
-    // doesn't, and vice versa).
+    // Info dialogs ("How this works", "Shipping")
     // ============================================================
-    function updateDescFade(desc) {
-      const hasMore = desc.scrollHeight - desc.scrollTop - desc.clientHeight > 1;
-      desc.classList.toggle('merch-desc-has-more', hasMore);
+    const infoModal = document.getElementById('info-modal');
+    let infoReturnFocus = null;
+    const INFO_TITLES = { how: 'How this works', shipping: 'Shipping' };
+
+    function openInfo(kind, opener) {
+      infoReturnFocus = opener;
+      document.getElementById('info-title').textContent = INFO_TITLES[kind] || '';
+      const tpl = document.getElementById('tpl-info-' + kind);
+      document.getElementById('info-body').innerHTML = tpl ? tpl.innerHTML : '';
+      infoModal.hidden = false;
+      document.body.classList.add('lightbox-open');
+      document.getElementById('info-close').focus();
     }
-    const merchDescEls = document.querySelectorAll('.merch-desc');
-    merchDescEls.forEach((desc) => {
-      updateDescFade(desc);
-      desc.addEventListener('scroll', () => updateDescFade(desc), { passive: true });
+
+    function closeInfo() {
+      infoModal.hidden = true;
+      syncBodyLock();
+      if (infoReturnFocus && document.contains(infoReturnFocus)) infoReturnFocus.focus();
+      infoReturnFocus = null;
+    }
+
+    document.getElementById('shop-list').addEventListener('click', (event) => {
+      const btn = event.target.closest('.shop-info-link[data-info]');
+      if (btn) openInfo(btn.dataset.info, btn);
     });
-    window.addEventListener('resize', () => {
-      merchDescEls.forEach(updateDescFade);
+    document.getElementById('info-close').addEventListener('click', closeInfo);
+    document.getElementById('info-done').addEventListener('click', closeInfo);
+    infoModal.addEventListener('click', (event) => { if (event.target === infoModal) closeInfo(); });
+
+    // ============================================================
+    // Details dialog
+    // ============================================================
+    const detailsModal = document.getElementById('details-modal');
+    const detailsTitle = document.getElementById('details-title');
+    const detailsPrice = document.getElementById('details-price');
+    const detailsBody = document.getElementById('details-body');
+    const detailsPhotos = document.getElementById('details-photos');
+    let detailsReturnFocus = null;
+    let detailsGallery = null;
+
+    function openDetails(card, opener) {
+      detailsReturnFocus = opener;
+      detailsTitle.textContent = card.dataset.item;
+      const priceEl = card.querySelector('.shop-card-price');
+      detailsPrice.innerHTML = priceEl ? priceEl.innerHTML + ' <span class="shop-price-note">plus tax and shipping</span>' : '';
+      detailsBody.innerHTML = card.querySelector('.shop-card-desc').innerHTML;
+      const nudgeText = MERCH_PRICING.bundleNudges[card.dataset.item];
+      if (nudgeText) detailsBody.innerHTML += `<p class="shop-hint-extra"><strong>${nudgeText}</strong></p>`;
+      const photoBtn = card.querySelector('.shop-card-photo[data-gallery]');
+      const gallery = photoBtn ? JSON.parse(photoBtn.dataset.gallery) : [];
+      detailsGallery = gallery.length ? gallery : null;
+      detailsPhotos.hidden = !detailsGallery;
+      if (detailsGallery) {
+        const hasVideo = detailsGallery.some((s) => s.type === 'video');
+        detailsPhotos.textContent = hasVideo ? 'See photos & video' : (detailsGallery.length > 1 ? 'See all photos' : 'See larger photo');
+      }
+      detailsModal.hidden = false;
+      document.body.classList.add('lightbox-open');
+      document.getElementById('details-close').focus();
+    }
+
+    function closeDetails() {
+      detailsModal.hidden = true;
+      syncBodyLock();
+      if (detailsReturnFocus && document.contains(detailsReturnFocus)) detailsReturnFocus.focus();
+      detailsReturnFocus = null;
+    }
+
+    document.querySelectorAll('.shop-details-link').forEach((btn) => {
+      btn.addEventListener('click', () => openDetails(btn.closest('.shop-card'), btn));
+    });
+    document.getElementById('details-close').addEventListener('click', closeDetails);
+    document.getElementById('details-done').addEventListener('click', closeDetails);
+    detailsModal.addEventListener('click', (event) => {
+      if (event.target === detailsModal) closeDetails();
+    });
+    detailsPhotos.addEventListener('click', () => {
+      if (!detailsGallery) return;
+      const gallery = detailsGallery;
+      // Hand focus-return over to the viewer, which returns it to the
+      // Details button once the visitor is done.
+      closeDetails();
+      openPhotoGallery(gallery, 0);
     });
 
     // ============================================================
-    // Item-add modal (2026-09-14 multi-item list) - was the whole
-    // request form (Name/Fulfillment/Address/Retreat/Email/Phone
-    // included) submitting straight to merch_order.php, one item per
-    // submission. Now it only captures ONE list line's own fields
-    // (color/size/sleeve/quantity) and hands that line to the
-    // in-memory list below - see merch_order.php's file header comment
-    // for the overall design, and the list/checkout modal section
-    // further down for where Name/Fulfillment/etc. moved to.
+    // Card controls: Color / Size / Sleeve built per card
     // ============================================================
-    const merchModal = document.getElementById('merch-modal');
-    const merchModalItem = document.getElementById('merch-modal-item');
-    // 2026-08-29 (Finding 19, a11y): remembers whatever had focus right
-    // before the modal opened (an "Add To Your List" button, or a list
-    // line's "Edit" button), so closeMerchModal() can put focus back
-    // there - see openMerchModal()/closeMerchModal() below.
-    let merchModalReturnFocusEl = null;
-    const merchItemField = document.getElementById('merch-item-field');
-    const merchItemForm = document.getElementById('merch-item-form');
-    const merchItemSubmitBtn = document.getElementById('merch-item-submit');
-    const merchModalClose = document.getElementById('merch-modal-close');
-    const colorFieldWrapper = document.getElementById('color-field-wrapper');
-    const colorFieldLabel = document.getElementById('color-field-label');
-    const gildanColorWrapper = document.getElementById('gildan-color-wrapper');
-    const merchColorGildan = document.getElementById('merch-color-gildan');
-    const filamentColorWrapper = document.getElementById('filament-color-wrapper');
-    const merchColorFilament = document.getElementById('merch-color-filament');
-    const sizeFieldWrapper = document.getElementById('size-field-wrapper');
-    const merchSizeSelect = document.getElementById('merch-size');
-    const sleeveFieldWrapper = document.getElementById('sleeve-field-wrapper');
-    const merchSleeveSelect = document.getElementById('merch-sleeve');
-    const merchQuantity = document.getElementById('merch-quantity');
-    const merchEstimate = document.getElementById('merch-estimate');
-
-    // Items that come in a choice of colors - two different color lists,
-    // since garment colors (Gildan) and 3D-print filament colors are
-    // completely different palettes with their own charts. A given item is
-    // in exactly one of these two lists, never both. Since 2026-08-21
-    // these come out of MERCH_PRICING (derived from each item's class in
-    // pricing.php/merch_items.php) instead of being hand-mirrored here -
-    // the old keep-in-sync-with-pricing.php hazard is gone.
+    const SIZE_AND_SLEEVE_ITEMS = MERCH_PRICING.shirtItems;
     const GILDAN_COLOR_ITEMS = MERCH_PRICING.gildanColorItems;
     const FILAMENT_COLOR_ITEMS = MERCH_PRICING.filamentColorItems;
-    // Shirts need a size and a sleeve-length choice; nothing else does
-    const SIZE_AND_SLEEVE_ITEMS = MERCH_PRICING.shirtItems;
+    const PRINTED_ITEMS = MERCH_PRICING.printedItems;
+    const MAX_QTY = MERCH_PRICING.maxQuantity;
+    const tplGildan = document.getElementById('tpl-color-gildan').innerHTML;
+    const tplFilament = document.getElementById('tpl-color-filament').innerHTML;
+    let controlSeq = 0;
 
-    function formatMoney(n) {
-      return '$' + n.toFixed(2);
+    const SIZE_OPTIONS = [
+      ['S', 'S'], ['M', 'M'], ['L', 'L'], ['XL', 'XL'], ['2XL', '2XL'],
+      ['3XL', '3XL (+$3)'], ['4XL', '4XL (+$3)'], ['5XL', '5XL (+$3)'],
+    ];
+    const SLEEVE_OPTIONS = ['Short Sleeve', 'Long Sleeve'];
+
+    // "#08 Hot Pink" -> "hot pink" (matches how the unavailable list is keyed)
+    function colorKey(value) {
+      return String(value).replace(/^#\d+\s*/, '').trim().toLowerCase();
     }
 
-    function escapeHtml(str) {
-      return String(str).replace(/[&<>"']/g, (ch) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-      }[ch]));
+    function makeField(card, labelText, name, selectEl, chartKey) {
+      const id = `shop-${name}-${++controlSeq}`;
+      const wrap = document.createElement('div');
+      wrap.className = 'shop-field' + (name === 'color' ? ' shop-field-color' : '');
+      const label = document.createElement('label');
+      label.htmlFor = id;
+      label.textContent = labelText;
+      label.className = 'visually-hidden'; // the select's first option reads as its label
+      selectEl.id = id;
+      selectEl.className = 'shop-select';
+      selectEl.dataset.field = name;
+      wrap.append(label, selectEl);
+      if (chartKey) {
+        // The color choice sits on the same row as quantity and Add.
+        card.querySelector('.shop-actionrow').prepend(wrap);
+        return selectEl;
+      }
+      card.querySelector('.shop-fields').appendChild(wrap);
+      return selectEl;
     }
 
-    // Unit price + surcharges only (oversize/rainbow/stars&stripes) -
-    // mirrors the pricing half of what calculateEstimate() used to do
-    // in the single-item version of this form. Tax and shipping are
-    // NOT computed here anymore: those depend on the whole list at
-    // once (bundle discounts, shared box-capacity shipping tiers), so
-    // they're priced server-side by merch_list_price.php instead of
-    // re-derived a second time in JS - see that file's header comment.
+    function buildColorSelect(item, isFilament) {
+      const select = document.createElement('select');
+      select.innerHTML = isFilament ? tplFilament : tplGildan;
+      select.querySelector('option[value=""]').textContent = 'Color…';
+      if (isFilament) {
+        // Rainbow / Stars & Stripes only on the items that offer them.
+        const extras = [];
+        if (MERCH_PRICING.rainbowEligibleItems.includes(item)) extras.push('Rainbow (+$2)');
+        if (MERCH_PRICING.starsStripesEligibleItems.includes(item)) {
+          extras.push('Stars & Stripes (+$7)');
+        }
+        extras.forEach((value) => {
+          const opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = value;
+          select.appendChild(opt);
+        });
+        // Colors that can't be printed right now: greyed out and unpickable,
+        // with when they're back so nobody wonders why.
+        select.querySelectorAll('option').forEach((opt) => {
+          const note = UNAVAILABLE_COLORS[colorKey(opt.value)];
+          if (note && opt.value !== '') {
+            opt.disabled = true;
+            opt.textContent = `${opt.textContent} — ${note}`;
+          }
+        });
+      }
+      return select;
+    }
+
+    document.querySelectorAll('.shop-card:not([data-display-only])').forEach((card) => {
+      const item = card.dataset.item;
+      const isGildan = GILDAN_COLOR_ITEMS.includes(item);
+      const isFilament = FILAMENT_COLOR_ITEMS.includes(item);
+      if (isGildan || isFilament) {
+        makeField(card, 'Color', 'color', buildColorSelect(item, isFilament), isFilament ? 'filament' : 'gildan');
+      }
+      if (SIZE_AND_SLEEVE_ITEMS.includes(item)) {
+        const sleeve = document.createElement('select');
+        sleeve.innerHTML = '<option value="">Sleeve length…</option>' + SLEEVE_OPTIONS.map((s) => `<option value="${s}">${s}</option>`).join('');
+        makeField(card, 'Sleeve length', 'sleeve', sleeve);
+        const size = document.createElement('select');
+        size.innerHTML = '<option value="">Size…</option>' + SIZE_OPTIONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+        makeField(card, 'Size', 'size', size);
+      }
+      const fields = card.querySelector('.shop-fields');
+      if (!fields.children.length) fields.remove();
+
+      const qtyInput = card.querySelector('.shop-qty-input');
+      qtyInput.addEventListener('change', () => {
+        qtyInput.value = Math.min(MAX_QTY, Math.max(1, parseInt(qtyInput.value, 10) || 1));
+      });
+
+      // Clear a "please choose" flag as soon as the choice is made.
+      card.querySelectorAll('.shop-select').forEach((sel) => {
+        sel.addEventListener('change', () => {
+          sel.removeAttribute('aria-invalid');
+          const msg = card.querySelector('.shop-card-msg');
+          if (!card.querySelector('.shop-select[aria-invalid]')) {
+            msg.textContent = '';
+            msg.classList.remove('is-error');
+          }
+        });
+      });
+
+      card.querySelector('.shop-add-btn').addEventListener('click', () => addFromCard(card));
+    });
+
+    // ============================================================
+    // Per-line price (unit price + surcharges only, mirrors
+    // merch_unit_price())
+    // ============================================================
     function calculateItemSubtotal(item, quantity, size, sleeve, color) {
       const cfg = MERCH_PRICING;
       const base = cfg.prices[item];
@@ -914,209 +940,16 @@
         unitPrice += cfg.rainbowSurcharge;
       }
       if (cfg.starsStripesEligibleItems.includes(item) && color === 'Stars & Stripes (+$7)') {
-        // Per-item override (e.g. Blade Holder) if the server sent one,
-        // else the global surcharge - mirrors merch_unit_price()'s
-        // STARS_STRIPES_SURCHARGES lookup in pricing.php exactly, so the
-        // live estimate matches what the customer is actually charged.
         unitPrice += cfg.starsStripesSurcharges?.[item] ?? cfg.starsStripesSurcharge;
       }
-
       return { unitPrice, subtotal: unitPrice * quantity };
     }
 
-    function updateEstimate() {
-      const item = merchItemField.value;
-      const quantity = Math.min(MERCH_PRICING.maxQuantity, Math.max(1, parseInt(merchQuantity.value, 10) || 1));
-      const size = merchSizeSelect.value;
-      const sleeve = merchSleeveSelect.value;
-      // Only one of the two color selects is ever enabled at a time - read
-      // whichever one is actually active (see openMerchModal() below).
-      const color = FILAMENT_COLOR_ITEMS.includes(item) ? merchColorFilament.value : merchColorGildan.value;
-
-      const est = calculateItemSubtotal(item, quantity, size, sleeve, color);
-      if (!est) {
-        merchEstimate.innerHTML = '';
-        return;
-      }
-
-      let html = `<div class="merch-estimate-total">Item subtotal: ${formatMoney(est.subtotal)} (${quantity} &times; ${formatMoney(est.unitPrice)})</div>`;
-      // Bundle nudge (2026-08-21): if this item is part of a
-      // MERCH_BUNDLES pair, advertise the buy-both discount. The
-      // discount itself is applied automatically once both are in the
-      // list (merch_list_price.php -> merch_group_calculate()) - this
-      // is just the "hey, did you know" nudge. Text comes pre-resolved
-      // from strings/pages/merch-bundle-nudge.txt via
-      // merch_pricing_for_js().
-      const bundleNudge = MERCH_PRICING.bundleNudges[item];
-      if (bundleNudge) {
-        html += `<div class="merch-estimate-note merch-bundle-nudge" style="margin-top:6px;"><strong>${bundleNudge}</strong></div>`;
-      }
-      html += `<div class="merch-estimate-note" style="margin-top:6px;">Tax and shipping are calculated once for your whole list at checkout.</div>`;
-      merchEstimate.innerHTML = html;
-    }
-
-    [merchQuantity, merchSizeSelect, merchSleeveSelect, merchColorGildan, merchColorFilament].forEach((el) => {
-      el.addEventListener('change', updateEstimate);
-      el.addEventListener('input', updateEstimate);
-    });
-
-    // Which existing list line (by id) the item-add modal is currently
-    // editing - null means "Add To Your List" will push a brand-new line
-    // instead of updating one in place. Set by a list line's "Edit"
-    // button (see renderList() below), cleared on close/submit.
-    let editingListLineId = null;
-
-    // existingLine (optional): a list line object to pre-fill the form
-    // from and update in place instead of adding a new one - see the
-    // list line "Edit" button in renderList() below.
-    function openMerchModal(itemName, existingLine) {
-      merchItemField.value = itemName;
-      merchModalItem.textContent = itemName;
-      editingListLineId = existingLine ? existingLine.id : null;
-      merchItemSubmitBtn.textContent = existingLine ? 'Update List Line' : 'Add To Your List';
-
-      const needsGildanColor = GILDAN_COLOR_ITEMS.includes(itemName);
-      const needsFilamentColor = FILAMENT_COLOR_ITEMS.includes(itemName);
-      const needsColor = needsGildanColor || needsFilamentColor;
-      colorFieldWrapper.hidden = !needsColor;
-      colorFieldLabel.setAttribute('for', needsFilamentColor ? 'merch-color-filament' : 'merch-color-gildan');
-
-      // Only the select that matches this item stays enabled - the other
-      // one's wrapper div is hidden (hiding the <select> itself doesn't work -
-      // ".merch-modal-content select { display: block }" outranks a bare
-      // [hidden] select on specificity) and the select is disabled so it's
-      // left out of the form submission entirely (both share name="color").
-      gildanColorWrapper.hidden = !needsGildanColor;
-      merchColorGildan.disabled = !needsGildanColor;
-      merchColorGildan.required = needsGildanColor;
-      filamentColorWrapper.hidden = !needsFilamentColor;
-      merchColorFilament.disabled = !needsFilamentColor;
-      merchColorFilament.required = needsFilamentColor;
-
-      const rainbowOption = document.getElementById('color-option-rainbow');
-      rainbowOption.hidden = !MERCH_PRICING.rainbowEligibleItems.includes(itemName);
-      const starsStripesOption = document.getElementById('color-option-stars-stripes');
-      starsStripesOption.hidden = !MERCH_PRICING.starsStripesEligibleItems.includes(itemName);
-
-      const existingColor = existingLine ? (existingLine.color || '') : '';
-      if (needsGildanColor) {
-        merchColorGildan.value = existingColor;
-      } else {
-        merchColorGildan.value = '';
-      }
-      if (
-        needsFilamentColor
-        && !(existingColor === 'Rainbow (+$2)' && rainbowOption.hidden)
-        && !(existingColor === 'Stars & Stripes (+$7)' && starsStripesOption.hidden)
-      ) {
-        merchColorFilament.value = existingColor;
-      } else {
-        merchColorFilament.value = '';
-      }
-
-      const needsSizeAndSleeve = SIZE_AND_SLEEVE_ITEMS.includes(itemName);
-      sizeFieldWrapper.hidden = !needsSizeAndSleeve;
-      merchSizeSelect.required = needsSizeAndSleeve;
-      sleeveFieldWrapper.hidden = !needsSizeAndSleeve;
-      merchSleeveSelect.required = needsSizeAndSleeve;
-      if (needsSizeAndSleeve) {
-        merchSizeSelect.value = existingLine ? (existingLine.size || '') : '';
-        merchSleeveSelect.value = existingLine ? (existingLine.sleeve || '') : '';
-      } else {
-        merchSizeSelect.value = '';
-        merchSleeveSelect.value = '';
-      }
-
-      // New item: always start at quantity 1, same as before. Editing
-      // an existing line: start from whatever it's currently set to.
-      merchQuantity.value = existingLine ? existingLine.quantity : 1;
-      updateEstimate();
-
-      merchModal.hidden = false;
-      document.body.classList.add('lightbox-open');
-
-      // 2026-08-29 (Finding 19, a11y): move focus INTO the dialog the
-      // moment it opens - without this, focus stayed on whichever
-      // button opened it, underneath the now-visible modal, so a
-      // keyboard/screen-reader user tabbing "forward" would walk
-      // through the rest of the page behind an open dialog before ever
-      // reaching the form they just opened. 2026-09-14: Name used to be
-      // the form's first field and always got focus directly; now the
-      // first VISIBLE field varies by item (color/size may be hidden),
-      // so this focuses whichever real control is actually first.
-      merchModalReturnFocusEl = document.activeElement;
-      focusFirstFocusable(merchModal);
-    }
-
-    function closeMerchModal() {
-      merchModal.hidden = true;
-      document.body.classList.remove('lightbox-open');
-      editingListLineId = null;
-      // Return focus to whichever button opened this, so a keyboard
-      // user ends up back where they started instead of at the top of
-      // the page (the browser's default when the previously-focused
-      // element is hidden out from under it).
-      if (merchModalReturnFocusEl) {
-        merchModalReturnFocusEl.focus();
-        merchModalReturnFocusEl = null;
-      }
-    }
-
-    // 2026-08-29 (Finding 19, a11y): a real dialog has to trap Tab
-    // inside itself while open - otherwise Tab/Shift+Tab eventually
-    // walks focus out into the (visually covered, but still in the DOM)
-    // page behind it. Recomputed on every Tab press rather than cached
-    // once, since which fields are hidden/disabled changes per item
-    // (color/size/sleeve fields toggle visibility - see openMerchModal()
-    // above). 2026-09-14: generalized to work on either dialog (the
-    // item-add modal AND the list/checkout modal below), since there
-    // are now two.
-    function focusableWithin(modalEl) {
-      const focusable = modalEl.querySelectorAll(
-        'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
-      return Array.from(focusable).filter((el) => el.offsetParent !== null);
-    }
-
-    function focusFirstFocusable(modalEl) {
-      const visible = focusableWithin(modalEl);
-      if (visible.length > 0) visible[0].focus();
-    }
-
-    function trapTabWithin(modalEl, event) {
-      if (event.key !== 'Tab') return;
-      const visible = focusableWithin(modalEl);
-      if (visible.length === 0) return;
-      const first = visible[0];
-      const last = visible[visible.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    document.querySelectorAll('.merch-request-btn').forEach((btn) => {
-      btn.addEventListener('click', () => openMerchModal(btn.dataset.item));
-    });
-
-    merchModalClose.addEventListener('click', closeMerchModal);
-    merchModal.addEventListener('click', (event) => {
-      if (event.target === merchModal) closeMerchModal();
-    });
-
     // ============================================================
-    // List state (2026-09-14) - the running list the item-add modal
-    // above adds/updates lines in, and the list/checkout modal below
-    // renders, prices, and finally submits as one order. Persisted to
-    // localStorage (a real site, not the sandboxed in-conversation
-    // preview this pattern is normally restricted on) purely as a
-    // convenience so an accidental reload or a bumped link doesn't
-    // silently lose a half-built list - every read/write is wrapped
-    // in try/catch and the list still works fine for the page visit if
-    // storage is blocked (private browsing, cleared/full storage).
+    // List state. Persisted to localStorage purely as a convenience so
+    // an accidental reload doesn't lose a half-built list - every
+    // read/write is wrapped in try/catch and the list still works for the
+    // page visit if storage is blocked.
     // ============================================================
     const LIST_STORAGE_KEY = 'sfrMerchList_v1';
 
@@ -1125,7 +958,18 @@
         const raw = window.localStorage.getItem(LIST_STORAGE_KEY);
         if (!raw) return [];
         const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
+        if (!Array.isArray(parsed)) return [];
+        // Drop anything that no longer matches the catalog (an item that
+        // was renamed or retired since the visitor's last visit).
+        return parsed.filter((l) => l && typeof l.item === 'string' && MERCH_PRICING.prices[l.item] !== undefined)
+          .map((l) => ({
+            id: l.id || makeListLineId(),
+            item: l.item,
+            quantity: Math.min(MAX_QTY, Math.max(1, parseInt(l.quantity, 10) || 1)),
+            size: l.size || '',
+            sleeve: l.sleeve || '',
+            color: l.color || '',
+          }));
       } catch (err) {
         return [];
       }
@@ -1135,33 +979,153 @@
       try {
         window.localStorage.setItem(LIST_STORAGE_KEY, JSON.stringify(list));
       } catch (err) {
-        // Storage unavailable or full - the list still works for this
-        // page visit, it just won't survive a reload. Not worth
-        // surfacing to the customer.
+        // Storage unavailable or full - not worth surfacing.
       }
     }
-
-    let list = loadStoredList();
 
     function makeListLineId() {
       return 'l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     }
 
-    function listLineDetailLabel(line) {
-      const details = [];
-      if (line.color) details.push(line.color);
-      if (line.size) details.push(line.size);
-      if (line.sleeve) details.push(line.sleeve);
-      return details.join(', ');
+    let list = [];
+
+    function colorLabel(color) {
+      return color.replace(/ \(\+\$\d+\)$/, '') + (/\(\+\$\d+\)$/.test(color) ? ' ' + color.match(/\(\+\$\d+\)$/)[0] : '');
     }
 
-    function listLineSubtotal(line) {
+    // Tapping a line's color swaps it for the same drop-down the card
+    // uses, so a wrong pick is one tap to fix instead of delete-and-re-add.
+    // If the new color matches another line exactly, the two are merged.
+    function editLineColor(line, detailEl) {
+      const isFilament = FILAMENT_COLOR_ITEMS.includes(line.item);
+      const select = buildColorSelect(line.item, isFilament);
+      select.className = 'shop-select shop-line-colorselect';
+      select.setAttribute('aria-label', `Color for ${line.item}`);
+      select.value = line.color;
+      detailEl.innerHTML = '';
+      detailEl.appendChild(select);
+      select.focus();
+      let done = false;
+      select.addEventListener('change', () => {
+        if (done || !select.value) return;
+        done = true;
+        line.color = select.value;
+        const twin = list.find((l) => l !== line && l.item === line.item && l.color === line.color && l.size === line.size && l.sleeve === line.sleeve);
+        if (twin) {
+          twin.quantity = Math.min(MAX_QTY, twin.quantity + line.quantity);
+          list = list.filter((l) => l !== line);
+        }
+        renderList();
+      });
+      select.addEventListener('blur', () => { if (!done) { done = true; renderList(); } });
+    }
+
+    function lineDetailLabel(line) {
+      const details = [];
+      if (line.color) details.push(line.color.replace(/ \(\+\$\d+\)$/, '') + (/\(\+\$\d+\)$/.test(line.color) ? ' ' + line.color.match(/\(\+\$\d+\)$/)[0] : ''));
+      if (line.sleeve) details.push(line.sleeve);
+      if (line.size) details.push('Size ' + line.size);
+      return details.join(' · ');
+    }
+
+    function lineSubtotal(line) {
       const est = calculateItemSubtotal(line.item, line.quantity, line.size, line.sleeve, line.color);
       return est ? est.subtotal : 0;
     }
 
-    function removeListLine(id) {
+    function addFromCard(card) {
+      const item = card.dataset.item;
+      const msg = card.querySelector('.shop-card-msg');
+      const colorSel = card.querySelector('[data-field="color"]');
+      const sizeSel = card.querySelector('[data-field="size"]');
+      const sleeveSel = card.querySelector('[data-field="sleeve"]');
+      const qtyInput = card.querySelector('.shop-qty-input');
+
+      // Everything that is needed must be chosen. Flag the first missing
+      // one in plain words and send focus to it.
+      const needs = [
+        [colorSel, 'a color'], [sleeveSel, 'a sleeve length'], [sizeSel, 'a size'],
+      ].filter(([sel]) => sel && !sel.value);
+      card.querySelectorAll('.shop-select').forEach((sel) => sel.removeAttribute('aria-invalid'));
+      if (needs.length) {
+        needs.forEach(([sel]) => sel.setAttribute('aria-invalid', 'true'));
+        const words = needs.map(([, w]) => w);
+        msg.textContent = 'Please choose ' + (words.length > 1 ? words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1] : words[0]) + '.';
+        msg.classList.add('is-error');
+        needs[0][0].focus();
+        return;
+      }
+
+      const quantity = Math.min(MAX_QTY, Math.max(1, parseInt(qtyInput.value, 10) || 1));
+      const color = colorSel ? colorSel.value : '';
+      const size = sizeSel ? sizeSel.value : '';
+      const sleeve = sleeveSel ? sleeveSel.value : '';
+
+      const existing = list.find((l) => l.item === item && l.color === color && l.size === size && l.sleeve === sleeve);
+      if (existing) {
+        existing.quantity = Math.min(MAX_QTY, existing.quantity + quantity);
+      } else {
+        if (list.length >= MERCH_PRICING.listMaxLines) {
+          msg.textContent = `One request can hold up to ${MERCH_PRICING.listMaxLines} different lines - please send this one first, or remove something.`;
+          msg.classList.add('is-error');
+          return;
+        }
+        list.push({ id: makeListLineId(), item, quantity, size, sleeve, color });
+      }
+
+      msg.classList.remove('is-error');
+      msg.textContent = '';
+      qtyInput.value = 1;
+      const btn = card.querySelector('.shop-add-btn');
+      btn.innerHTML = 'Added <span aria-hidden="true">\u2713</span>';
+      btn.classList.add('is-added');
+      clearTimeout(btn._resetTimer);
+      btn._resetTimer = setTimeout(() => {
+        btn.innerHTML = 'Add <span aria-hidden="true">\u2192</span>';
+        btn.classList.remove('is-added');
+      }, 1600);
+
+      renderList();
+    }
+
+    // ============================================================
+    // Rendering the list panel (grouped like the invoices: 3D-printed
+    // items vs. shirts & hats), then the bottom bar.
+    // ============================================================
+    const listGroupsEl = document.getElementById('list-groups');
+    const listEmptyEl = document.getElementById('list-empty');
+    const listSetHint = document.getElementById('list-set-hint');
+    const listInvoiceNote = document.getElementById('list-invoice-note');
+    const requestBtn = document.getElementById('request-btn');
+    const shopBar = document.getElementById('shop-bar');
+    const shopBarCount = document.getElementById('shop-bar-count');
+    const shopBarTotal = document.getElementById('shop-bar-total');
+
+    const GROUPS = [
+      { key: 'printed', label: '3D-printed items' },
+      { key: 'apparel', label: 'Shirts & hats' },
+    ];
+    // key -> last pricing result for that group from the server
+    let pricingByGroup = {};
+
+    // item name -> card photo, for the little thumbnails in the list
+    const THUMBS = {};
+    document.querySelectorAll('.shop-card[data-thumb]').forEach((c) => { THUMBS[c.dataset.item] = c.dataset.thumb; });
+
+    function groupKeyFor(item) {
+      return PRINTED_ITEMS.includes(item) ? 'printed' : 'apparel';
+    }
+
+    function removeLine(id) {
       list = list.filter((l) => l.id !== id);
+      renderList();
+    }
+
+    function stepLine(line, delta) {
+      const next = line.quantity + delta;
+      if (next < 1) { removeLine(line.id); return; }
+      if (next > MAX_QTY) return;
+      line.quantity = next;
       renderList();
     }
 
@@ -1169,205 +1133,205 @@
       saveListToStorage();
 
       const itemCount = list.reduce((sum, l) => sum + l.quantity, 0);
-      const roughSubtotal = list.reduce((sum, l) => sum + listLineSubtotal(l), 0);
+      const roughSubtotal = list.reduce((sum, l) => sum + lineSubtotal(l), 0);
+      const empty = list.length === 0;
 
-      if (list.length === 0) {
-        listBar.hidden = true;
-      } else {
-        listBar.hidden = false;
-        listBarCount.textContent = `${itemCount} item${itemCount === 1 ? '' : 's'}`;
-        listBarTotal.textContent = formatMoney(roughSubtotal);
-      }
+      listEmptyEl.hidden = !empty;
+      requestBtn.disabled = empty;
+      shopBar.hidden = empty;
+      shopBarCount.textContent = pluralItems(itemCount);
+      shopBarTotal.textContent = formatMoney(roughSubtotal);
 
-      listLinesEl.innerHTML = '';
-      list.forEach((line) => {
-        const row = document.createElement('div');
-        row.className = 'list-line';
+      listGroupsEl.innerHTML = '';
+      GROUPS.forEach((group) => {
+        const lines = list.filter((l) => groupKeyFor(l.item) === group.key);
+        if (!lines.length) return;
 
-        const info = document.createElement('div');
-        info.className = 'list-line-info';
-        const detailLabel = listLineDetailLabel(line);
-        info.innerHTML = `<div class="list-line-item">${escapeHtml(line.item)}</div>`
-          + (detailLabel ? `<div class="list-line-detail">${escapeHtml(detailLabel)}</div>` : '')
-          + `<div class="list-line-price">${formatMoney(listLineSubtotal(line))}</div>`;
+        const section = document.createElement('section');
+        section.className = 'shop-list-group';
+        section.dataset.group = group.key;
+        const h = document.createElement('h3');
+        h.textContent = group.label;
+        section.appendChild(h);
 
-        const qtyStepper = document.createElement('div');
-        qtyStepper.className = 'list-line-qty';
-        const decBtn = document.createElement('button');
-        decBtn.type = 'button';
-        decBtn.className = 'list-qty-btn';
-        decBtn.textContent = '−';
-        decBtn.setAttribute('aria-label', `Decrease quantity of ${line.item}`);
-        decBtn.addEventListener('click', () => {
-          if (line.quantity <= 1) {
-            removeListLine(line.id);
-          } else {
-            line.quantity -= 1;
-            renderList();
+        lines.forEach((line) => {
+          const row = document.createElement('div');
+          row.className = 'shop-line';
+          const detail = lineDetailLabel(line);
+
+          const thumb = document.createElement('div');
+          thumb.className = 'shop-line-thumb';
+          if (THUMBS[line.item]) {
+            const img = document.createElement('img');
+            img.src = THUMBS[line.item];
+            img.alt = '';
+            thumb.appendChild(img);
           }
-        });
-        const qtyLabel = document.createElement('span');
-        qtyLabel.className = 'list-qty-label';
-        qtyLabel.textContent = String(line.quantity);
-        const incBtn = document.createElement('button');
-        incBtn.type = 'button';
-        incBtn.className = 'list-qty-btn';
-        incBtn.textContent = '+';
-        incBtn.setAttribute('aria-label', `Increase quantity of ${line.item}`);
-        incBtn.addEventListener('click', () => {
-          if (line.quantity >= MERCH_PRICING.maxQuantity) return;
-          line.quantity += 1;
-          renderList();
-        });
-        qtyStepper.append(decBtn, qtyLabel, incBtn);
 
-        const actions = document.createElement('div');
-        actions.className = 'list-line-actions';
-        const editBtn = document.createElement('button');
-        editBtn.type = 'button';
-        editBtn.className = 'btn-secondary list-line-edit';
-        editBtn.textContent = 'Edit';
-        editBtn.addEventListener('click', () => {
-          closeListModal();
-          openMerchModal(line.item, line);
-        });
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'list-line-remove';
-        removeBtn.textContent = 'Remove';
-        removeBtn.setAttribute('aria-label', `Remove ${line.item} from list`);
-        removeBtn.addEventListener('click', () => removeListLine(line.id));
-        actions.append(editBtn, removeBtn);
+          const info = document.createElement('div');
+          info.className = 'shop-line-info';
+          info.innerHTML = `<div class="shop-line-name">${escapeHtml(line.item)}</div>`;
+          const detailEl = document.createElement('div');
+          detailEl.className = 'shop-line-detail';
+          if (line.color) {
+            const colorBtn = document.createElement('button');
+            colorBtn.type = 'button';
+            colorBtn.className = 'shop-info-link shop-line-colorlink';
+            colorBtn.textContent = colorLabel(line.color);
+            colorBtn.setAttribute('aria-label', `Color ${colorLabel(line.color)}. Change color for ${line.item}`);
+            colorBtn.addEventListener('click', () => editLineColor(line, detailEl));
+            detailEl.appendChild(colorBtn);
+          }
+          const rest = [];
+          if (line.sleeve) rest.push(line.sleeve);
+          if (line.size) rest.push('Size ' + line.size);
+          if (rest.length) detailEl.appendChild(document.createTextNode((line.color ? ' \u00b7 ' : '') + rest.join(' \u00b7 ')));
+          if (detailEl.childNodes.length) info.appendChild(detailEl);
 
-        row.append(info, qtyStepper, actions);
-        listLinesEl.appendChild(row);
+          const controls = document.createElement('div');
+          controls.className = 'shop-line-controls';
+          const qty = document.createElement('input');
+          qty.type = 'number';
+          qty.className = 'shop-qty-input shop-line-qtyinput';
+          qty.min = '1';
+          qty.max = String(MAX_QTY);
+          qty.value = String(line.quantity);
+          qty.setAttribute('inputmode', 'numeric');
+          qty.setAttribute('aria-label', `Quantity of ${line.item}`);
+          qty.addEventListener('change', () => {
+            const n = parseInt(qty.value, 10);
+            line.quantity = Math.min(MAX_QTY, Math.max(1, Number.isFinite(n) ? n : line.quantity));
+            renderList();
+          });
+          controls.appendChild(qty);
+          info.appendChild(controls);
+
+          const side = document.createElement('div');
+          side.className = 'shop-line-side';
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'shop-line-remove';
+          remove.innerHTML = '&times;';
+          remove.setAttribute('aria-label', `Remove ${line.item} from list`);
+          remove.addEventListener('click', () => removeLine(line.id));
+          const price = document.createElement('div');
+          price.className = 'shop-line-price';
+          price.textContent = formatMoney(lineSubtotal(line));
+          side.append(remove, price);
+
+          row.append(thumb, info, side);
+          section.appendChild(row);
+        });
+
+        const totals = document.createElement('div');
+        totals.className = 'shop-totals';
+        totals.dataset.group = group.key;
+        section.appendChild(totals);
+        listGroupsEl.appendChild(section);
       });
 
-      listEmptyNote.hidden = list.length > 0;
-      listSubmitBtn.disabled = list.length === 0;
-
+      renderSetHint();
+      renderInvoiceNote();
+      renderAllTotals();
       refreshListPricing();
+      // The checkout step's Submit button depends on the list being non-empty.
+      updateCheckoutState();
     }
 
-    merchItemForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      // No native form action on this form (it's JS-only - see the
-      // HTML comment above #merch-item-form), so checkValidity() +
-      // reportValidity() is what actually triggers the browser's native
-      // "please fill this out" bubble UI for required fields, same as
-      // a real submit always would.
-      if (!merchItemForm.checkValidity()) {
-        merchItemForm.reportValidity();
+    // Pair-deal nudge box (the whole-set discount no longer gets a hint).
+    function renderSetHint() {
+      const textEl = document.getElementById('list-set-text');
+      // The whole-set discount is applied silently (see the totals); this
+      // box now only carries the Tape Gun pair nudge.
+      const have = new Set(list.map((l) => l.item));
+      let html = '';
+      // Pair deals (Tape Gun Holder + Add-On): once one is in the list
+      // without the other, say so.
+      const nudged = new Set();
+      BUNDLES.forEach((bundle) => {
+        const present = bundle.items.filter((i) => have.has(i));
+        if (present.length > 0 && present.length < bundle.items.length) {
+          present.forEach((i) => {
+            const note = MERCH_PRICING.bundleNudges[i];
+            if (note && !nudged.has(note)) { nudged.add(note); html += `<span class="shop-hint-extra">${note}</span>`; }
+          });
+        }
+      });
+      textEl.innerHTML = html;
+      listSetHint.hidden = html === '';
+    }
+
+    function renderInvoiceNote() {
+      if (list.length === 0 || !checkoutForm.hidden) { listInvoiceNote.hidden = true; return; }
+      const groups = GROUPS.filter((g) => list.some((l) => groupKeyFor(l.item) === g.key));
+      listInvoiceNote.hidden = false;
+      listInvoiceNote.textContent = groups.length > 1
+        ? 'Nothing is charged yet. You’ll get one invoice for the 3D-printed items and a separate one for the shirts & hats, since they’re made and shipped on different schedules.'
+        : 'Nothing is charged yet. We’ll email your invoice with the final total and payment instructions.';
+    }
+
+    function renderAllTotals() {
+      document.querySelectorAll('.shop-totals').forEach((el) => renderTotals(el));
+    }
+
+    function renderTotals(el) {
+      const key = el.dataset.group;
+      const pricing = pricingByGroup[key];
+      const isShipping = merchFulfillment.value === 'Ship';
+      const lines = list.filter((l) => groupKeyFor(l.item) === key);
+      const roughSubtotal = lines.reduce((sum, l) => sum + lineSubtotal(l), 0);
+
+      if (!pricing) {
+        el.classList.add('is-stale');
+        el.innerHTML = `<div class="shop-totals-row"><span>Subtotal</span><span>${formatMoney(roughSubtotal)}</span></div>`
+          + '<div class="shop-totals-note">Working out tax and shipping&hellip;</div>';
         return;
       }
+      el.classList.toggle('is-stale', !!pricing.stale);
 
-      const item = merchItemField.value;
-      const quantity = Math.min(MERCH_PRICING.maxQuantity, Math.max(1, parseInt(merchQuantity.value, 10) || 1));
-      const size = merchSizeSelect.value;
-      const sleeve = merchSleeveSelect.value;
-      const color = FILAMENT_COLOR_ITEMS.includes(item) ? merchColorFilament.value : merchColorGildan.value;
-
-      if (editingListLineId !== null) {
-        const line = list.find((l) => l.id === editingListLineId);
-        if (line) {
-          Object.assign(line, { item, quantity, size, sleeve, color });
-        }
+      let html = `<div class="shop-totals-row"><span>Subtotal</span><span>${formatMoney(pricing.subtotal)}</span></div>`;
+      if (pricing.bundleDiscount) {
+        html += `<div class="shop-totals-row shop-totals-discount"><span>Bundle discount</span><span>&minus;${formatMoney(pricing.bundleDiscount)}</span></div>`;
+      }
+      if (pricing.fullSetDiscount) {
+        html += `<div class="shop-totals-row shop-totals-discount"><span>Whole-set discount</span><span>&minus;${formatMoney(pricing.fullSetDiscount)}</span></div>`;
+      }
+      html += `<div class="shop-totals-row"><span>Tax (7%)</span><span>${formatMoney(pricing.tax)}</span></div>`;
+      if (!isShipping) {
+        html += '<div class="shop-totals-row"><span>Shipping</span><span>Pickup — none</span></div>';
+        html += `<div class="shop-totals-row shop-totals-total"><span>Estimated total</span><span>${formatMoney(pricing.total)}</span></div>`;
+      } else if (pricing.shipping !== null) {
+        html += `<div class="shop-totals-row"><span><button type="button" class="shop-info-link" data-info="shipping">Shipping</button></span><span>${formatMoney(pricing.shipping)}</span></div>`;
+        html += `<div class="shop-totals-row shop-totals-total"><span>Estimated total</span><span>${formatMoney(pricing.total)}</span></div>`;
       } else {
-        if (list.length >= MERCH_PRICING.listMaxLines) {
-          window.alert(`You can add up to ${MERCH_PRICING.listMaxLines} different items to one order - please submit this order first, or remove something to add another.`);
-          return;
-        }
-        list.push({ id: makeListLineId(), item, quantity, size, sleeve, color });
+        html += '<div class="shop-totals-row"><span><button type="button" class="shop-info-link" data-info="shipping">Shipping</button></span><span>Quote needed</span></div>';
+        html += `<div class="shop-totals-note">${pricing.shippingNote}</div>`;
+        html += `<div class="shop-totals-row shop-totals-total"><span>Estimated total <small>(before shipping)</small></span><span>${formatMoney(pricing.total)}</span></div>`;
       }
-
-      renderList();
-      closeMerchModal();
-    });
-
-    // ============================================================
-    // List bar + list/checkout modal (2026-09-14)
-    // ============================================================
-    const listBar = document.getElementById('list-bar');
-    const listBarOpen = document.getElementById('list-bar-open');
-    const listBarCount = document.getElementById('list-bar-count');
-    const listBarTotal = document.getElementById('list-bar-total');
-
-    const listModal = document.getElementById('list-modal');
-    const listModalClose = document.getElementById('list-modal-close');
-    const listLinesEl = document.getElementById('list-lines');
-    const listEmptyNote = document.getElementById('list-empty-note');
-    const listEstimate = document.getElementById('list-estimate');
-    const listSubmitBtn = document.getElementById('list-submit-btn');
-    const listKeepBrowsingBtn = document.getElementById('list-keep-browsing-btn');
-    let listModalReturnFocusEl = null;
-
-    const merchCheckoutForm = document.getElementById('merch-checkout-form');
-    const listPayloadField = document.getElementById('list-payload-field');
-    const merchNameInput = document.getElementById('merch-name');
-    const shippingFields = document.getElementById('shipping-fields');
-    const merchAddress = document.getElementById('merch-address');
-    const merchCity = document.getElementById('merch-city');
-    const merchState = document.getElementById('merch-state');
-    const merchZip = document.getElementById('merch-zip');
-    const retreatFields = document.getElementById('retreat-fields');
-    const merchRetreat = document.getElementById('merch-retreat');
-    const merchFulfillment = document.getElementById('merch-fulfillment');
-
-    function updateShippingFieldsRequired() {
-      const shipping = merchFulfillment.value === 'Ship';
-      shippingFields.hidden = !shipping;
-      [merchAddress, merchCity, merchState, merchZip].forEach((el) => {
-        el.required = shipping;
-      });
-      // 2026-08-25: same show/require toggle, mirrored for "which
-      // retreat" - Ship and Pickup at retreat are the only two
-      // Fulfillment values, so it's just the inverse of `shipping`,
-      // no separate condition needed.
-      retreatFields.hidden = shipping;
-      merchRetreat.required = !shipping;
-      if (shipping) {
-        // Switched back to Ship after picking a retreat - clear the
-        // stale selection so it can't ride along in the submission
-        // (mirrors merch_order.php's own server-side blanking of this
-        // field whenever Fulfillment isn't Pickup).
-        merchRetreat.value = '';
-      }
+      el.innerHTML = html;
     }
 
-    merchFulfillment.addEventListener('change', () => {
-      updateShippingFieldsRequired();
-      // Shipping (Ship vs. Pickup) changes whether the combined total
-      // includes a shipping line at all - re-price the whole list.
-      refreshListPricing();
-    });
-
-    // Combined pricing across every list line - bundle discounts and
-    // the shared box-capacity shipping tier both depend on the WHOLE
-    // list at once, so this is priced server-side by
-    // merch_list_price.php (same merch_group_calculate() the admin
-    // "Send Invoice" button uses) rather than re-derived a second time
-    // in JS - see that file's header comment. Debounced slightly so a
-    // burst of quantity-stepper clicks doesn't fire one request per
-    // click; requestId guards against an in-flight request that's now
-    // stale (list changed again before it returned) painting over a
-    // newer result.
-    let listPricingDebounceTimer = null;
-    let listPricingRequestSeq = 0;
+    // Combined pricing per invoice group - bundle discounts and the shared
+    // box-capacity shipping tier depend on the WHOLE group at once, so it
+    // is priced server-side by merch_list_price.php (same
+    // merch_group_calculate() the admin invoice uses) rather than
+    // re-derived in JS. Debounced so a burst of clicks makes one request;
+    // the sequence number drops any response that a newer request has
+    // already superseded.
+    let pricingTimer = null;
+    let pricingSeq = 0;
 
     function refreshListPricing() {
-      if (listPricingDebounceTimer) {
-        clearTimeout(listPricingDebounceTimer);
-        listPricingDebounceTimer = null;
-      }
-      if (list.length === 0) {
-        listEstimate.innerHTML = '';
-        return;
-      }
-      listPricingDebounceTimer = setTimeout(fetchListPricing, 200);
+      if (pricingTimer) { clearTimeout(pricingTimer); pricingTimer = null; }
+      if (list.length === 0) { pricingByGroup = {}; return; }
+      // Keep showing the last numbers, dimmed, until fresh ones arrive.
+      Object.values(pricingByGroup).forEach((p) => { p.stale = true; });
+      renderAllTotals();
+      pricingTimer = setTimeout(fetchListPricing, 200);
     }
 
     function fetchListPricing() {
-      const requestId = ++listPricingRequestSeq;
+      const requestId = ++pricingSeq;
       const body = new URLSearchParams();
       body.set('list', JSON.stringify(list.map((l) => ({
         item: l.item, quantity: l.quantity, size: l.size, sleeve: l.sleeve, color: l.color,
@@ -1377,106 +1341,200 @@
       fetch('merch_list_price.php', { method: 'POST', body })
         .then((res) => res.json())
         .then((data) => {
-          if (requestId !== listPricingRequestSeq) return; // superseded by a newer request
-          if (!data.ok) {
-            renderListPricingFallback();
-            return;
-          }
-          renderListEstimate(data);
+          if (requestId !== pricingSeq) return;
+          if (!data.ok) { pricingFallback(); return; }
+          pricingByGroup = {};
+          data.groups.forEach((g) => { pricingByGroup[g.key] = g; });
+          renderAllTotals();
         })
         .catch(() => {
-          if (requestId !== listPricingRequestSeq) return;
-          renderListPricingFallback();
+          if (requestId !== pricingSeq) return;
+          pricingFallback();
         });
     }
 
-    function renderListPricingFallback() {
-      listEstimate.innerHTML = `<div class="merch-estimate-note">Could not calculate your total right now &mdash; you can still submit, and we'll confirm your total by email.</div>`;
+    function pricingFallback() {
+      pricingByGroup = {};
+      document.querySelectorAll('.shop-totals').forEach((el) => {
+        el.classList.remove('is-stale');
+        el.innerHTML = '<div class="shop-totals-note">We couldn’t work out tax and shipping just now — you can still send your request, and we’ll confirm the total by email.</div>';
+      });
     }
 
-    function renderListEstimate(pricing) {
-      const isShipping = merchFulfillment.value === 'Ship';
-      let html = `<div>Subtotal: ${formatMoney(pricing.subtotal)}</div>`;
-      if (pricing.bundleDiscount) {
-        html += `<div>Bundle discount: &minus;${formatMoney(pricing.bundleDiscount)}</div>`;
-      }
-      if (pricing.fullSetDiscount) {
-        html += `<div>Full-set discount (Circle+Oval+Rectangle+Hearts+Blade): &minus;${formatMoney(pricing.fullSetDiscount)}</div>`;
-      }
-      html += `<div>Tax (7%): ${formatMoney(pricing.tax)}</div>`;
-      if (pricing.shipping !== null) {
-        html += `<div>Shipping: ${formatMoney(pricing.shipping)}</div>`;
-        html += `<div class="merch-estimate-total">Estimated Total: ${formatMoney(pricing.total)}</div>`;
-      } else if (isShipping) {
-        html += `<div class="merch-estimate-note">${pricing.shippingNote}</div>`;
-        html += `<div class="merch-estimate-total">Estimated Total (excl. shipping): ${formatMoney(pricing.total)}</div>`;
-      } else {
-        html += `<div class="merch-estimate-total">Estimated Total: ${formatMoney(pricing.total)}</div>`;
-      }
-      listEstimate.innerHTML = html;
+    // ============================================================
+    // Request step: contact / shipping, revealed inside the list panel
+    // ============================================================
+    const checkoutForm = document.getElementById('merch-checkout-form');
+    const listPayloadField = document.getElementById('list-payload-field');
+    const submitBtn = document.getElementById('list-submit-btn');
+    const submitHint = document.getElementById('submit-hint');
+    const merchFulfillment = document.getElementById('merch-fulfillment');
+    const shippingFields = document.getElementById('shipping-fields');
+    const retreatFields = document.getElementById('retreat-fields');
+    const merchRetreat = document.getElementById('merch-retreat');
+    const f = {
+      name: document.getElementById('merch-name'),
+      email: document.getElementById('merch-email'),
+      address: document.getElementById('merch-address'),
+      city: document.getElementById('merch-city'),
+      state: document.getElementById('merch-state'),
+      zip: document.getElementById('merch-zip'),
+    };
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    const ZIP_RE = /^\d{5}(-\d{4})?$/;
+
+    function showCheckout() {
+      checkoutForm.hidden = false;
+      requestBtn.hidden = true;
+      listInvoiceNote.hidden = true;
+      updateCheckoutState();
+      document.getElementById('checkout-heading').scrollIntoView({ block: 'start', behavior: 'smooth' });
+      f.name.focus({ preventScroll: true });
     }
 
-    function openListModal() {
-      listModalReturnFocusEl = document.activeElement;
-      listModal.hidden = false;
-      document.body.classList.add('lightbox-open');
+    function hideCheckout() {
+      checkoutForm.hidden = true;
+      requestBtn.hidden = false;
+      renderInvoiceNote();
+      requestBtn.focus();
+    }
+
+    requestBtn.addEventListener('click', showCheckout);
+    document.getElementById('checkout-back-btn').addEventListener('click', hideCheckout);
+
+    function updateShippingFieldsRequired() {
+      const shipping = merchFulfillment.value === 'Ship';
+      shippingFields.hidden = !shipping;
+      [f.address, f.city, f.state, f.zip].forEach((el) => { el.required = shipping; });
+      retreatFields.hidden = shipping;
+      document.getElementById('ship-region-note').hidden = !shipping;
+      merchRetreat.required = !shipping;
+      // Switched back to Ship after picking a retreat - clear the stale
+      // choice (merch_order.php blanks it for Ship orders too).
+      if (shipping) merchRetreat.value = '';
+    }
+
+    // The Submit button stays off until everything needed is filled in and
+    // looks right; the line above it says, in plain words, what is missing.
+    function missingFields() {
+      const missing = [];
+      if (list.length === 0) missing.push('at least one item');
+      if (!f.name.value.trim()) missing.push('your name');
+      if (!EMAIL_RE.test(f.email.value.trim())) missing.push('a valid email address');
+      if (merchFulfillment.value === 'Ship') {
+        if (!f.address.value.trim()) missing.push('your street address');
+        if (!f.city.value.trim()) missing.push('your city');
+        if (!f.state.value) missing.push('your state');
+        if (!ZIP_RE.test(f.zip.value.trim())) missing.push('a ZIP code');
+      } else if (!merchRetreat.value) {
+        missing.push('which retreat');
+      }
+      return missing;
+    }
+
+    function updateCheckoutState() {
+      const missing = missingFields();
+      submitBtn.disabled = missing.length > 0;
+      submitHint.textContent = missing.length ? 'Still needed: ' + missing.join(', ') + '.' : '';
+    }
+
+    checkoutForm.addEventListener('input', updateCheckoutState);
+    checkoutForm.addEventListener('change', updateCheckoutState);
+
+    merchFulfillment.addEventListener('change', () => {
+      updateShippingFieldsRequired();
+      updateCheckoutState();
+      // Ship vs. Pickup changes whether each group has a shipping line.
       refreshListPricing();
-      focusFirstFocusable(listModal);
-    }
-
-    function closeListModal() {
-      listModal.hidden = true;
-      document.body.classList.remove('lightbox-open');
-      if (listModalReturnFocusEl) {
-        listModalReturnFocusEl.focus();
-        listModalReturnFocusEl = null;
-      }
-    }
-
-    listBarOpen.addEventListener('click', openListModal);
-    listModalClose.addEventListener('click', closeListModal);
-    listKeepBrowsingBtn.addEventListener('click', closeListModal);
-    listModal.addEventListener('click', (event) => {
-      if (event.target === listModal) closeListModal();
     });
 
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        if (!merchModal.hidden) closeMerchModal();
-        if (!listModal.hidden) closeListModal();
-        if (!photoViewerModal.hidden) closePhotoViewer();
-      }
-      if (!merchModal.hidden) trapTabWithin(merchModal, event);
-      if (!listModal.hidden) trapTabWithin(listModal, event);
-    });
-
-    // Disable the submit button the instant the form is submitted, so a
-    // double-click (or an impatient double-tap on mobile) can't create
-    // two orders for one list. The form still submits normally (real
-    // navigation to merch_order.php) - this only blocks a second click
-    // during the brief window before the page navigates away.
-    merchCheckoutForm.addEventListener('submit', (event) => {
-      if (list.length === 0) {
-        // Shouldn't be reachable (listSubmitBtn is disabled whenever
-        // the list is empty), but guard the real submission anyway.
+    // Disable Submit the instant the form is sent, so a double-tap can't
+    // create two orders. The form still submits normally.
+    checkoutForm.addEventListener('submit', (event) => {
+      if (missingFields().length > 0) {
         event.preventDefault();
+        updateCheckoutState();
         return;
       }
       listPayloadField.value = JSON.stringify(list.map((l) => ({
         item: l.item, quantity: l.quantity, size: l.size, sleeve: l.sleeve, color: l.color,
       })));
-      listSubmitBtn.disabled = true;
-      listSubmitBtn.textContent = 'Submitting...';
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending…';
       try {
         window.localStorage.removeItem(LIST_STORAGE_KEY);
       } catch (err) {
-        // Storage unavailable - nothing to clear, the order still submits fine.
+        // Storage unavailable - nothing to clear.
       }
     });
 
-    // Reflect whatever was restored from localStorage the moment the
-    // page loads, so a customer who left mid-list sees it waiting for
-    // them instead of having to notice nothing looks different.
+    // ============================================================
+    // Phone: the list panel is a sheet opened from the bottom bar
+    // ============================================================
+    const shopList = document.getElementById('shop-list');
+    const shopScrim = document.getElementById('shop-scrim');
+    const shopBarOpen = document.getElementById('shop-bar-open');
+    const shopListClose = document.getElementById('shop-list-close');
+    const phoneMQ = window.matchMedia('(max-width: 899px)');
+    let sheetReturnFocus = null;
+
+    function sheetIsOpen() {
+      return shopList.classList.contains('is-open');
+    }
+
+    function syncBodyLock() {
+      const anyOpen = !detailsModal.hidden || !infoModal.hidden || !photoViewerModal.hidden || sheetIsOpen();
+      document.body.classList.toggle('lightbox-open', anyOpen);
+    }
+
+    function openSheet() {
+      sheetReturnFocus = document.activeElement;
+      shopList.classList.add('is-open');
+      shopScrim.hidden = false;
+      shopList.setAttribute('role', 'dialog');
+      shopList.setAttribute('aria-modal', 'true');
+      syncBodyLock();
+      shopListClose.focus();
+    }
+
+    function closeSheet() {
+      shopList.classList.remove('is-open');
+      shopScrim.hidden = true;
+      shopList.removeAttribute('role');
+      shopList.removeAttribute('aria-modal');
+      syncBodyLock();
+      if (sheetReturnFocus && document.contains(sheetReturnFocus)) sheetReturnFocus.focus();
+      sheetReturnFocus = null;
+    }
+
+    shopBarOpen.addEventListener('click', openSheet);
+    shopListClose.addEventListener('click', closeSheet);
+    shopScrim.addEventListener('click', closeSheet);
+    // Rotating a tablet / resizing to desktop width: no sheet to leave open.
+    phoneMQ.addEventListener('change', () => { if (!phoneMQ.matches && sheetIsOpen()) closeSheet(); });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        if (!photoViewerModal.hidden) { closePhotoViewer(); return; }
+        if (!infoModal.hidden) { closeInfo(); return; }
+        if (!detailsModal.hidden) { closeDetails(); return; }
+        if (sheetIsOpen()) { closeSheet(); return; }
+      }
+      if (!photoViewerModal.hidden) {
+        if (event.key === 'ArrowLeft') showPrevPhoto();
+        if (event.key === 'ArrowRight') showNextPhoto();
+        return;
+      }
+      if (!infoModal.hidden) { trapTabWithin(infoModal, event); return; }
+      if (!detailsModal.hidden) { trapTabWithin(detailsModal, event); return; }
+      if (sheetIsOpen()) trapTabWithin(shopList, event);
+    });
+
+    // ============================================================
+    // Start-up: restore a saved list, then draw everything
+    // ============================================================
+    list = loadStoredList();
+    updateShippingFieldsRequired();
     renderList();
   </script>
 

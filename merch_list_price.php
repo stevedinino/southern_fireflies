@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-14-A
+// Build: 2026-10-21-A
 // ============================================================
 // Live COMBINED pricing for merch.php's list UI (2026-09-14 multi-item
 // list - see merch_order.php's file header comment for the overall
@@ -104,14 +104,38 @@ foreach ($listItems as $rawLine) {
     $items[] = ['item' => $item, 'quantity' => $quantity, 'size' => $size, 'sleeve' => $sleeve, 'color' => $color];
 }
 
-// $isPrinted only ever affects payment-account routing elsewhere
-// (which Venmo/PayPal to show) - never the shipping-tier decision
-// inside merch_group_calculate() itself, per that function's own doc
-// comment - and this endpoint never shows payment info, so the value
-// passed here is inert. false is fine.
-$pricing = merch_group_calculate($items, $isShipping, false);
-if ($pricing === null) {
-    merch_list_price_error('Could not price one of the items.');
+// 2026-10-21 (shop redesign): the list is now priced as up to TWO groups
+// - 3D-printed items, and shirts/hats ("apparel") - because that is how
+// they are invoiced (merch_invoice.php already splits unpaid rows the
+// same way: very different fulfilment timelines, and a printed-box
+// shipping tier shouldn't be shared with a T-shirt). Each group goes
+// through merch_group_calculate() on its own, so its bundle discount,
+// full-set discount, tax and shipping tier are exactly what that
+// invoice will show. Groups with no lines are omitted.
+//
+// $isPrinted only ever affects payment-account routing elsewhere (which
+// Venmo/PayPal to show) - never the shipping-tier decision inside
+// merch_group_calculate() itself, per that function's own doc comment -
+// and this endpoint never shows payment info, so the value passed
+// there is inert for the estimate beyond mirroring the group.
+$groupDefs = [
+    'printed' => ['label' => '3D-printed items', 'items' => []],
+    'apparel' => ['label' => 'Shirts & hats', 'items' => []],
+];
+foreach ($items as $line) {
+    $groupDefs[merch_is_printed_item($line['item']) ? 'printed' : 'apparel']['items'][] = $line;
 }
 
-echo json_encode(['ok' => true] + $pricing);
+$groups = [];
+foreach ($groupDefs as $key => $def) {
+    if (count($def['items']) === 0) {
+        continue;
+    }
+    $pricing = merch_group_calculate($def['items'], $isShipping, $key === 'printed');
+    if ($pricing === null) {
+        merch_list_price_error('Could not price one of the items.');
+    }
+    $groups[] = ['key' => $key, 'label' => $def['label']] + $pricing;
+}
+
+echo json_encode(['ok' => true, 'groups' => $groups]);

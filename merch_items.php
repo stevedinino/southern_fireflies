@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-21-B
+// Build: 2026-10-21-A
 // ============================================================
 // Folder-driven merch item catalog (card redesign, 2026-08-21).
 //
@@ -71,6 +71,8 @@
  *   'attrs'       merged class attributes + per-item overrides, or null
  *                 for display-only items
  *   'description' HTML fragment for the card body
+ *   'card'        ['src','alt'] still image for the card face, or null
+ *                 (see merch_items_card_face())
  *   'media'       ordered list of ['type' => 'image'|'video',
  *                 'src' => web path, 'alt' => string, 'poster' => web
  *                 path|null (videos only)]
@@ -150,7 +152,8 @@ function merch_catalog(): array
             'class' => $class === 'none' ? null : $class,
             'attrs' => $attrs,
             'description' => $description,
-            'media' => merch_items_scan_media($dir, "items/{$folder}", $name),
+            'media' => $media = merch_items_scan_media($dir, "items/{$folder}", $name),
+            'card' => merch_items_card_face($dir, "items/{$folder}", $media, $name),
             'link' => $link,
             'linkText' => $linkText,
         ];
@@ -262,6 +265,12 @@ function merch_items_scan_media(string $dir, string $webBase, string $itemName):
         $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
         $stem = pathinfo($file, PATHINFO_FILENAME);
 
+        // 00-card.<ext> is the card's own thumbnail (see
+        // merch_items_card_face()), not a gallery slide.
+        if (strtolower($stem) === '00-card') {
+            continue;
+        }
+
         if (in_array($ext, $videoExts, true)) {
             $poster = $posters[$stem] ?? null;
             $media[] = [
@@ -285,6 +294,37 @@ function merch_items_scan_media(string $dir, string $webBase, string $itemName):
     }
 
     return $media;
+}
+
+/**
+ * The still image shown on the item's card (2026-10-21 shop redesign) -
+ * cards no longer play a video in place, so every card needs a still:
+ *   1. an optional "00-card.jpg" (or .jpeg/.png/.webp) in the item's
+ *      folder - drop one in to choose exactly what the card shows
+ *      (it is NOT also listed in the gallery)
+ *   2. else the first PHOTO in the gallery
+ *   3. else the first video's poster image
+ *   4. else null (the card shows a neutral placeholder)
+ * Returns ['src' => web path, 'alt' => string] or null.
+ */
+function merch_items_card_face(string $dir, string $webBase, array $media, string $itemName): ?array
+{
+    foreach (['jpg', 'jpeg', 'png', 'webp'] as $ext) {
+        if (file_exists("{$dir}/00-card.{$ext}")) {
+            return ['src' => "{$webBase}/00-card.{$ext}", 'alt' => $itemName];
+        }
+    }
+    foreach ($media as $m) {
+        if ($m['type'] === 'image') {
+            return ['src' => $m['src'], 'alt' => $m['alt']];
+        }
+    }
+    foreach ($media as $m) {
+        if ($m['type'] === 'video' && $m['poster'] !== null) {
+            return ['src' => $m['poster'], 'alt' => $m['alt']];
+        }
+    }
+    return null;
 }
 
 /** Parse captions.txt ("filename: alt text" per line) into a map. */

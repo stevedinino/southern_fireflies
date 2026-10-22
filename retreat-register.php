@@ -25,10 +25,8 @@
       <button class="menu-toggle" aria-label="Toggle menu">&#9776;</button>
       <nav class="main-nav">
         <ul class="nav-links">
-          <li><a href="index.php">Home</a></li>
+          <li><a href="index.php">Events</a></li>
           <li><a href="merch.php">Merch</a></li>
-          <li><a href="cancellation.php">Our Policies</a></li>
-          <li><a href="gallery.php">Gallery</a></li>
           <li><a href="about.php">About</a></li>
         </ul>
       </nav>
@@ -93,6 +91,7 @@
 
           <label for="register-message" class="visually-hidden">Special Requests or Notes</label>
           <textarea name="message" id="register-message" placeholder="Special Requests or Notes" rows="3"></textarea>
+          <p class="merch-price-note">Please read our <a href="cancellation.php" target="_blank" rel="noopener">cancellation &amp; refund policies</a> before registering.</p>
           <button type="submit" class="btn full-width">Submit Registration</button>
         </form>
       </div>

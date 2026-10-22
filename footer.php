@@ -18,7 +18,16 @@
 // The notice text itself lives in strings/pages/footer.html.txt, same
 // as the rest of the site's customer-facing copy (see strings.php).
 require_once __DIR__ . '/strings.php';
+// 2026-10-22: slim link row (Past Events, Our Policies) - these two left
+// the top menu. events/event.php sits one folder down, hence the prefix.
+$footerPrefix = (basename(dirname($_SERVER['SCRIPT_FILENAME'] ?? '')) === 'events') ? '../' : '';
 ?>
   <footer class="site-footer">
+    <nav class="footer-links" aria-label="More">
+<?php if (basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'index.php'): ?>
+      <a href="<?= $footerPrefix ?>index.php#past-events">Past Events</a>
+<?php endif; ?>
+      <a href="<?= $footerPrefix ?>cancellation.php">Our Policies</a>
+    </nav>
     <p><?= merch_load_string('pages/footer.html', ['year' => date('Y')]) ?></p>
   </footer>

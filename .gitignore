@@ -65,3 +65,7 @@ charges_chargeid_counter.txt
 
 # 2026-10-18: how each invoice was paid (merch_payments.php) - amounts + customer order IDs.
 payments.csv
+
+# 2026-10-21: per-IP order-submission counts (merch_rate_limit.php) - live server
+# state like login_throttle.json above; a deploy must not overwrite it.
+merch_order_rate.json

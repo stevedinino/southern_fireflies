@@ -456,3 +456,23 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Top menu right-aligned on every page (2026-10-22). */
+@media (min-width: 769px) {
+  .main-nav .nav-links {
+    justify-content: flex-end;
+  }
+}
+
+/* Footer link row (2026-10-22) */
+.footer-links {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.footer-links a {
+  color: var(--accent);
+}

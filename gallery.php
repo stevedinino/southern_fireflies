@@ -16,10 +16,8 @@
       <button class="menu-toggle" aria-label="Toggle menu">☰</button>
       <nav class="main-nav">
         <ul class="nav-links">
-          <li><a href="index.php">Home</a></li>
+          <li><a href="index.php">Events</a></li>
           <li><a href="merch.php">Merch</a></li>
-          <li><a href="cancellation.php">Our Policies</a></li>
-          <li><a href="gallery.php" aria-current="page">Gallery</a></li>
           <li><a href="about.php">About</a></li>
         </ul>
       </nav>
