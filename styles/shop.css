@@ -1,0 +1,1069 @@
+/* ============================================================================
+   shop.css - the merch page's browse-and-build layout (2026-10-21 redesign,
+   iteration 2: matched to Steve and Janet's mockup - calm, light type,
+   soft cream cards, sage accents). Loaded after base.css and merch.css.
+   Every class here starts with "shop-" so nothing collides with the older
+   merch.css rules (which the photo viewer still uses).
+   ============================================================================ */
+
+body.merch-page {
+  --shop-cream: #fdf8ef;
+  --shop-card: #fffcf6;
+  --shop-line: #ece3d4;
+  --shop-sage: #7f9473;
+  --shop-sage-dark: #62775a;
+  --shop-ink: #55604d;
+  --shop-muted: #8b9283;
+  --shop-peach: #fbebe1;
+  --shop-spark: #d99572;
+  --shop-error: #a63a2b;
+  --shop-serif: Georgia, 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+  background: var(--shop-cream);
+  color: var(--shop-ink);
+}
+
+body.merch-page.lightbox-open {
+  overflow: hidden;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.shop-wrap {
+  max-width: 1280px;
+  padding-top: 14px;
+}
+
+.shop-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 44px;
+  align-items: start;
+}
+
+/* ------------------------------ Hero ------------------------------ */
+.shop-hero {
+  position: relative;
+  height: 212px;
+  margin-bottom: 20px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fffbf0;
+  box-shadow: 0 2px 10px rgba(110, 90, 60, 0.08);
+}
+
+.shop-hero-photo {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: auto;
+  display: block;
+}
+
+.shop-hero-logo {
+  position: absolute;
+  left: 3%;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 66%;
+  max-height: 92%;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.shop-section + .shop-section {
+  margin-top: 30px;
+}
+
+.shop-section-title {
+  margin: 0 0 12px 4px;
+  font-family: var(--shop-serif);
+  font-size: 1.15rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--shop-sage-dark);
+}
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+/* ------------------------------ Cards ------------------------------ */
+.shop-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--shop-card);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(110, 90, 60, 0.09);
+  overflow: hidden;
+  color: var(--shop-ink);
+}
+
+.shop-card-media {
+  position: relative;
+}
+
+.shop-card-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: #f4eee3;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.shop-card-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.shop-card-photo:hover img,
+.shop-card-photo:focus-visible img {
+  transform: scale(1.03);
+}
+
+.shop-card-photo-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--shop-muted);
+  font-family: var(--shop-serif);
+  font-style: italic;
+  font-size: 0.9rem;
+  cursor: default;
+}
+
+.shop-card-badge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(60, 60, 50, 0.6);
+  color: #fff;
+  font-size: 0.72rem;
+}
+
+.shop-details-link {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 252, 246, 0.9);
+  color: var(--shop-sage-dark);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.shop-details-link:hover {
+  background: #fff;
+}
+
+.shop-card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 10px 14px 14px;
+}
+
+.shop-card-titlerow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--shop-line);
+}
+
+.shop-card-name {
+  margin: 0;
+  font-family: var(--shop-serif);
+  font-size: 1.02rem;
+  font-weight: 400;
+  line-height: 1.25;
+  color: var(--shop-ink);
+}
+
+.shop-card-price {
+  font-family: var(--shop-serif);
+  font-size: 1.02rem;
+  white-space: nowrap;
+  color: var(--shop-ink);
+}
+
+.shop-price-note {
+  font-size: 0.8rem;
+  color: var(--shop-muted);
+}
+
+.shop-card-controls {
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.shop-card-nudge {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--shop-sage-dark);
+}
+
+.shop-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.shop-field {
+  min-width: 0;
+}
+
+.shop-actionrow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.shop-actionrow .shop-field {
+  flex: 1 1 auto;
+}
+
+.shop-select,
+.shop-qty-input,
+.shop-checkout input[type="text"],
+.shop-checkout input[type="email"],
+.shop-checkout input[type="tel"],
+.shop-checkout select,
+.shop-checkout textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 7px 9px;
+  border: 1px solid #c9cdbf;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--shop-ink);
+  font: inherit;
+  font-size: 16px; /* 16px stops iOS Safari zooming the page on focus */
+}
+
+.shop-select {
+  padding-left: 7px;
+  padding-right: 4px;
+  font-size: 0.84rem;
+}
+
+.shop-select option:disabled {
+  color: #a39d92;
+}
+
+.shop-select[aria-invalid="true"] {
+  border-color: var(--shop-error);
+  box-shadow: 0 0 0 2px rgba(166, 58, 43, 0.16);
+}
+
+.shop-select:focus-visible,
+.shop-qty-input:focus-visible,
+.shop-checkout input:focus-visible,
+.shop-checkout select:focus-visible,
+.shop-checkout textarea:focus-visible {
+  outline: 2px solid rgba(98, 119, 90, 0.55);
+  outline-offset: 1px;
+}
+
+.shop-qty-input {
+  flex: 0 0 50px;
+  width: 50px;
+  padding-left: 8px;
+  padding-right: 2px;
+  font-size: 0.95rem;
+}
+
+.shop-add-btn {
+  flex: 0 0 auto;
+  min-width: 52px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--shop-sage);
+  color: #fff;
+  font: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.shop-add-btn:hover {
+  background: var(--shop-sage-dark);
+}
+
+.shop-add-btn.is-added {
+  background: #5d7f4b;
+}
+
+.shop-chart-link {
+  display: inline;
+  margin: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--shop-muted);
+  font: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.shop-chart-link:hover {
+  color: var(--shop-sage-dark);
+}
+
+.shop-card-msg {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: var(--shop-sage-dark);
+}
+
+.shop-card-msg:empty {
+  display: none;
+}
+
+.shop-card-msg.is-error {
+  color: var(--shop-error);
+}
+
+.shop-link-cta {
+  display: block;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--shop-sage);
+  color: #fff;
+  text-align: center;
+  text-decoration: none;
+  font-size: 0.92rem;
+}
+
+.shop-link-cta:hover {
+  background: var(--shop-sage-dark);
+}
+
+/* ------------------------------ Your list ------------------------------ */
+.shop-list {
+  position: sticky;
+  top: calc(var(--nav-height) + 14px);
+  max-height: calc(100vh - var(--nav-height) - 28px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  padding: 18px 18px 20px;
+  background: var(--shop-card);
+  border: 1px solid var(--shop-line);
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(110, 90, 60, 0.08);
+  color: var(--shop-ink);
+}
+
+.shop-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.shop-list-head h2 {
+  margin: 0 0 12px;
+  font-family: var(--shop-serif);
+  font-size: 1.55rem;
+  font-weight: 400;
+  color: var(--shop-sage-dark);
+}
+
+.shop-list-close {
+  display: none;
+  width: 44px;
+  height: 44px;
+  margin: -6px -8px 0 0;
+  border: 0;
+  background: none;
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--shop-muted);
+  cursor: pointer;
+}
+
+.shop-list-empty {
+  margin: 0 0 14px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--shop-muted);
+}
+
+.shop-list-group h3 {
+  margin: 12px 0 2px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--shop-muted);
+}
+
+.shop-line {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 0;
+}
+
+.shop-line-thumb {
+  width: 58px;
+  height: 58px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f4eee3;
+}
+
+.shop-line-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shop-line-name {
+  font-family: var(--shop-serif);
+  font-size: 0.98rem;
+  line-height: 1.25;
+}
+
+.shop-line-detail {
+  margin-top: 1px;
+  font-size: 0.78rem;
+  color: var(--shop-muted);
+}
+
+.shop-line-controls {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 5px;
+}
+
+.shop-qty-btn-sm {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #d7d2c4;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--shop-sage-dark);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.shop-qty-btn-sm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.shop-line-qty {
+  min-width: 28px;
+  text-align: center;
+  font-size: 0.92rem;
+}
+
+.shop-line-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.shop-line-remove {
+  width: 30px;
+  height: 30px;
+  margin: -4px -6px 0 0;
+  border: 0;
+  background: none;
+  color: var(--shop-muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.shop-line-remove:hover {
+  color: var(--shop-error);
+}
+
+.shop-line-price {
+  font-family: var(--shop-serif);
+  font-size: 0.98rem;
+}
+
+.shop-totals {
+  margin: 2px 0 6px;
+  padding: 8px 0 4px;
+  border-top: 1px solid var(--shop-line);
+  font-size: 0.86rem;
+  color: var(--shop-muted);
+}
+
+.shop-totals.is-stale {
+  opacity: 0.55;
+}
+
+.shop-totals-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.shop-totals-discount {
+  color: #5d7f4b;
+}
+
+.shop-totals-total {
+  margin-top: 4px;
+  align-items: baseline;
+  color: var(--shop-ink);
+}
+
+.shop-totals-total span:last-child {
+  font-family: var(--shop-serif);
+  font-size: 1.25rem;
+}
+
+.shop-totals-note {
+  margin: 4px 0;
+  font-size: 0.8rem;
+  font-style: italic;
+  line-height: 1.35;
+}
+
+.shop-list-hint {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 10px 0 14px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--shop-peach);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: #7a6355;
+}
+
+.shop-list-hint strong {
+  display: block;
+  margin-bottom: 1px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #6f5849;
+}
+
+.shop-spark {
+  font-size: 1.15rem;
+  line-height: 1.2;
+  color: var(--shop-spark);
+}
+
+.shop-list-note {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--shop-muted);
+}
+
+.shop-primary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 50px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--shop-sage);
+  color: #fff;
+  font: inherit;
+  font-size: 1.02rem;
+  cursor: pointer;
+}
+
+.shop-primary-btn:hover:not(:disabled) {
+  background: var(--shop-sage-dark);
+}
+
+.shop-primary-btn:disabled {
+  background: #c5cfbc;
+  cursor: not-allowed;
+}
+
+/* ------------------------------ Checkout step ------------------------------ */
+.shop-checkout[hidden] {
+  display: none;
+}
+
+.shop-checkout h3 {
+  margin: 4px 0 4px;
+  font-family: var(--shop-serif);
+  font-size: 1.2rem;
+  font-weight: 400;
+  color: var(--shop-sage-dark);
+}
+
+.shop-checkout h3:focus {
+  outline: none;
+}
+
+.shop-checkout label {
+  display: block;
+  margin: 11px 0 3px;
+  font-size: 0.82rem;
+  color: var(--shop-muted);
+}
+
+.shop-optional {
+  opacity: 0.8;
+}
+
+.shop-address-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 10px;
+}
+
+.shop-address-row > div:last-child {
+  grid-column: 1 / -1;
+}
+
+.shop-submit-hint {
+  min-height: 1.3em;
+  margin: 10px 0 6px;
+  font-size: 0.82rem;
+  color: var(--shop-muted);
+}
+
+.shop-link-btn {
+  display: block;
+  margin: 10px auto 0;
+  padding: 6px 0;
+  background: none;
+  border: 0;
+  color: var(--shop-sage-dark);
+  font: inherit;
+  font-size: 0.88rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* Honeypot: off-screen, not display:none (some bots skip hidden fields). */
+.shop-hp {
+  position: absolute !important;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* ------------------------------ Info links (How this works / Shipping) ------------------------------ */
+.shop-info-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.shop-info-link:hover,
+.shop-info-link:focus-visible {
+  color: var(--shop-sage-dark);
+}
+
+.shop-howlink {
+  margin: 0 0 12px;
+  font-size: 0.82rem;
+  color: var(--shop-sage-dark);
+}
+
+/* ------------------------------ Details dialog ------------------------------ */
+.shop-details {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 460px;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 26px 24px 22px;
+  background: var(--shop-card);
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  color: var(--shop-ink);
+}
+
+.shop-details h2 {
+  margin: 0 0 4px;
+  padding-right: 36px;
+  font-family: var(--shop-serif);
+  font-size: 1.4rem;
+  font-weight: 400;
+  color: var(--shop-sage-dark);
+}
+
+.shop-details-price {
+  margin: 0 0 12px;
+  font-family: var(--shop-serif);
+  font-size: 1.05rem;
+}
+
+.shop-details-body {
+  margin-bottom: 16px;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.shop-details .btn {
+  margin: 8px 0 0;
+  background: var(--shop-sage);
+  font-weight: 400;
+}
+
+.shop-details .btn.btn-secondary {
+  background: #fff;
+  color: var(--shop-sage-dark);
+  border: 1px solid #c9cdbf;
+}
+
+.shop-details-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: none;
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--shop-muted);
+  cursor: pointer;
+}
+
+/* ------------------------------ Phone bottom bar ------------------------------ */
+.shop-bar,
+.shop-scrim {
+  display: none;
+}
+
+/* ------------------------------ Medium: narrower list, two-across cards ------------------------------ */
+@media (max-width: 1100px) {
+  .shop-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ------------------------------ Narrow screens ------------------------------ */
+@media (max-width: 899px) {
+  .shop-wrap {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .shop-layout {
+    display: block;
+  }
+
+  .shop-hero {
+    height: 132px;
+    margin-bottom: 14px;
+  }
+
+  .shop-hero-logo {
+    width: 62%;
+    left: 3%;
+  }
+
+  .shop-grid {
+    gap: 12px;
+  }
+
+  .shop-card-body {
+    padding: 9px 8px 12px;
+  }
+
+  /* Name and price stay on one row like the wide layout (a long name may
+     wrap to a second line, the price never drops below it). */
+  .shop-card-titlerow {
+    gap: 6px;
+  }
+
+  .shop-card-name,
+  .shop-card-price {
+    font-size: 0.95rem;
+  }
+
+  .shop-card-price {
+    flex: 0 0 auto;
+  }
+
+  /* Color, quantity and Add on a single line. */
+  .shop-actionrow {
+    flex-wrap: nowrap;
+    gap: 5px;
+  }
+
+  .shop-actionrow .shop-field {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .shop-actionrow .shop-select {
+    padding-left: 6px;
+    padding-right: 14px;
+    font-size: 0.8rem;
+    text-overflow: ellipsis;
+  }
+
+  .shop-qty-input {
+    flex: 0 0 34px;
+    width: 34px;
+    min-height: 44px;
+    padding-left: 5px;
+    padding-right: 0;
+    font-size: 0.9rem;
+  }
+
+  .shop-add-btn {
+    flex: 0 0 46px;
+    width: 46px;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
+  .shop-add-btn span[aria-hidden] {
+    display: none;
+  }
+
+  .shop-select {
+    min-height: 44px;
+  }
+
+  .shop-fields {
+    grid-template-columns: 1fr;
+  }
+
+  /* The list becomes a sheet that slides up over the page. */
+  .shop-list {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    max-height: 92vh;
+    border-radius: 18px 18px 0 0;
+    z-index: 2100;
+    transform: translateY(105%);
+    visibility: hidden;
+    transition: transform 0.28s ease, visibility 0s linear 0.28s;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .shop-list.is-open {
+    transform: translateY(0);
+    visibility: visible;
+    transition: transform 0.28s ease;
+  }
+
+  .shop-list-close {
+    display: block;
+  }
+
+  .shop-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 2050;
+    background: rgba(0, 0, 0, 0.5);
+  }
+
+  .shop-scrim[hidden] {
+    display: none;
+  }
+
+  .shop-scrim:not([hidden]) {
+    display: block;
+  }
+
+
+  .shop-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1500;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--shop-card);
+    border-top: 1px solid var(--shop-line);
+    box-shadow: 0 -6px 18px rgba(80, 60, 30, 0.12);
+  }
+
+  .shop-bar[hidden] {
+    display: none;
+  }
+
+  .shop-bar-summary {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+    font-family: var(--shop-serif);
+    color: var(--shop-ink);
+  }
+
+  .shop-bar-total {
+    color: var(--shop-muted);
+    font-size: 0.9rem;
+  }
+
+  .shop-bar-btn {
+    width: auto;
+    flex: 0 0 auto;
+    padding: 0 26px;
+  }
+}
+
+@media (max-width: 360px) {
+  .shop-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Narrow phones: no room for a quantity box next to Color and Add on
+   two-across cards. Add puts one on the list; the list has +/- buttons. */
+@media (max-width: 560px) {
+  .shop-actionrow .shop-qty-input {
+    display: none;
+  }
+
+  .shop-actionrow .shop-select {
+    padding-right: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shop-list,
+  .shop-card-photo img {
+    transition: none !important;
+  }
+}
+
+.shop-hint-extra {
+  display: block;
+  margin-top: 6px;
+}
+
+/* base.css gives every <img> a shadow, rounded corners and auto margins
+   (built for the flyer images) - none of that belongs on the hero, card
+   photos or list thumbnails. */
+.shop-hero img,
+.shop-card img,
+.shop-line-thumb img {
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.shop-hero-logo {
+  margin: 0;
+}
+
+/* Short announcement band above the first row of cards (text lives in
+   strings/pages/merch-announcement.txt; leave that file empty for none). */
+.shop-announce {
+  margin: 0 0 14px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  background: var(--shop-peach);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: #7a6355;
+}
+
+.shop-list-charts {
+  margin: -4px 0 12px;
+  font-size: 0.8rem;
+  color: var(--shop-muted);
+}
+
+/* Menu right-aligned on this page, lined up with the wider shop layout. */
+body.merch-page .nav-wrapper {
+  max-width: 1280px;
+}
+
+@media (min-width: 769px) {
+  body.merch-page .main-nav .nav-links {
+    justify-content: flex-end;
+  }
+}
+
+body.merch-page #photo-viewer-modal,
+body.merch-page #details-modal {
+  z-index: 2200;
+}
+
+/* ------------------------------ List line: quantity box + color link ------------------------------ */
+.shop-line-controls .shop-line-qtyinput {
+  flex: none;
+  width: 62px;
+  min-height: 34px;
+  height: 34px;
+  padding: 0 4px 0 10px;
+  font-size: 0.92rem;
+}
+
+.shop-line-colorlink {
+  font-size: inherit;
+  color: var(--shop-sage-dark);
+}
+
+.shop-line-colorselect {
+  width: 100%;
+  min-height: 34px;
+  font-size: 0.85rem;
+}
+
+.shop-list-hint[hidden] {
+  display: none;
+}

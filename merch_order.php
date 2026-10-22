@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-09-22-A
+// Build: 2026-10-21-A
 // 2026-09-22 (production incident): every live order was failing with
 // "Unable to write to file" as soon as Qty Created was added to the live
 // merchandise.csv's header (same straight-to-the-live-CSV pattern
@@ -55,6 +55,7 @@ require __DIR__ . '/pricing.php';
 require __DIR__ . '/merch_notify.php';
 require_once __DIR__ . '/strings.php';
 require_once __DIR__ . '/id_sequence.php';
+require_once __DIR__ . '/merch_rate_limit.php';
 
 /**
  * Wraps an error string in the same page shell the success response
@@ -87,6 +88,31 @@ function merch_render_error_page(string $bodyHtml): void
 </html>';
 }
 
+/**
+ * The "Thanks, your request was saved" page. A function (2026-10-21) so the
+ * honeypot path above can show the identical page without saving anything.
+ */
+function merch_render_received_page(): void
+{
+    echo '<!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta http-equiv="refresh" content="3;url=merch.php">
+      <title>Request Received</title>
+      <link rel="stylesheet" href="styles/base.css" />
+      <link rel="stylesheet" href="styles/merch.css" />
+    </head>
+    <body>
+      <div class="content-wrapper">
+        <div class="page-container" style="text-align:center;">
+          ' . merch_load_string('errors/order-received') . '
+        </div>
+      </div>
+    </body>
+    </html>';
+}
+
 $csvFile = __DIR__ . '/merchandise.csv';
 
 // ---- Collect the shared (whole-list) fields ----
@@ -105,6 +131,15 @@ $phone = isset($_POST['phone']) ? trim($_POST['phone']) : '';
 $message = isset($_POST['message']) ? trim($_POST['message']) : '';
 $timestamp = date('Y-m-d H:i:s');
 $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+
+// 2026-10-21 (shop redesign): hidden "website" field. merch.php renders it
+// off-screen and no person ever sees or fills it; a form-filling bot
+// usually fills every field it finds. Anything in it gets the normal
+// "received" page (so the bot learns nothing) and NOTHING is saved.
+if (isset($_POST['website']) && trim((string) $_POST['website']) !== '') {
+    merch_render_received_page();
+    exit;
+}
 
 // Cap notes length server-side regardless of what the client enforces -
 // a client-side maxlength alone can be bypassed by anyone posting
@@ -300,6 +335,15 @@ foreach ($listItems as $rawLine) {
 // the same locked session - held for the WHOLE list's writes, so a
 // concurrent admin write can't interleave with only some of this
 // list's rows on disk.
+// 2026-10-21: per-IP limit on real (fully validated) orders - see
+// merch_rate_limit.php. Placed after every validation above so a bounced
+// attempt never uses up a customer's allowance, and before anything is
+// written.
+if (!merch_order_rate_allow($ip)) {
+    merch_render_error_page(merch_load_string('errors/order-rate-limited'));
+    exit;
+}
+
 $handle = fopen($csvFile, 'c+');
 if (!$handle) {
     merch_render_error_page(merch_load_string('errors/order-write-failed'));
@@ -459,23 +503,7 @@ fclose($handle);
 // (written above), so there's nothing lost by answering the browser
 // before the email attempt runs - only the "thanks" email is delayed,
 // never the order itself.
-echo '<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="refresh" content="3;url=merch.php">
-  <title>Request Received</title>
-  <link rel="stylesheet" href="styles/base.css" />
-  <link rel="stylesheet" href="styles/merch.css" />
-</head>
-<body>
-  <div class="content-wrapper">
-    <div class="page-container" style="text-align:center;">
-      ' . merch_load_string('errors/order-received') . '
-    </div>
-  </div>
-</body>
-</html>';
+merch_render_received_page();
 
 // Best-effort: actually flush the response to the browser now instead
 // of just handing it to PHP's output buffer, so the customer's page
