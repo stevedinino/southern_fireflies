@@ -7,11 +7,12 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-10-19-B';
+$merchBuild = '2026-10-22-A';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
 require __DIR__ . '/merch_stock.php'; // 2026-10-19: merch_stock_reduce_print_rows() - the plate pane counts the shelf
+require __DIR__ . '/merch_notes.php'; // 2026-10-22: customer order notes - the Notes view, its Reply link and the Handled log
 require __DIR__ . '/print_plates.php'; // 2026-09-17: for print_plate_group_queue() - powers the "Sort by Print Plate" toggle below (checkbox, Needs Creating only, as of 2026-09-20)
 
 // 2026-08-20 (Steve): working an order means glancing back and forth
@@ -292,6 +293,21 @@ $merchEditCatalog = [
       if (isset($header[0])) {
           $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
       }
+      // 2026-10-22 (Steve): customer order notes used to be invisible here.
+      // One entry per order that has a note (merch_notes.php); $openNotes is
+      // the not-yet-handled ones keyed by note key, which drives the Notes
+      // button count, the Notes view and the marker on the other views.
+      $noteEntries = merch_notes_collect($header, $rows);
+      $openNotes = [];
+      foreach ($noteEntries as $noteEntry) {
+          if (!$noteEntry['handled']) {
+              $openNotes[$noteEntry['key']] = $noteEntry;
+          }
+      }
+      $notesIndex = array_search('Notes', $header, true);
+      $groupIdIndex = array_search('OrderGroupID', $header, true);
+      $emailIndex = array_search('Email', $header, true);
+      $timestampIndexForNotes = array_search('Timestamp', $header, true);
       $orderIdIndex = array_search('OrderID', $header, true);
       $createdIndex = array_search('Created', $header, true);
       $fulfilledIndex = array_search('Fulfilled', $header, true);
@@ -426,6 +442,8 @@ $merchEditCatalog = [
           echo '<button type="button" class="btn merch-view-btn" data-view="needs-payment" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Payment">Payments</button>';
           echo '<button type="button" class="btn merch-view-btn" data-view="needs-creating" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Creating">Create</button>';
           echo '<button type="button" class="btn merch-view-btn" data-view="needs-shipping" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Shipping">Ship</button>';
+          // 2026-10-22 (Steve): customer order notes. The count is the notes not yet marked Handled.
+          echo '<button type="button" class="btn merch-view-btn" id="merch-notes-btn" data-view="notes" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Customer notes on orders">Notes' . (count($openNotes) > 0 ? ' (<span id="merch-notes-count">' . count($openNotes) . '</span>)' : ' <span id="merch-notes-count"></span>') . '</button>';
           // 2026-09-17 (Steve): "sort the Needs Creating list to give me
           // an optimized list of same color gadgets I can print
           // together." NOT another data-view case below (applyView()
@@ -527,6 +545,20 @@ $merchEditCatalog = [
               // checkbox (or P/U @ Retreat) is on. See applyView().
               $rowIsFocusOut = !$rowIsShipping || !merch_is_printed_item($rowItem);
               $rowIsCancelled = $cancelledIndex !== false && trim($data[$cancelledIndex] ?? '') !== '';
+              // 2026-10-22: does this line belong to an order with an unanswered customer note?
+              $rowNoteKey = '';
+              $rowNoteText = '';
+              if ($notesIndex !== false && trim($data[$notesIndex] ?? '') !== '') {
+                  $rowNoteKeyCandidate = merch_notes_key([
+                      'OrderGroupID' => $groupIdIndex !== false ? ($data[$groupIdIndex] ?? '') : '',
+                      'Email' => $emailIndex !== false ? ($data[$emailIndex] ?? '') : '',
+                      'Timestamp' => $timestampIndexForNotes !== false ? ($data[$timestampIndexForNotes] ?? '') : '',
+                  ]);
+                  if (isset($openNotes[$rowNoteKeyCandidate])) {
+                      $rowNoteKey = $rowNoteKeyCandidate;
+                      $rowNoteText = trim($data[$notesIndex]);
+                  }
+              }
               // Same normalized Name+Zip key as the pre-scan above -
               // defaults to "ready" (true) when Name/Zip columns are
               // missing or this row isn't part of any tracked shipment,
@@ -614,7 +646,7 @@ $merchEditCatalog = [
                           ?? print_plate_parse_ts($timestampIndex !== false ? (string) ($data[$timestampIndex] ?? '') : '')),
                   ];
               }
-              echo '<tr class="' . ($rowQuantity > 1 ? 'merch-row-multi' : '') . '" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-focus-out="' . ($rowIsFocusOut ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '" data-cancelled="' . ($rowIsCancelled ? '1' : '0') . '" data-quantity="' . $rowQuantity . '">';
+              echo '<tr class="' . ($rowQuantity > 1 ? 'merch-row-multi' : '') . '" data-order-id="' . htmlspecialchars($orderId, ENT_QUOTES) . '" data-created="' . ($rowIsCreated ? '1' : '0') . '" data-fulfilled="' . ($rowIsFulfilled ? '1' : '0') . '" data-invoiced="' . ($rowIsInvoiced ? '1' : '0') . '" data-paid="' . ($rowIsPaid ? '1' : '0') . '" data-shipping="' . ($rowIsShipping ? '1' : '0') . '" data-focus-out="' . ($rowIsFocusOut ? '1' : '0') . '" data-shipment-ready="' . ($rowShipmentReady ? '1' : '0') . '" data-cancelled="' . ($rowIsCancelled ? '1' : '0') . '" data-quantity="' . $rowQuantity . '"' . ($rowNoteKey !== '' ? ' data-note-key="' . htmlspecialchars($rowNoteKey, ENT_QUOTES) . '" data-note="' . htmlspecialchars($rowNoteText, ENT_QUOTES) . '"' : '') . '>';
               foreach ($displayOrder as $col) {
                   $i = $columnIndexByName[$col] ?? null;
                   if ($i === null) {
@@ -926,6 +958,9 @@ $merchEditCatalog = [
                       // below), but the tag stays - useful in every other
                       // view too, not just that one.
                       echo '<td style="padding:6px; border-bottom:1px solid #eee;">' . htmlspecialchars($cell);
+                      if ($rowNoteKey !== '') {
+                          echo ' <span class="merch-note-marker" data-note-key="' . htmlspecialchars($rowNoteKey, ENT_QUOTES) . '" title="Customer note: ' . htmlspecialchars($rowNoteText, ENT_QUOTES) . '" style="cursor:help;">&#128221;</span>';
+                      }
                       if (!$rowIsShipping) {
                           echo ' <span style="display:inline-block; padding:1px 6px; font-size:0.7em; background:#eef; color:#448; border-radius:3px; vertical-align:middle;">Pickup</span>';
                       }
@@ -992,6 +1027,45 @@ $merchEditCatalog = [
       }
       $printPlateGroups = print_plate_group_queue($printPlateRows);
       ?>
+      <!-- 2026-10-22 (Steve): the Notes view - one row per order with a customer note, newest first. -->
+      <div id="merch-notes-pane" class="merch-table-pane" style="display:none; padding:16px;">
+        <?php if (empty($noteEntries)): ?>
+          <p style="text-align:center; color:#666;">No customer notes yet.</p>
+        <?php else: ?>
+          <p style="color:#666; font-size:0.85em; margin-top:0;">
+            One row per order that has a customer note, newest first. <strong>Reply</strong> opens a new message to the customer in your mail program, with their note quoted. Tick <strong>Handled</strong> once you've dealt with it. Fulfilled orders placed before <?= htmlspecialchars(date('n/j', strtotime(MERCH_NOTES_AUTO_HANDLED_BEFORE))) ?> start out handled.
+            <label style="margin-left:10px;"><input type="checkbox" id="merch-notes-show-handled" /> Show handled</label>
+          </p>
+          <table style="width:100%; border-collapse: collapse;" id="merch-notes-table">
+            <tr>
+              <th style="padding:6px; text-align:left;">Date</th>
+              <th style="padding:6px; text-align:left;">Customer</th>
+              <th style="padding:6px; text-align:left;">Note</th>
+              <th style="padding:6px; text-align:left;">Order</th>
+              <th style="padding:6px; text-align:left;">Status</th>
+              <th style="padding:6px; text-align:left;">Reply</th>
+              <th style="padding:6px; text-align:left;">Handled</th>
+            </tr>
+            <?php foreach ($noteEntries as $ne): ?>
+              <tr class="merch-note-row" data-note-key="<?= htmlspecialchars($ne['key'], ENT_QUOTES) ?>" data-handled="<?= $ne['handled'] ? '1' : '0' ?>" style="<?= $ne['handled'] ? 'display:none; opacity:0.55;' : '' ?>">
+                <td style="padding:6px; border-bottom:1px solid #eee; white-space:nowrap; vertical-align:top;"><?= htmlspecialchars($ne['placed']) ?></td>
+                <td style="padding:6px; border-bottom:1px solid #eee; vertical-align:top;"><?= htmlspecialchars($ne['name']) ?><br><span style="color:#666; font-size:0.85em;"><?= htmlspecialchars($ne['email']) ?></span></td>
+                <td style="padding:6px; border-bottom:1px solid #eee; vertical-align:top; max-width:420px; white-space:pre-wrap;"><?= htmlspecialchars($ne['note']) ?></td>
+                <td style="padding:6px; border-bottom:1px solid #eee; vertical-align:top; font-size:0.85em;">#<?= htmlspecialchars(implode(', #', $ne['orderIds'])) ?><br><?= htmlspecialchars($ne['items']) ?></td>
+                <td style="padding:6px; border-bottom:1px solid #eee; vertical-align:top;"><?= htmlspecialchars($ne['status']) ?></td>
+                <td style="padding:6px; border-bottom:1px solid #eee; vertical-align:top;">
+                  <?php if ($ne['email'] !== ''): ?>
+                    <a class="btn" style="padding:4px 10px; font-size:0.85em; text-decoration:none;" href="<?= htmlspecialchars(merch_notes_mailto($ne), ENT_QUOTES) ?>">Reply</a>
+                  <?php endif; ?>
+                </td>
+                <td style="padding:6px; border-bottom:1px solid #eee; vertical-align:top; text-align:center;">
+                  <input type="checkbox" class="merch-note-handled" data-note-key="<?= htmlspecialchars($ne['key'], ENT_QUOTES) ?>" <?= $ne['handled'] ? 'checked' : '' ?> aria-label="Handled" />
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          </table>
+        <?php endif; ?>
+      </div>
       <div id="merch-print-plate-pane" class="merch-table-pane" style="display:none; padding:16px;">
         <?php if (empty($printPlateGroups)): ?>
           <p style="text-align:center; color:#666;">Nothing here right now &mdash; either the Create view is empty, or everything left is a pickup order, a shirt/hat or a Stars &amp; Stripes order, none of which go through this view.</p>
@@ -1217,9 +1291,12 @@ $merchEditCatalog = [
           const tr = box.closest('tr');
           const isPaid = tr && tr.dataset.paid === '1';
           const isShipped = tr && tr.dataset.fulfilled === '1';
-          if (isPaid || isShipped) {
+          // 2026-10-22: an invoice that has already gone out to the customer
+          // is also worth a pause (cancelling here does NOT tell the customer).
+          const isInvoiced = tr && tr.dataset.invoiced === '1';
+          if (isPaid || isShipped || isInvoiced) {
             const state = isPaid && isShipped ? 'already paid and shipped'
-              : (isShipped ? 'already shipped' : 'already paid');
+              : (isShipped ? 'already shipped' : (isPaid ? 'already paid' : 'already invoiced (the customer has the invoice)'));
             const ok = confirm(`Order ${orderId} is ${state}.\n\nCancelling hides this line from the working views (use the Cancelled box to see it again). Other lines of the same customer are not affected.\n\nCancel it anyway?`);
             if (!ok) {
               box.checked = false;
@@ -1652,7 +1729,11 @@ $merchEditCatalog = [
         const confirmMsg = isPickup
           ? 'Generate a printable pickup invoice for this order (and any other un-invoiced pickup orders from the same customer)? Nothing is emailed.'
           : 'Send an invoice email for this order (and any other un-invoiced orders from the same customer)?';
-        if (!confirm(confirmMsg)) {
+        // 2026-10-22: a customer note that has not been marked Handled yet.
+        const noteWarn = tr && tr.dataset.note
+          ? `This order has a customer note:\n\n"${tr.dataset.note}"\n\nIf it changes anything, deal with it before invoicing (Notes view, then Handled).\n\n`
+          : '';
+        if (!confirm(noteWarn + confirmMsg)) {
           return;
         }
 
@@ -1913,7 +1994,7 @@ $merchEditCatalog = [
     let currentView = sessionStorage.getItem('merchAdminView') || 'all';
     // 2026-10-19: only the four named views (or 'all' = nothing lit) are valid;
     // a stale 'active' from before that view was retired lands on All.
-    if (['needs-invoicing', 'needs-payment', 'needs-creating', 'needs-shipping'].indexOf(currentView) === -1) currentView = 'all';
+    if (['needs-invoicing', 'needs-payment', 'needs-creating', 'needs-shipping', 'notes'].indexOf(currentView) === -1) currentView = 'all';
 
     // 2026-08-23: "Show cancelled" - independent of the named views
     // (see the filter-bar comment in the PHP above). Persisted the same
@@ -1986,7 +2067,11 @@ $merchEditCatalog = [
       if (printPlatePane) printPlatePane.style.display = shown ? '' : 'none';
       if (packPane) packPane.style.display = packShown ? '' : 'none';
       if (packShown && packFrame && !packFrame.getAttribute('src')) packFrame.setAttribute('src', 'packing_slips.php');
-      if (merchTablePane) merchTablePane.style.display = (shown || packShown) ? 'none' : '';
+      // 2026-10-22: the Notes view swaps the table for its own pane.
+      const notesShown = currentView === 'notes';
+      const notesPane = document.getElementById('merch-notes-pane');
+      if (notesPane) notesPane.style.display = notesShown ? '' : 'none';
+      if (merchTablePane) merchTablePane.style.display = (shown || packShown || notesShown) ? 'none' : '';
     }
     if (packToggle) {
       packToggle.addEventListener('change', () => {
@@ -2164,6 +2249,72 @@ $merchEditCatalog = [
         tr.style.display = show ? '' : 'none';
       });
     }
+
+    // 2026-10-22 (Steve): Notes view. Handled checkbox -> merch_notes_set.php
+    // (appends to merch_notes_handled.csv). Ticking it dims the row, drops it
+    // from the Notes (n) count and removes the note marker / invoice warning
+    // from that order's lines in the other views. "Show handled" reveals the
+    // rows that are hidden once handled.
+    (function () {
+      const notesTable = document.getElementById('merch-notes-table');
+      if (!notesTable) return;
+      const showHandledBox = document.getElementById('merch-notes-show-handled');
+      const countEl = document.getElementById('merch-notes-count');
+      const notesBtn = document.getElementById('merch-notes-btn');
+      function refreshNotesRows() {
+        const showHandled = !!(showHandledBox && showHandledBox.checked);
+        notesTable.querySelectorAll('tr.merch-note-row').forEach((tr) => {
+          const handled = tr.dataset.handled === '1';
+          tr.style.display = (handled && !showHandled) ? 'none' : '';
+          tr.style.opacity = handled ? '0.55' : '';
+        });
+      }
+      function refreshNotesCount() {
+        const open = notesTable.querySelectorAll('tr.merch-note-row[data-handled="0"]').length;
+        if (countEl && notesBtn) {
+          // Keep the "(n)" bracketed only while there is something open.
+          notesBtn.innerHTML = open > 0 ? 'Notes (<span id="merch-notes-count">' + open + '</span>)' : 'Notes <span id="merch-notes-count"></span>';
+        }
+      }
+      if (showHandledBox) showHandledBox.addEventListener('change', refreshNotesRows);
+      notesTable.querySelectorAll('.merch-note-handled').forEach((box) => {
+        box.addEventListener('change', () => {
+          const key = box.dataset.noteKey;
+          const handled = box.checked;
+          box.disabled = true;
+          fetch('merch_notes_set.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `noteKey=${encodeURIComponent(key)}&handled=${handled ? '1' : '0'}&csrf_token=${encodeURIComponent(MERCH_CSRF_TOKEN)}`
+          })
+            .then((r) => r.json())
+            .then((data) => {
+              if (!data.ok) throw new Error(data.error || 'unknown error');
+              const tr = box.closest('tr');
+              tr.dataset.handled = handled ? '1' : '0';
+              if (handled) {
+                // The order's lines in the other views no longer carry a note flag.
+                document.querySelectorAll('tr[data-note-key]').forEach((row) => {
+                  if (row.dataset.noteKey === key && row !== tr) {
+                    row.removeAttribute('data-note-key');
+                    row.removeAttribute('data-note');
+                  }
+                });
+                document.querySelectorAll('.merch-note-marker').forEach((m) => {
+                  if (m.dataset.noteKey === key) m.remove();
+                });
+              }
+              refreshNotesRows();
+              refreshNotesCount();
+            })
+            .catch((err) => {
+              alert('Could not save: ' + err.message);
+              box.checked = !handled;
+            })
+            .finally(() => { box.disabled = false; });
+        });
+      });
+    })();
 
     viewButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
