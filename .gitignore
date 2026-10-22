@@ -69,3 +69,6 @@ payments.csv
 # 2026-10-21: per-IP order-submission counts (merch_rate_limit.php) - live server
 # state like login_throttle.json above; a deploy must not overwrite it.
 merch_order_rate.json
+
+# Customer-note "handled" log (2026-10-22) - customer data, same category as the other logs
+merch_notes_handled.csv
