@@ -7,11 +7,12 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-10-22-A';
+$merchBuild = '2026-10-23-A';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
 require __DIR__ . '/merch_stock.php'; // 2026-10-19: merch_stock_reduce_print_rows() - the plate pane counts the shelf
+require __DIR__ . '/merch_printing.php'; // 2026-10-23: 'Currently printing' marks on the Create view's plates
 require __DIR__ . '/merch_notes.php'; // 2026-10-22: customer order notes - the Notes view, its Reply link and the Handled log
 require __DIR__ . '/print_plates.php'; // 2026-09-17: for print_plate_group_queue() - powers the "Sort by Print Plate" toggle below (checkbox, Needs Creating only, as of 2026-09-20)
 
@@ -229,6 +230,30 @@ $merchEditCatalog = [
     .print-plate-plate-list li.print-plate-partial {
       background: #f8f3e6;
     }
+    /* 2026-10-23: Currently printing */
+    .print-plate-now {
+      background: #fff4e0;
+      border: 1px solid #e0a040;
+      border-radius: 6px;
+      padding: 8px 14px;
+      margin-bottom: 14px;
+    }
+    .print-plate-now ul { margin: 4px 0 0; padding-left: 20px; }
+    .print-plate-plate-list li.print-plate-printing {
+      background: #fff4e0;
+      border-left: 4px solid #e0a040;
+      padding-left: 8px;
+    }
+    .print-plate-badge {
+      display: inline-block;
+      background: #b36b00;
+      color: #fff;
+      font-weight: bold;
+      font-size: 0.8em;
+      padding: 1px 8px;
+      border-radius: 3px;
+      margin-right: 8px;
+    }
     .print-plate-plate-fill {
       color: #667;
       font-size: 0.85em;
@@ -440,7 +465,7 @@ $merchEditCatalog = [
           // fallback for it are gone too (see applyView()).
           echo '<button type="button" class="btn merch-view-btn" data-view="needs-invoicing" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Invoicing">Invoice</button>';
           echo '<button type="button" class="btn merch-view-btn" data-view="needs-payment" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Payment">Payments</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-creating" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Creating">Create</button>';
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-creating" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Creating">Create' . (count(merch_printing_active()) > 0 ? ' <span style="font-size:0.8em;">(&#128424; ' . count(merch_printing_active()) . ' printing)</span>' : '') . '</button>';
           echo '<button type="button" class="btn merch-view-btn" data-view="needs-shipping" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Shipping">Ship</button>';
           // 2026-10-22 (Steve): customer order notes. The count is the notes not yet marked Handled.
           echo '<button type="button" class="btn merch-view-btn" id="merch-notes-btn" data-view="notes" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Customer notes on orders">Notes' . (count($openNotes) > 0 ? ' (<span id="merch-notes-count">' . count($openNotes) . '</span>)' : ' <span id="merch-notes-count"></span>') . '</button>';
@@ -1026,6 +1051,8 @@ $merchEditCatalog = [
           $plateShelfCovered = $plateReduced['covered'];
       }
       $printPlateGroups = print_plate_group_queue($printPlateRows);
+      // 2026-10-23 (Steve): plates marked "Start printing" and not yet Finished.
+      $printingActive = merch_printing_active();
       ?>
       <!-- 2026-10-22 (Steve): the Notes view - one row per order with a customer note, newest first. -->
       <div id="merch-notes-pane" class="merch-table-pane" style="display:none; padding:16px;">
@@ -1067,6 +1094,16 @@ $merchEditCatalog = [
         <?php endif; ?>
       </div>
       <div id="merch-print-plate-pane" class="merch-table-pane" style="display:none; padding:16px;">
+        <?php /* 2026-10-23: everything marked "Start printing" and not yet Finished, always listed here even if the plan has since shifted. */ ?>
+        <div class="print-plate-now no-print-strip" id="merch-printing-now"<?= $printingActive ? '' : ' hidden' ?>>
+          <strong>&#128424; Currently printing (<?= count($printingActive) ?>)</strong>
+          <ul>
+            <?php foreach ($printingActive as $pk => $pa): ?>
+              <li><?= htmlspecialchars($pa['color']) ?> &mdash; <?= htmlspecialchars($pa['plate']) ?> &mdash; <?= htmlspecialchars($pa['items']) ?>
+                <span style="color:#666;">(since <?= htmlspecialchars(date('D g:i a', strtotime($pa['since']))) ?>)</span></li>
+            <?php endforeach; ?>
+          </ul>
+        </div>
         <?php if (empty($printPlateGroups)): ?>
           <p style="text-align:center; color:#666;">Nothing here right now &mdash; either the Create view is empty, or everything left is a pickup order, a shirt/hat or a Stars &amp; Stripes order, none of which go through this view.</p>
         <?php else: ?>
@@ -1102,6 +1139,14 @@ $merchEditCatalog = [
                     // quantity dropped, possibly to 0) rather than
                     // sitting there struck through.
                     $plateDeltas = [];
+                    $plateKeyQtys = [];
+                    foreach ($plate['items'] as $kItem => $kData) {
+                        foreach ($kData['orders'] as $ko) {
+                            $plateKeyQtys[$kItem . '#' . $ko['orderId']] = ($plateKeyQtys[$kItem . '#' . $ko['orderId']] ?? 0) + (int) $ko['qty'];
+                        }
+                    }
+                    $plateKey = merch_printing_key((string) $group['color'], (string) $pg['group'], $plateKeyQtys);
+                    $plateIsPrinting = isset($printingActive[$plateKey]);
                     foreach ($plate['items'] as $itemName => $data) {
                         $itemBits[] = (int) $data['qty'] . '&times; ' . htmlspecialchars($itemName);
                         foreach ($data['orders'] as $o) {
@@ -1110,7 +1155,7 @@ $merchEditCatalog = [
                         }
                     }
                     ?>
-                    <li class="<?= $isFull ? '' : 'print-plate-partial' ?>">
+                    <li class="<?= $isFull ? '' : 'print-plate-partial' ?><?= $plateIsPrinting ? ' print-plate-printing' : '' ?>">
                       <?php
                       $plateDoneItems = [];
                       foreach ($plate['items'] as $itemName => $data) {
@@ -1118,7 +1163,17 @@ $merchEditCatalog = [
                       }
                       ?>
                       <div style="display:block;">
-                      <button type="button" class="print-plate-finished no-print" data-color="<?= htmlspecialchars($group['color'], ENT_QUOTES) ?>" data-plate="<?= htmlspecialchars($pg['group'], ENT_QUOTES) ?>" data-items="<?= htmlspecialchars(json_encode($plateDoneItems), ENT_QUOTES) ?>" style="margin-right:8px; padding:1px 8px; font-size:0.85em; border:1px solid #2a7a2a; background:#fff; color:#2a7a2a; border-radius:3px; cursor:pointer;">Finished&hellip;</button>
+                      <?php
+                      $plateItemsText = strip_tags(implode(', ', $itemBits));
+                      $plateItemsText = html_entity_decode($plateItemsText, ENT_QUOTES, 'UTF-8');
+                      ?>
+                      <?php if ($plateIsPrinting): ?>
+                        <span class="print-plate-badge" title="Started <?= htmlspecialchars($printingActive[$plateKey]['since'], ENT_QUOTES) ?>">&#128424; PRINTING since <?= htmlspecialchars(date('D g:i a', strtotime($printingActive[$plateKey]['since']))) ?></span>
+                        <button type="button" class="print-plate-stop no-print" data-key="<?= htmlspecialchars($plateKey, ENT_QUOTES) ?>" style="margin-right:8px; padding:1px 8px; font-size:0.85em; cursor:pointer;">Not printing</button>
+                      <?php else: ?>
+                        <button type="button" class="print-plate-start no-print" data-key="<?= htmlspecialchars($plateKey, ENT_QUOTES) ?>" data-color="<?= htmlspecialchars($group['color'], ENT_QUOTES) ?>" data-plate="<?= htmlspecialchars($pg['group'], ENT_QUOTES) ?>" data-items-text="<?= htmlspecialchars($plateItemsText, ENT_QUOTES) ?>" style="margin-right:8px; padding:1px 8px; font-size:0.85em; border:1px solid #b36b00; background:#fff; color:#b36b00; border-radius:3px; cursor:pointer;">Start printing</button>
+                      <?php endif; ?>
+                      <button type="button" class="print-plate-finished no-print" data-key="<?= htmlspecialchars($plateKey, ENT_QUOTES) ?>" data-color="<?= htmlspecialchars($group['color'], ENT_QUOTES) ?>" data-plate="<?= htmlspecialchars($pg['group'], ENT_QUOTES) ?>" data-items="<?= htmlspecialchars(json_encode($plateDoneItems), ENT_QUOTES) ?>" style="margin-right:8px; padding:1px 8px; font-size:0.85em; border:1px solid #2a7a2a; background:#fff; color:#2a7a2a; border-radius:3px; cursor:pointer;">Finished&hellip;</button>
                       <strong><?= $printSeq ?>. <?= htmlspecialchars($pg['group']) ?></strong>
                       &mdash; <?= implode(', ', $itemBits) ?>
                       <span class="print-plate-plate-fill"><?= $isFull ? '(full)' : '(' . $fillPct . '% full)' ?></span>
@@ -2373,7 +2428,7 @@ $merchEditCatalog = [
         b.addEventListener('click', () => {
           let items;
           try { items = JSON.parse(b.dataset.items || '[]'); } catch (e) { return; }
-          cur = { color: b.dataset.color, plate: b.dataset.plate, items: items, tokens: items.map(tok) };
+          cur = { key: b.dataset.key || '', color: b.dataset.color, plate: b.dataset.plate, items: items, tokens: items.map(tok) };
           document.getElementById('merch-pd-title').textContent = 'Plate finished: ' + cur.plate + ' (' + cur.color + ')';
           rowsEl.innerHTML = '';
           items.forEach((it, i) => {
@@ -2387,6 +2442,38 @@ $merchEditCatalog = [
           dlg.showModal();
         });
       });
+      // 2026-10-23: Start printing / Not printing. Appends to merch_printing.csv, then reloads
+      // (the view and scroll position are remembered like after Finished).
+      const printingPost = (params) => {
+        const body = new URLSearchParams();
+        Object.keys(params).forEach((k) => body.append(k, params[k]));
+        body.append('csrf_token', MERCH_CSRF_TOKEN);
+        return fetch('merch_printing_set.php', { method: 'POST', body: body, credentials: 'same-origin' })
+          .then((r) => r.json().catch(() => ({ ok: false, error: 'Unexpected response (HTTP ' + r.status + ').' })));
+      };
+      const reloadKeepingScroll = () => {
+        try {
+          sessionStorage.setItem('merchAdminPlateScroll', JSON.stringify({ page: window.scrollY, pane: printPlatePane ? printPlatePane.scrollTop : 0 }));
+        } catch (e) { /* storage unavailable - reload just starts at the top */ }
+        location.reload();
+      };
+      document.querySelectorAll('.print-plate-start').forEach((b) => {
+        b.addEventListener('click', () => {
+          b.disabled = true;
+          printingPost({ action: 'start', key: b.dataset.key, color: b.dataset.color, plate: b.dataset.plate, items: b.dataset.itemsText })
+            .then((d) => { if (d.ok) { reloadKeepingScroll(); } else { alert('Could not save: ' + (d.error || 'unknown error')); b.disabled = false; } })
+            .catch(() => { alert('Could not reach the server.'); b.disabled = false; });
+        });
+      });
+      document.querySelectorAll('.print-plate-stop').forEach((b) => {
+        b.addEventListener('click', () => {
+          if (!confirm('Mark this plate as not printing? (Use Finished\u2026 instead if it came off the printer.)')) return;
+          b.disabled = true;
+          printingPost({ action: 'clear', key: b.dataset.key })
+            .then((d) => { if (d.ok) { reloadKeepingScroll(); } else { alert('Could not save: ' + (d.error || 'unknown error')); b.disabled = false; } })
+            .catch(() => { alert('Could not reach the server.'); b.disabled = false; });
+        });
+      });
       document.getElementById('merch-pd-cancel').addEventListener('click', () => dlg.close());
       okBtn.addEventListener('click', () => {
         if (!cur) { return; }
@@ -2397,6 +2484,8 @@ $merchEditCatalog = [
           if (i >= cur.items.length) {
             msg.style.color = '#2a7a2a';
             msg.textContent = 'Added: ' + (done.length ? done.join(', ') : 'nothing (all zero)') + '. Reloading...';
+            // 2026-10-23: the plate is off the printer - clear its Currently printing mark (best effort).
+            if (cur.key && done.length) { printingPost({ action: 'clear', key: cur.key }).catch(() => {}); }
             try {
               sessionStorage.setItem('merchAdminPlateScroll', JSON.stringify({ page: window.scrollY, pane: printPlatePane ? printPlatePane.scrollTop : 0 }));
             } catch (e) { /* storage unavailable - reload just starts at the top */ }

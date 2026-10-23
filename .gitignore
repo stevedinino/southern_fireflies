@@ -72,3 +72,5 @@ merch_order_rate.json
 
 # Customer-note "handled" log (2026-10-22) - customer data, same category as the other logs
 merch_notes_handled.csv
+# "Currently printing" marks on the Create view plates (2026-10-23)
+merch_printing.csv
