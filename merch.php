@@ -1,4 +1,4 @@
-<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; require __DIR__ . '/events/events_helpers.php'; $merchPickupEvents = events_upcoming(); // Build: 2026-10-21-A ?>
+<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; require __DIR__ . '/events/events_helpers.php'; $merchPickupEvents = events_upcoming(); // Build: 2026-10-23-A ?>
 <?php
 require_once __DIR__ . '/sff_timezone.php';
 require_once __DIR__ . '/filament_unavailable.php';
@@ -134,6 +134,57 @@ function shop_render_card(array $merchItem): void
 }
 
 $shopFullSetRule = MERCH_FULL_SET_DISCOUNTS[0] ?? null;
+
+/**
+ * 2026-10-23: the "complete set" card - one color, one Add, and the five
+ * holders of the full-set rule (MERCH_FULL_SET_DISCOUNTS) land on the list
+ * as five ordinary lines, so invoicing, print plates and the discount
+ * itself work exactly as before. The price shown is the five items at list
+ * price less the rule's percent (the same math the server does).
+ * Photo: drop images/bundle-card.jpg in and it appears; until then the
+ * card shows "Photo coming soon" like any item without one.
+ */
+function shop_render_bundle_card(?array $rule): void
+{
+    if (!$rule || empty($rule['items'])) {
+        return;
+    }
+    $esc = fn($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+    $full = 0.0;
+    foreach ($rule['items'] as $it) {
+        $full += (float) (MERCH_PRICES[$it] ?? 0);
+    }
+    $now = round($full * (1 - (float) $rule['percent']), 2);
+    $fmt = fn($n) => '$' . (floor($n) == $n ? number_format($n, 0) : number_format($n, 2));
+    $names = array_map(fn($n) => preg_replace('/ (Cutter )?Holder$/', '', $n), $rule['items']);
+    $photo = file_exists(__DIR__ . '/images/bundle-card.jpg') ? 'images/bundle-card.jpg' : null;
+    ?>
+        <article class="shop-card shop-bundle-card" data-bundle="1" data-items="<?= $esc(json_encode($rule['items'])) ?>">
+          <div class="shop-card-media">
+            <?php if ($photo !== null): ?>
+            <div class="shop-card-photo"><img src="<?= $esc($photo) ?>" alt="The complete set: all five holders in one color" loading="lazy" /></div>
+            <?php else: ?>
+            <div class="shop-card-photo shop-card-photo-empty" aria-hidden="true"><span>Photo coming soon</span></div>
+            <?php endif; ?>
+          </div>
+          <div class="shop-card-body">
+            <div class="shop-card-titlerow">
+              <h3 class="shop-card-name">The Complete Set</h3>
+              <span class="shop-card-price"><s class="shop-price-was"><?= $esc($fmt($full)) ?></s> <?= $esc($fmt($now)) ?></span>
+            </div>
+            <p class="shop-bundle-blurb">All five holders &mdash; <?= $esc(implode(', ', $names)) ?> &mdash; in one color. <?= (int) round($rule['percent'] * 100) ?>% off already included.</p>
+            <div class="shop-card-controls">
+              <div class="shop-actionrow">
+                <select class="shop-select shop-bundle-color" aria-label="Color for the set"></select>
+                <input type="number" class="shop-qty-input shop-bundle-qty" min="1" max="<?= (int) MAX_QUANTITY ?>" value="1" inputmode="numeric" aria-label="Number of sets" />
+                <button type="button" class="shop-add-btn shop-bundle-add" aria-label="Add the complete set to your list">Add <span aria-hidden="true">&rarr;</span></button>
+              </div>
+              <p class="shop-card-msg" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+        </article>
+    <?php
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -183,6 +234,7 @@ $shopFullSetRule = MERCH_FULL_SET_DISCOUNTS[0] ?? null;
           <h2 class="shop-section-title" id="shop-sec-<?= $sectionKey ?>"><?= $section['title'] ?></h2>
           <?php endif; ?>
           <div class="shop-grid">
+<?php if ($sectionKey === 'printed') { shop_render_bundle_card($shopFullSetRule); } ?>
 <?php foreach ($section['items'] as $shopItem) { shop_render_card($shopItem); } ?>
           </div>
         </section>
@@ -884,7 +936,7 @@ $shopFullSetRule = MERCH_FULL_SET_DISCOUNTS[0] ?? null;
       return select;
     }
 
-    document.querySelectorAll('.shop-card:not([data-display-only])').forEach((card) => {
+    document.querySelectorAll('.shop-card:not([data-display-only]):not([data-bundle])').forEach((card) => {
       const item = card.dataset.item;
       const isGildan = GILDAN_COLOR_ITEMS.includes(item);
       const isFilament = FILAMENT_COLOR_ITEMS.includes(item);
@@ -920,6 +972,68 @@ $shopFullSetRule = MERCH_FULL_SET_DISCOUNTS[0] ?? null;
       });
 
       card.querySelector('.shop-add-btn').addEventListener('click', () => addFromCard(card));
+    });
+
+    // ============================================================
+    // The Complete Set card: one color, five lines. Each holder goes on the
+    // list as its own ordinary line (same color, quantity = number of sets),
+    // so everything downstream is unchanged and the full-set discount applies
+    // the usual way. Rainbow / Stars & Stripes are not offered here - they
+    // are per-item upcharges; a customer wanting those picks items one by one.
+    // ============================================================
+    document.querySelectorAll('.shop-bundle-card').forEach((card) => {
+      let setItems = [];
+      try { setItems = JSON.parse(card.dataset.items || '[]'); } catch (e) { /* no items - card does nothing */ }
+      const sel = card.querySelector('.shop-bundle-color');
+      const qtyInput = card.querySelector('.shop-bundle-qty');
+      const msg = card.querySelector('.shop-card-msg');
+      const btn = card.querySelector('.shop-bundle-add');
+      const proto = buildColorSelect(setItems[0] || 'Circle Cutter Holder', true);
+      proto.querySelectorAll('option').forEach((opt) => {
+        if (/^(Rainbow|Stars)/.test(opt.value)) opt.remove();
+      });
+      sel.innerHTML = proto.innerHTML;
+      qtyInput.addEventListener('change', () => {
+        qtyInput.value = Math.min(MAX_QTY, Math.max(1, parseInt(qtyInput.value, 10) || 1));
+      });
+      sel.addEventListener('change', () => { sel.removeAttribute('aria-invalid'); msg.textContent = ''; msg.classList.remove('is-error'); });
+      btn.addEventListener('click', () => {
+        if (!sel.value) {
+          sel.setAttribute('aria-invalid', 'true');
+          msg.textContent = 'Please choose a color.';
+          msg.classList.add('is-error');
+          sel.focus();
+          return;
+        }
+        const quantity = Math.min(MAX_QTY, Math.max(1, parseInt(qtyInput.value, 10) || 1));
+        const color = sel.value;
+        const isSame = (l, item) => l.item === item && l.color === color && l.size === '' && l.sleeve === '';
+        const newLines = setItems.filter((item) => !list.some((l) => isSame(l, item))).length;
+        if (list.length + newLines > MERCH_PRICING.listMaxLines) {
+          msg.textContent = `One request can hold up to ${MERCH_PRICING.listMaxLines} different lines - please send this one first, or remove something.`;
+          msg.classList.add('is-error');
+          return;
+        }
+        setItems.forEach((item) => {
+          const existing = list.find((l) => isSame(l, item));
+          if (existing) {
+            existing.quantity = Math.min(MAX_QTY, existing.quantity + quantity);
+          } else {
+            list.push({ id: makeListLineId(), item, quantity, size: '', sleeve: '', color });
+          }
+        });
+        msg.classList.remove('is-error');
+        msg.textContent = '';
+        qtyInput.value = 1;
+        btn.innerHTML = 'Added <span aria-hidden="true">✓</span>';
+        btn.classList.add('is-added');
+        clearTimeout(btn._resetTimer);
+        btn._resetTimer = setTimeout(() => {
+          btn.innerHTML = 'Add <span aria-hidden="true">→</span>';
+          btn.classList.remove('is-added');
+        }, 1600);
+        renderList();
+      });
     });
 
     // ============================================================

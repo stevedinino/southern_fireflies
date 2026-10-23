@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-07-B
+// Build: 2026-10-23-A
 // ============================================================
 // Printed-stock matching + print-next planning logic, behind
 // merch_stock_report.php (admin report) and, since 2026-10-07, the live
@@ -778,7 +778,7 @@ function merch_stock_print_rows(array $shipments): array
 /**
  * 2026-10-19: the Create view's plate pane counts what is already on the
  * shelf. Needs Creating rows ($rows, same shape ourmerch.php collects for
- * print_plate_group_queue()) are walked oldest OrderID first and each
+ * print_plate_group_queue()) are walked longest-waiting first (replacements first, see below) and each
  * line's qty is reduced by whatever the shelf holds for that item+color,
  * until the shelf is used up. A plate whose pieces are all covered simply
  * disappears; "Finished..." (shelf +) therefore removes a plate from the
@@ -792,8 +792,19 @@ function merch_stock_print_rows(array $shipments): array
  */
 function merch_stock_reduce_print_rows(array $rows, array $stock): array
 {
+    // 2026-10-23: walked in the SAME priority the Stock & Print Plan gives the
+    // shelf - longest-waiting first (paid date), a REPLACEMENT (ts =
+    // MERCH_REPLACEMENT_TS) before anything else - then OrderID. It used to
+    // be plain OrderID order, so a replacement (always a new, high ID) came
+    // last: an older order wanting the same item+color took the piece Steve
+    // had just printed for the replacement, the plate list kept telling him
+    // to print the replacement again, and the two screens disagreed.
     $order = array_keys($rows);
     usort($order, function ($a, $b) use ($rows) {
+        $c = ($rows[$a]['ts'] ?? PHP_INT_MAX) <=> ($rows[$b]['ts'] ?? PHP_INT_MAX);
+        if ($c !== 0) {
+            return $c;
+        }
         $c = (int) ($rows[$a]['orderId'] ?? 0) <=> (int) ($rows[$b]['orderId'] ?? 0);
         return $c !== 0 ? $c : $a <=> $b;
     });

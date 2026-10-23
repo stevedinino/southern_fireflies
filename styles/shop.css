@@ -1067,3 +1067,8 @@ body.merch-page #details-modal {
 .shop-list-hint[hidden] {
   display: none;
 }
+
+/* 2026-10-23: The Complete Set card (merch.php shop_render_bundle_card). */
+.shop-price-was { color: #8a7a6a; font-weight: 400; margin-right: 4px; }
+.shop-bundle-blurb { margin: 2px 0 10px; font-size: 0.92em; line-height: 1.35; }
+.shop-bundle-card .shop-bundle-color { min-width: 0; flex: 1 1 auto; }
