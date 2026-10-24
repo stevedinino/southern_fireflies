@@ -64,7 +64,7 @@ $closeoutN = max(1, min(60, (int) ($_GET['n'] ?? 10)));
 $priority = (($_GET['prio'] ?? 'age') === 'quick') ? 'quick' : 'age';
 $altPriority = $priority === 'age' ? 'quick' : 'age';
 $qs = fn(array $over) => htmlspecialchars(http_build_query(array_merge(['mode' => $mode, 'n' => $closeoutN, 'prio' => $priority], $over)), ENT_QUOTES, 'UTF-8');
-$build = '2026-10-19-A';
+$build = '2026-10-24-A';
 
 $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
@@ -180,7 +180,7 @@ $missingText = function (array $s) use ($h): string {
     $bits = [];
     foreach ($s['lines'] as $l) {
         if (($l['missing'] ?? 0) > 0) {
-            $bits[] = $l['missing'] . '&times; ' . $h($l['item']) . ' <span class="color">' . $h($l['color']) . '</span>';
+            $bits[] = merch_qty_chip((int) $l['missing']) . $h($l['item']) . ' <span class="color">' . $h($l['color']) . '</span>';
         }
     }
     return implode('; ', $bits);
@@ -194,7 +194,7 @@ $coveredText = function (array $s) use ($h): string {
     $bits = [];
     foreach ($s['lines'] as $l) {
         if (($l['covered'] ?? 0) > 0) {
-            $bits[] = $l['covered'] . '&times; ' . $h($l['item']) . ' <span class="color">' . $h($l['color']) . '</span>';
+            $bits[] = merch_qty_chip((int) $l['covered']) . $h($l['item']) . ' <span class="color">' . $h($l['color']) . '</span>';
         }
     }
     return implode('; ', $bits);
@@ -202,7 +202,7 @@ $coveredText = function (array $s) use ($h): string {
 $pullText = function (array $s) use ($h): string {
     $bits = [];
     foreach ($s['lines'] as $l) {
-        $bits[] = $l['qty'] . '&times; ' . $h($l['item']) . ' <span class="color">' . $h($l['color']) . '</span>';
+        $bits[] = merch_qty_chip((int) $l['qty']) . $h($l['item']) . ' <span class="color">' . $h($l['color']) . '</span>';
     }
     return implode('; ', $bits);
 };
@@ -216,7 +216,7 @@ $oldestTextForColor = function (string $color) use ($oldestByColor, $orderAge, $
     return 'longest waiting: #' . (int) $id . ($age !== '' ? ' &middot; ' . $h($age) : '');
 };
 $lineLabel = function (array $l) use ($h): string {
-    $txt = (int) $l['qty'] . '&times; ' . $h($l['item']) . ' <span class="color">' . $h($l['color']) . '</span>';
+    $txt = merch_qty_chip((int) $l['qty']) . $h($l['item']) . ' <span class="color">' . $h($l['color']) . '</span>';
     if (($l['made'] ?? 0) > 0) {
         $txt .= ' <span class="badge">+' . (int) $l['made'] . ' already made</span>';
     }
@@ -224,7 +224,7 @@ $lineLabel = function (array $l) use ($h): string {
 };
 $madeLabel = function (array $l) use ($h): string {
     $bits = array_filter([$l['color'] ?? '', $l['size'] ?? '', $l['sleeve'] ?? ''], fn($v) => $v !== '' && stripos($v, 'not applicable') === false);
-    return (int) $l['qty'] . '&times; ' . $h($l['item']) . ($bits ? ' <span class="color">' . $h(implode(', ', $bits)) . '</span>' : '')
+    return merch_qty_chip((int) $l['qty']) . $h($l['item']) . ($bits ? ' <span class="color">' . $h(implode(', ', $bits)) . '</span>' : '')
         . ' <span class="badge">already made &mdash; in your set-aside pile</span>';
 };
 $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
@@ -240,6 +240,7 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
   h1 { font-size: 20px; margin: 0 0 4px; }
   h2 { font-size: 17px; margin: 28px 0 6px; padding-top: 10px; border-top: 1px solid #ccc; }
   h3 { font-size: 15px; margin: 18px 0 4px; }
+  .qty-chip { display: inline-block; padding: 0 7px; border-radius: 999px; background: #b34700; color: #fff; font-weight: bold; font-size: 0.9em; }
   .note { color: #666; font-size: 13px; margin: 2px 0 10px; }
   .summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
   .stat { border: 1px solid #ddd; border-radius: 4px; padding: 8px 14px; min-width: 150px; }
@@ -440,9 +441,9 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
               foreach ($plate['items'] as $item => $data) {
                   $who = [];
                   foreach ($data['orders'] as $o) {
-                      $who[] = $h($o['customerName']) . ($o['qty'] > 1 ? ' (' . (int) $o['qty'] . ')' : '');
+                      $who[] = $h($o['customerName']) . ($o['qty'] > 1 ? ' <span class="qty-chip">&times;' . (int) $o['qty'] . '</span>' : '');
                   }
-                  $bits[] = (int) $data['qty'] . '&times; ' . $h($item) . ' &rarr; ' . implode(', ', $who);
+                  $bits[] = merch_qty_chip((int) $data['qty']) . $h($item) . ' &rarr; ' . implode(', ', $who);
               }
               echo implode(' &nbsp;+&nbsp; ', $bits);
               $doneItems = [];

@@ -7,7 +7,7 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-10-23-A';
+$merchBuild = '2026-10-24-B';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -176,6 +176,7 @@ $merchEditCatalog = [
        Steve's own description of the failure ("read them as a single
        item order") is about misreading the ITEM line, not the Quantity
        column specifically, so the flag needs to show up there too. */
+    .qty-chip { display: inline-block; padding: 1px 7px; border-radius: 999px; background: #b34700; color: #fff; font-weight: bold; font-size: 0.85em; vertical-align: middle; }
     .merch-qty-flag {
       display: inline-block;
       margin-right: 6px;
@@ -1078,7 +1079,7 @@ $merchEditCatalog = [
                 <td style="padding:6px; border-bottom:1px solid #eee; white-space:nowrap; vertical-align:top;"><?= htmlspecialchars($ne['placed']) ?></td>
                 <td style="padding:6px; border-bottom:1px solid #eee; vertical-align:top;"><?= htmlspecialchars($ne['name']) ?><br><span style="color:#666; font-size:0.85em;"><?= htmlspecialchars($ne['email']) ?></span></td>
                 <td style="padding:6px; border-bottom:1px solid #eee; vertical-align:top; max-width:420px; white-space:pre-wrap;"><?= htmlspecialchars($ne['note']) ?></td>
-                <td style="padding:6px; border-bottom:1px solid #eee; vertical-align:top; font-size:0.85em;">#<?= htmlspecialchars(implode(', #', $ne['orderIds'])) ?><br><?= htmlspecialchars($ne['items']) ?></td>
+                <td style="padding:6px; border-bottom:1px solid #eee; vertical-align:top; font-size:0.85em;">#<?= htmlspecialchars(implode(', #', $ne['orderIds'])) ?><br><?= merch_qty_chip_text(htmlspecialchars($ne['items'])) ?></td>
                 <td style="padding:6px; border-bottom:1px solid #eee; vertical-align:top;"><?= htmlspecialchars($ne['status']) ?></td>
                 <td style="padding:6px; border-bottom:1px solid #eee; vertical-align:top;">
                   <?php if ($ne['email'] !== ''): ?>
@@ -1099,7 +1100,7 @@ $merchEditCatalog = [
           <strong>&#128424; Currently printing (<?= count($printingActive) ?>)</strong>
           <ul>
             <?php foreach ($printingActive as $pk => $pa): ?>
-              <li><?= htmlspecialchars($pa['color']) ?> &mdash; <?= htmlspecialchars($pa['plate']) ?> &mdash; <?= htmlspecialchars($pa['items']) ?>
+              <li><?= htmlspecialchars($pa['color']) ?> &mdash; <?= htmlspecialchars($pa['plate']) ?> &mdash; <?= merch_qty_chip_text(htmlspecialchars($pa['items'])) ?>
                 <span style="color:#666;">(since <?= htmlspecialchars(date('D g:i a', strtotime($pa['since']))) ?>)</span></li>
             <?php endforeach; ?>
           </ul>
@@ -1124,6 +1125,7 @@ $merchEditCatalog = [
                     $isFull = $plate['fillFraction'] >= 0.999;
                     $fillPct = (int) round($plate['fillFraction'] * 100);
                     $itemBits = [];
+                    $itemBitsHtml = [];
                     $orderBits = [];
                     // 2026-09-20 (Steve, item #4): "Checkboxes to mark
                     // items as 'complete' are needed in the Sort by
@@ -1149,8 +1151,9 @@ $merchEditCatalog = [
                     $plateIsPrinting = isset($printingActive[$plateKey]);
                     foreach ($plate['items'] as $itemName => $data) {
                         $itemBits[] = (int) $data['qty'] . '&times; ' . htmlspecialchars($itemName);
+                        $itemBitsHtml[] = merch_qty_chip((int) $data['qty']) . htmlspecialchars($itemName);
                         foreach ($data['orders'] as $o) {
-                            $orderBits[] = '#' . htmlspecialchars($o['orderId']) . ' ' . htmlspecialchars($o['customerName']) . ' (' . (int) $o['qty'] . ')';
+                            $orderBits[] = '#' . htmlspecialchars($o['orderId']) . ' ' . htmlspecialchars($o['customerName']) . ((int) $o['qty'] > 1 ? ' <span class="qty-chip">&times;' . (int) $o['qty'] . '</span>' : ' (1)');
                             $plateDeltas[$o['orderId']] = ($plateDeltas[$o['orderId']] ?? 0) + (int) $o['qty'];
                         }
                     }
@@ -1175,7 +1178,7 @@ $merchEditCatalog = [
                       <?php endif; ?>
                       <button type="button" class="print-plate-finished no-print" data-key="<?= htmlspecialchars($plateKey, ENT_QUOTES) ?>" data-color="<?= htmlspecialchars($group['color'], ENT_QUOTES) ?>" data-plate="<?= htmlspecialchars($pg['group'], ENT_QUOTES) ?>" data-items="<?= htmlspecialchars(json_encode($plateDoneItems), ENT_QUOTES) ?>" style="margin-right:8px; padding:1px 8px; font-size:0.85em; border:1px solid #2a7a2a; background:#fff; color:#2a7a2a; border-radius:3px; cursor:pointer;">Finished&hellip;</button>
                       <strong><?= $printSeq ?>. <?= htmlspecialchars($pg['group']) ?></strong>
-                      &mdash; <?= implode(', ', $itemBits) ?>
+                      &mdash; <?= implode(', ', $itemBitsHtml) ?>
                       <span class="print-plate-plate-fill"><?= $isFull ? '(full)' : '(' . $fillPct . '% full)' ?></span>
                       <span class="print-plate-plate-orders"><?= implode(', ', $orderBits) ?></span>
                       </div>
@@ -1220,6 +1223,8 @@ $merchEditCatalog = [
                merch_stock.php / merch_stock_report.php header comments.
                2026-10-05: link text is now "Inventory" (the page itself is
                still titled Stock &amp; Print Plan). -->
+          <a href="ourprint.php" style="color: var(--accent);">Print Plan (new) &rarr;</a>
+          &nbsp;&mdash;&nbsp;
           <a href="merch_stock_report.php" target="_blank" style="color: var(--accent);">Inventory &rarr;</a>
           &nbsp;&mdash;&nbsp;
           <!-- 2026-10-07 (Steve): live inventory editor (merch_stock_edit.php) - every
@@ -2046,6 +2051,18 @@ $merchEditCatalog = [
     // comes back another day and would otherwise be confused why the
     // list looks pre-filtered. Falls back to 'all' the first time, or
     // in any other browser/tab.
+    // 2026-10-24: ourprint.php (Print Plan) links here with ?view=needs-invoicing|needs-payment|
+    // needs-shipping|notes|needs-creating (&focusout=1 = plain Create list with shirts/hats/pickup).
+    // Applied once, then the query string is dropped so a later refresh behaves as before.
+    try {
+      const qp = new URLSearchParams(location.search);
+      const qv = qp.get('view');
+      if (qv && ['needs-invoicing', 'needs-payment', 'needs-creating', 'needs-shipping', 'notes'].indexOf(qv) !== -1) {
+        sessionStorage.setItem('merchAdminView', qv);
+        sessionStorage.setItem('merchAdminShowFocusOut', (qv === 'needs-creating' && qp.get('focusout') === '1') ? '1' : '0');
+        history.replaceState(null, '', location.pathname);
+      }
+    } catch (e) { /* storage unavailable - opens on the last view */ }
     let currentView = sessionStorage.getItem('merchAdminView') || 'all';
     // 2026-10-19: only the four named views (or 'all' = nothing lit) are valid;
     // a stale 'active' from before that view was retired lands on All.
