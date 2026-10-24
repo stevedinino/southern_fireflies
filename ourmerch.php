@@ -7,7 +7,7 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-10-24-B';
+$merchBuild = '2026-10-24-C';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -2202,8 +2202,27 @@ $merchEditCatalog = [
       });
     }
 
+    // 2026-10-24 (Steve): the footer links sat below the fold on every view. Size whichever pane is
+    // showing (and the Packing Checklist frame) to the window height minus the footer, so they stay visible.
+    function fitPanes() {
+      const foot = document.querySelector('.button-container');
+      if (!foot) { return; }
+      const reserve = foot.offsetHeight + 20 + 55; // footer + its top margin + wrapper/card padding
+      document.querySelectorAll('.merch-table-pane, #merch-pack-frame').forEach((el) => {
+        if (el.offsetParent === null) { return; }
+        const isFrame = el.id === 'merch-pack-frame';
+        const keep = el.style.maxHeight;
+        if (!isFrame) { el.style.maxHeight = 'none'; }
+        const top = el.getBoundingClientRect().top + (window.scrollY || 0);
+        const room = Math.max(280, window.innerHeight - top - reserve - (isFrame ? 10 : 0));
+        if (isFrame) { el.style.height = room + 'px'; el.style.minHeight = '0'; } else { el.style.maxHeight = room + 'px'; }
+      });
+    }
+    window.addEventListener('resize', fitPanes);
+    window.addEventListener('load', fitPanes);
     function applyView(view) {
       currentView = view;
+      setTimeout(fitPanes, 0);
       sessionStorage.setItem('merchAdminView', view);
       viewButtons.forEach((btn) => {
         btn.classList.toggle('active', btn.dataset.view === view);
