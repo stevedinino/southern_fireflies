@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-24-A
+// Build: 2026-10-24-B
 // Admin-only "Print Plan": the merged replacement for the Create view of
 // Merchandise Requests (ourmerch.php) and the Stock & Print Plan page
 // (merch_stock_report.php). Steve's decisions, 2026-10-23/24:
@@ -43,7 +43,7 @@ $mode = (($_GET['mode'] ?? 'batch') === 'closeout') ? 'closeout' : 'batch';
 $closeoutN = max(1, min(60, (int) ($_GET['n'] ?? 10)));
 $priority = (($_GET['prio'] ?? 'age') === 'quick') ? 'quick' : 'age';
 $qs = fn(array $over) => htmlspecialchars(http_build_query(array_merge(['mode' => $mode, 'prio' => $priority], $over)), ENT_QUOTES, 'UTF-8');
-$build = '2026-10-24-A';
+$build = '2026-10-24-B';
 
 $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
@@ -168,11 +168,16 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Print Plan &ndash; Southern Fireflies Retreats</title>
+<link rel="icon" href="images/favicon.png" type="image/png" />
+<link rel="stylesheet" href="styles/base.css" />
 <style>
-  body { font-family: Arial, Helvetica, sans-serif; color: #222; margin: 24px; max-width: 1100px; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  h2 { font-size: 17px; margin: 0; }
+  /* Same frame as Merchandise Requests: base.css (cream page, green buttons), a wide white card, and the
+     content in a scroll pane sized so the footer links below it stay on screen. */
+  .content-wrapper { max-width: 98vw; }
+  .merch-table-pane { max-height: 70vh; overflow: auto; background: #fff; border-radius: 8px; }
   h3 { font-size: 15px; margin: 18px 0 4px; }
+  .page-container { font-size: 14px; }
+  details.sec:first-child { border-top: none; margin-top: 0; }
   details.sec { border-top: 1px solid #ccc; margin-top: 22px; padding-top: 10px; }
   details.sec > summary { cursor: pointer; font-size: 17px; font-weight: bold; list-style: revert; }
   .qty-chip { display: inline-block; padding: 0 7px; border-radius: 999px; background: #b34700; color: #fff; font-weight: bold; font-size: 0.9em; }
@@ -187,12 +192,13 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
   .color { color: #444; background: #f1f1f1; border-radius: 3px; padding: 0 5px; white-space: nowrap; }
   .badge { font-size: 11px; background: #eef; color: #448; border-radius: 3px; padding: 1px 6px; margin-left: 4px; }
   .badge.warn { background: #fff6e0; color: #6b5416; }
+  table th { position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 #ddd; }
   .age { white-space: nowrap; color: #555; font-size: 13px; }
   .empty { color: #777; font-style: italic; }
   /* top bar: the same five views as Merchandise Requests */
   .viewbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 14px; }
-  .viewbar a.vb { padding: 4px 12px; border: 1px solid #aaa; border-radius: 3px; text-decoration: none; color: #222; font-size: 14px; background: #fff; }
-  .viewbar a.vb.on { background: #333; color: #fff; border-color: #333; }
+  .viewbar a.btn { margin: 0 8px 0 0; padding: 4px 12px; font-size: 0.85em; }
+  .viewbar a.btn.on { background: #333; }
   .viewbar label { margin-left: 12px; font-size: 13px; white-space: nowrap; }
   /* Currently printing banner */
   .now { background: #fff4e0; border: 1px solid #e0a040; border-radius: 6px; padding: 8px 14px; margin: 0 0 14px; }
@@ -239,13 +245,15 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 </style>
 </head>
 <body>
-<h1>Print Plan</h1>
+<div class="content-wrapper">
+<div class="page-container">
+<h2 style="margin-top:0;">Print Plan</h2>
 <div class="viewbar">
-  <a class="vb" href="ourmerch.php?view=needs-invoicing">Invoice</a>
-  <a class="vb" href="ourmerch.php?view=needs-payment">Payments</a>
-  <a class="vb on" href="ourprint.php">Create<?= count($printingActive) > 0 ? ' (&#128424; ' . count($printingActive) . ' printing)' : '' ?></a>
-  <a class="vb" href="ourmerch.php?view=needs-shipping">Ship</a>
-  <a class="vb" href="ourmerch.php?view=notes">Notes</a>
+  <a class="btn" href="ourmerch.php?view=needs-invoicing">Invoice</a>
+  <a class="btn" href="ourmerch.php?view=needs-payment">Payments</a>
+  <a class="btn on" href="ourprint.php">Create<?= count($printingActive) > 0 ? ' (&#128424; ' . count($printingActive) . ' printing)' : '' ?></a>
+  <a class="btn" href="ourmerch.php?view=needs-shipping">Ship</a>
+  <a class="btn" href="ourmerch.php?view=notes">Notes</a>
   <label title="Pickup orders, shirts and hats aren't part of the print plan - this opens the plain list that includes them"><input type="checkbox" id="focus-out" /> + Shirts/Hats/P/U</label>
 </div>
 
@@ -266,6 +274,7 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 </div>
 <?php endif; ?>
 
+<div id="plan-pane" class="merch-table-pane" style="padding:0 16px 16px;">
 <details class="sec" open>
 <summary>Ready to ship from stock (<?= (int) count($ready) ?>)</summary>
 <p class="note">Orders whose <em>every</em> piece is already on your shelf, longest-paid first. Tick each part as you gather it &mdash; <strong>Done</strong> unlocks once every part is ticked, and nothing is changed until you click it. Done marks the parts pulled from stock as <em>Created</em> in Merchandise Requests (it doesn't mark anything shipped) and takes them off the inventory sheet, together or not at all. Parts tagged &ldquo;already made&rdquo; were Created earlier; they're listed so the whole order goes in one box.</p>
@@ -502,11 +511,36 @@ usort($gridColors, function ($a, $b) {
 <?php endif; ?>
 </details>
 
-<p class="note" style="margin-top:24px;">
-  <a href="ourmerch.php">&larr; Merchandise Requests</a> &middot;
-  <a href="merch_stock_edit.php">Edit Stock &rarr;</a> &middot;
-  Build <?= $h($build) ?> &middot; paid shipping orders only (no pickup, shirts or hats), whole shipments only, exact color only, longest-paid first
-</p>
+</div>
+
+<div class="button-container" style="text-align:center; margin-top:14px;">
+  <p style="margin:0;">
+    <a href="ourmerch.php" style="color: var(--accent);">&larr; Merchandise Requests</a>
+    &nbsp;&mdash;&nbsp;
+    <a href="merch_stock_edit.php" target="_blank" style="color: var(--accent);">Edit Stock &rarr;</a>
+    &nbsp;&mdash;&nbsp;
+    <a href="merch_replacement.php" target="_blank" style="color: var(--accent);">Replacement &rarr;</a>
+    &nbsp;&mdash;&nbsp;
+    <a href="shippo_export.php" style="color: var(--accent);">Shippo Export &rarr;</a>
+    &nbsp;&mdash;&nbsp;
+    <a href="packing_slips.php" target="_blank" style="color: var(--accent);">Pack List &rarr;</a>
+    &nbsp;&mdash;&nbsp;
+    <a href="pickup_slips.php" target="_blank" style="color: var(--accent);">Retreat Pickup &rarr;</a>
+    &nbsp;&mdash;&nbsp;
+    <a href="export_emails.php" style="color: var(--accent);">D/L Customer Emails &rarr;</a>
+    &nbsp;&mdash;&nbsp;
+    <a href="merch_export_shirts_hats.php" style="color: var(--accent);">D/L Shirts &amp; Hats &rarr;</a>
+    &nbsp;&mdash;&nbsp;
+    <a href="merch_reminders.php" target="_blank" style="color: var(--accent);">Payment Reminders &rarr;</a>
+    &nbsp;&mdash;&nbsp;
+    <a href="merch_patience.php" target="_blank" style="color: var(--accent);">Patience Email &rarr;</a>
+    &nbsp;&mdash;&nbsp;
+    <span style="color:#bbb; font-size:0.75em;">Build <?= $h($build) ?></span>
+  </p>
+  <p class="note" style="margin:6px 0 0;">Paid shipping orders only (no pickup, shirts or hats), whole shipments only, exact color only, longest-paid first.</p>
+</div>
+</div>
+</div>
 
 <!-- Plate finished: adds the pieces to the shelf (inventory.csv) through merch_stock_adjust.php, the same
      path as the Edit Stock page's Add. Orders are NOT touched: the planner then covers waiting orders from
@@ -528,15 +562,36 @@ usort($gridColors, function ($a, $b) {
   var SCROLL = 'sffPrintPlanScroll_v1';
 
   // ---- Keep the page where it was across any reload / toggle ----
-  function rememberScroll() { try { sessionStorage.setItem(SCROLL, String(window.scrollY || 0)); } catch (e) {} }
+  // Size the scroll pane so the footer links stay on screen (re-fit on resize and when sections open/close).
+  function fitPane() {
+    var pane = document.getElementById('plan-pane'), foot = document.querySelector('.button-container');
+    if (!pane || !foot) { return; }
+    pane.style.maxHeight = 'none';
+    var top = pane.getBoundingClientRect().top + (window.scrollY || 0);
+    var room = window.innerHeight - top - foot.offsetHeight - 14 - 55;
+    pane.style.maxHeight = Math.max(280, room) + 'px';
+  }
+  fitPane();
+  window.addEventListener('resize', fitPane);
+  window.addEventListener('load', fitPane);
+
+  function rememberScroll() {
+    var pn = document.getElementById('plan-pane');
+    try { sessionStorage.setItem(SCROLL, JSON.stringify({ page: window.scrollY || 0, pane: pn ? pn.scrollTop : 0 })); } catch (e) {}
+  }
   function reloadKeep() { rememberScroll(); location.reload(); }
   Array.prototype.forEach.call(document.querySelectorAll('a.keep'), function (a) { a.addEventListener('click', rememberScroll); });
   try {
-    var y = parseInt(sessionStorage.getItem(SCROLL) || '', 10);
+    var sv = JSON.parse(sessionStorage.getItem(SCROLL) || 'null');
     sessionStorage.removeItem(SCROLL);
-    if (y > 0) {
-      window.scrollTo(0, y);
-      window.addEventListener('load', function () { window.scrollTo(0, y); });
+    if (sv) {
+      var restore = function () {
+        var pn = document.getElementById('plan-pane');
+        if (pn) { pn.scrollTop = sv.pane || 0; }
+        window.scrollTo(0, sv.page || 0);
+      };
+      restore();
+      window.addEventListener('load', restore);
     }
   } catch (e) {}
 
