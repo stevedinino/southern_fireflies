@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-23-A
+// Build: 2026-10-24-A
 // ============================================================
 // Printed-stock matching + print-next planning logic, behind
 // merch_stock_report.php (admin report) and, since 2026-10-07, the live
@@ -790,6 +790,27 @@ function merch_stock_print_rows(array $shipments): array
  * Returns ['rows' => reduced rows (zero-qty rows dropped, original order
  * kept), 'covered' => pieces the shelf already covers].
  */
+/**
+ * 2026-10-24 (Steve): the orange x2 badge must show wherever a part quantity
+ * above 1 is shown, not just in the main table (a plain "2" reads like a 1
+ * until you've already mis-printed). Both helpers emit <span class="qty-chip">;
+ * each page styles it (same look as ourmerch.php's .merch-qty-flag).
+ *   merch_qty_chip(3)  -> '<span class="qty-chip">&times;3</span> '   (qty > 1)
+ *   merch_qty_chip(1)  -> '1&times; '                                   (plain)
+ */
+function merch_qty_chip(int $qty): string
+{
+    return $qty > 1 ? '<span class="qty-chip">&times;' . $qty . '</span> ' : $qty . '&times; ';
+}
+
+/** Turns "2× Item" / "; 3× Item" at the start of an already-escaped summary into chips. Quantity 1 stays plain. */
+function merch_qty_chip_text(string $escaped): string
+{
+    return preg_replace_callback('/(^|[;,] )(\d+)\x{00D7} /u', function ($m) {
+        return $m[1] . merch_qty_chip((int) $m[2]);
+    }, $escaped);
+}
+
 function merch_stock_reduce_print_rows(array $rows, array $stock): array
 {
     // 2026-10-23: walked in the SAME priority the Stock & Print Plan gives the
