@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-24-B
+// Build: 2026-10-24-D
 // Admin-only "Print Plan": the merged replacement for the Create view of
 // Merchandise Requests (ourmerch.php) and the Stock & Print Plan page
 // (merch_stock_report.php). Steve's decisions, 2026-10-23/24:
@@ -43,7 +43,7 @@ $mode = (($_GET['mode'] ?? 'batch') === 'closeout') ? 'closeout' : 'batch';
 $closeoutN = max(1, min(60, (int) ($_GET['n'] ?? 10)));
 $priority = (($_GET['prio'] ?? 'age') === 'quick') ? 'quick' : 'age';
 $qs = fn(array $over) => htmlspecialchars(http_build_query(array_merge(['mode' => $mode, 'prio' => $priority], $over)), ENT_QUOTES, 'UTF-8');
-$build = '2026-10-24-B';
+$build = '2026-10-24-D';
 
 $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
@@ -160,6 +160,43 @@ $madeLabel = function (array $l) use ($h): string {
     return merch_qty_chip((int) $l['qty']) . $h($l['item']) . ($bits ? ' <span class="color">' . $h(implode(', ', $bits)) . '</span>' : '')
         . ' <span class="badge">already made &mdash; in your set-aside pile</span>';
 };
+// A Start printing mark is keyed to the plate exactly as planned (color, plate, which orders and how many).
+// When the plan shifts under a running plate (a new order lands on the same plate, say) the mark no longer
+// matches any plate line. Those orphans must not vanish: they show in their color's section and in the banner,
+// each with its own Finished... / Not printing buttons (2026-10-24, Steve: Purple plate 22).
+$plateKeyOf = function (string $color, string $label, array $plate): string {
+    $q = [];
+    foreach ($plate['items'] as $item => $data) {
+        foreach ($data['orders'] as $o) {
+            $q[$item . '#' . $o['orderId']] = ($q[$item . '#' . $o['orderId']] ?? 0) + (int) $o['qty'];
+        }
+    }
+    return merch_printing_key($color, $label, $q);
+};
+$planKeys = [];
+foreach ($planGroups as $g0) {
+    foreach ($g0['plateGroups'] as $pg0) {
+        foreach ($pg0['plates'] as $pl0) {
+            $planKeys[$plateKeyOf((string) $g0['color'], (string) $pg0['group'], $pl0)] = true;
+        }
+    }
+}
+$orphans = [];
+foreach ($printingActive as $ok => $oa) {
+    if (!isset($planKeys[$ok])) {
+        $orphans[$oa['color']][$ok] = $oa;
+    }
+}
+// "2× Rectangle Cutter Holder, 1× Blade Holder" -> [['item'=>..., 'qty'=>...], ...] for the Finished dialog.
+$parseItems = function (string $text): array {
+    $out = [];
+    foreach (explode(', ', $text) as $part) {
+        if (preg_match('/^(\d+)\s*[×x]\s*(.+)$/u', trim($part), $m)) {
+            $out[] = ['item' => $m[2], 'qty' => (int) $m[1]];
+        }
+    }
+    return $out;
+};
 $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 ?>
 <!DOCTYPE html>
@@ -266,9 +303,11 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 <div class="now">
   <strong>&#128424; Currently printing (<?= count($printingActive) ?>)</strong>
   <ul>
-    <?php foreach ($printingActive as $pa): ?>
+    <?php foreach ($printingActive as $pk => $pa): ?>
       <li><?= $h($pa['color']) ?> &mdash; <?= $h($pa['plate']) ?> &mdash; <?= merch_qty_chip_text($h($pa['items'])) ?>
-        <span style="color:#666;">(since <?= $h(date('D g:i a', strtotime($pa['since']))) ?>)</span></li>
+        <span style="color:#666;">(since <?= $h(date('D g:i a', strtotime($pa['since']))) ?>)</span>
+        <button type="button" class="pbtn fin plate-done" style="margin-left:8px;" data-key="<?= $h($pk) ?>" data-color="<?= $h($pa['color']) ?>" data-plate="<?= $h($pa['plate']) ?>" data-items="<?= $h(json_encode($parseItems((string) $pa['items']))) ?>">Finished&hellip;</button>
+        <button type="button" class="pbtn stop plate-stop" style="margin:0;" data-key="<?= $h($pk) ?>">Not printing</button></li>
     <?php endforeach; ?>
   </ul>
 </div>
@@ -372,6 +411,16 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
     <div class="color-block">
       <div class="chead"><strong><?= $h($g['color']) ?></strong> &mdash; <?= (int) $cs['units'] ?> piece(s), <?= (int) $cs['plates'] ?> plate(s)<?php $ow = $oldestTextForColor($g['color']); ?><?= $ow !== '' ? ' <span class="age">&middot; ' . $ow . '</span>' : '' ?></div>
       <ul class="plate-list">
+        <?php foreach ($orphans[$g['color']] ?? [] as $ok => $oa): ?>
+          <li class="printing">
+            <span class="pbadge">&#128424; PRINTING since <?= $h(date('D g:i a', strtotime($oa['since']))) ?></span>
+            <button type="button" class="pbtn stop plate-stop" data-key="<?= $h($ok) ?>">Not printing</button>
+            <button type="button" class="pbtn fin plate-done" data-key="<?= $h($ok) ?>" data-color="<?= $h($oa['color']) ?>" data-plate="<?= $h($oa['plate']) ?>" data-items="<?= $h(json_encode($parseItems((string) $oa['items']))) ?>">Finished&hellip;</button>
+            <span class="plate-label"><?= $h($oa['plate']) ?></span>
+            &mdash; <?= merch_qty_chip_text($h($oa['items'])) ?>
+            <span class="plate-fill">(as started; the plan has changed since, so the plate lines below may overlap it)</span>
+          </li>
+        <?php endforeach; ?>
         <?php foreach ($g['plateGroups'] as $pg): ?>
           <?php foreach ($pg['plates'] as $plate): ?>
             <?php
@@ -420,6 +469,25 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
   <?php endforeach; ?>
 <?php endif; ?>
 
+<?php
+$planColors = array_map(fn($g) => $g['color'], $planGroups);
+foreach ($orphans as $oc => $list):
+    if (in_array($oc, $planColors, true)) { continue; }
+    ?>
+  <div class="color-block">
+    <div class="chead"><strong><?= $h($oc) ?></strong> &mdash; <span class="age">nothing else planned in this color</span></div>
+    <ul class="plate-list">
+      <?php foreach ($list as $ok => $oa): ?>
+        <li class="printing">
+          <span class="pbadge">&#128424; PRINTING since <?= $h(date('D g:i a', strtotime($oa['since']))) ?></span>
+          <button type="button" class="pbtn stop plate-stop" data-key="<?= $h($ok) ?>">Not printing</button>
+          <button type="button" class="pbtn fin plate-done" data-key="<?= $h($ok) ?>" data-color="<?= $h($oa['color']) ?>" data-plate="<?= $h($oa['plate']) ?>" data-items="<?= $h(json_encode($parseItems((string) $oa['items']))) ?>">Finished&hellip;</button>
+          <span class="plate-label"><?= $h($oa['plate']) ?></span> &mdash; <?= merch_qty_chip_text($h($oa['items'])) ?>
+        </li>
+      <?php endforeach; ?>
+    </ul>
+  </div>
+<?php endforeach; ?>
 <?php
 $heldByColorUnits = [];
 foreach ($heldRows as $hr) {
