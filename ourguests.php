@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-08-28-B
+// Build: 2026-10-25-A
 // 2026-08-28 (Steve): laying groundwork for the eventual registration-
 // workflow redesign - added a RegID column to registrations.csv. This
 // table used to discard the file's own header row and substitute a
@@ -80,7 +80,7 @@ merch_admin_login_gate('Admin Login – Southern Fireflies Retreats', 'ourguests
 <body>
   <div class="content-wrapper">
     <div class="page-container">
-      <h2>Retreat Registrants</h2>
+      <h2 style="margin-top:0;">Retreat Registrants</h2>
 
       <?php
       $csvFile = 'registrations.csv';

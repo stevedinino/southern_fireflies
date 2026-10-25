@@ -7,7 +7,7 @@
 // RUNNING: if the footer is old after a deploy, it's stale OPcache (use
 // Clear PHP Cache), not a failed upload. Bump this on every change,
 // YYYY-MM-DD-[Letter], and it's the only place to bump.
-$merchBuild = '2026-10-24-C';
+$merchBuild = '2026-10-25-B';
 require __DIR__ . '/admin_guard.php'; // must come before anything else that might start a session
 require __DIR__ . '/pricing.php'; // 2026-08-18: for GILDAN_COLOR_ITEMS/FILAMENT_COLOR_ITEMS/merch_color_options_for_item() - powers the editable Color dropdown below
 require __DIR__ . '/merch_shipments.php'; // 2026-08-20: for merch_shipment_key() - see Finding 10, 2026-08-19 code review
@@ -292,7 +292,7 @@ $merchEditCatalog = [
 <body>
   <div class="content-wrapper">
     <div class="page-container">
-      <h2>Merchandise Requests</h2>
+      <h2 style="margin-top:0;">Merchandise Requests</h2>
 
       <?php
       $csvFile = 'merchandise.csv';
@@ -464,12 +464,13 @@ $merchEditCatalog = [
           // style), pressing the lit one turns it off, and "nothing lit" IS the
           // All view (no filter). The old "Active" case and the stale-value
           // fallback for it are gone too (see applyView()).
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-invoicing" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Invoicing">Invoice</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-payment" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Payment">Payments</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-creating" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Creating">Create' . (count(merch_printing_active()) > 0 ? ' <span style="font-size:0.8em;">(&#128424; ' . count(merch_printing_active()) . ' printing)</span>' : '') . '</button>';
-          echo '<button type="button" class="btn merch-view-btn" data-view="needs-shipping" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Needs Shipping">Ship</button>';
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-invoicing" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.75em;" title="Needs Invoicing">Invoice</button>';
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-payment" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.75em;" title="Needs Payment">Payments</button>';
+          // 2026-10-25 (Steve): Create now opens Print Plan (ourprint.php), which replaces the old Create view; the old view is still reachable via ?view=needs-creating (Print Plan's "+ Shirts/Hats/P/U" box uses it).
+          echo '<a class="btn" href="ourprint.php" style="margin-right:8px; padding:4px 12px; font-size:0.75em; text-decoration:none;" title="Print Plan">Print Plan' . (count(merch_printing_active()) > 0 ? ' <span style="font-size:0.8em;">(&#128424; ' . count(merch_printing_active()) . ' printing)</span>' : '') . '</a>';
+          echo '<button type="button" class="btn merch-view-btn" data-view="needs-shipping" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.75em;" title="Needs Shipping">Ship</button>';
           // 2026-10-22 (Steve): customer order notes. The count is the notes not yet marked Handled.
-          echo '<button type="button" class="btn merch-view-btn" id="merch-notes-btn" data-view="notes" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.85em;" title="Customer notes on orders">Notes' . (count($openNotes) > 0 ? ' (<span id="merch-notes-count">' . count($openNotes) . '</span>)' : ' <span id="merch-notes-count"></span>') . '</button>';
+          echo '<button type="button" class="btn merch-view-btn" id="merch-notes-btn" data-view="notes" aria-pressed="false" style="margin-right:8px; padding:4px 12px; font-size:0.75em;" title="Customer notes on orders">Notes' . (count($openNotes) > 0 ? ' (<span id="merch-notes-count">' . count($openNotes) . '</span>)' : ' <span id="merch-notes-count"></span>') . '</button>';
           // 2026-09-17 (Steve): "sort the Needs Creating list to give me
           // an optimized list of same color gadgets I can print
           // together." NOT another data-view case below (applyView()
@@ -1223,8 +1224,6 @@ $merchEditCatalog = [
                merch_stock.php / merch_stock_report.php header comments.
                2026-10-05: link text is now "Inventory" (the page itself is
                still titled Stock &amp; Print Plan). -->
-          <a href="ourprint.php" style="color: var(--accent);">Print Plan (new) &rarr;</a>
-          &nbsp;&mdash;&nbsp;
           <a href="merch_stock_report.php" target="_blank" style="color: var(--accent);">Inventory &rarr;</a>
           &nbsp;&mdash;&nbsp;
           <!-- 2026-10-07 (Steve): live inventory editor (merch_stock_edit.php) - every
