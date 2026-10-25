@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-24-D
+// Build: 2026-10-25-A
 // Admin-only "Print Plan": the merged replacement for the Create view of
 // Merchandise Requests (ourmerch.php) and the Stock & Print Plan page
 // (merch_stock_report.php). Steve's decisions, 2026-10-23/24:
@@ -43,7 +43,7 @@ $mode = (($_GET['mode'] ?? 'batch') === 'closeout') ? 'closeout' : 'batch';
 $closeoutN = max(1, min(60, (int) ($_GET['n'] ?? 10)));
 $priority = (($_GET['prio'] ?? 'age') === 'quick') ? 'quick' : 'age';
 $qs = fn(array $over) => htmlspecialchars(http_build_query(array_merge(['mode' => $mode, 'prio' => $priority], $over)), ENT_QUOTES, 'UTF-8');
-$build = '2026-10-24-D';
+$build = '2026-10-25-A';
 
 $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
@@ -288,7 +288,7 @@ $mtimeText = $inv['mtime'] ? date('M j, g:i a', $inv['mtime']) : '';
 <div class="viewbar">
   <a class="btn" href="ourmerch.php?view=needs-invoicing">Invoice</a>
   <a class="btn" href="ourmerch.php?view=needs-payment">Payments</a>
-  <a class="btn on" href="ourprint.php">Create<?= count($printingActive) > 0 ? ' (&#128424; ' . count($printingActive) . ' printing)' : '' ?></a>
+  <a class="btn on" href="ourprint.php">Print Plan<?= count($printingActive) > 0 ? ' (&#128424; ' . count($printingActive) . ' printing)' : '' ?></a>
   <a class="btn" href="ourmerch.php?view=needs-shipping">Ship</a>
   <a class="btn" href="ourmerch.php?view=notes">Notes</a>
   <label title="Pickup orders, shirts and hats aren't part of the print plan - this opens the plain list that includes them"><input type="checkbox" id="focus-out" /> + Shirts/Hats/P/U</label>
