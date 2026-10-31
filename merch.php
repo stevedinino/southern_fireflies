@@ -1,4 +1,4 @@
-<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; require __DIR__ . '/events/events_helpers.php'; $merchPickupEvents = events_upcoming(); // Build: 2026-10-23-A ?>
+<?php require __DIR__ . '/pricing.php'; require __DIR__ . '/config.php'; require_once __DIR__ . '/strings.php'; require_once __DIR__ . '/stripe_lib.php'; require __DIR__ . '/events/events_helpers.php'; $merchPickupEvents = events_upcoming(); $shopStripe = merch_stripe_enabled(); // Build: 2026-10-31-A ?>
 <?php
 require_once __DIR__ . '/sff_timezone.php';
 require_once __DIR__ . '/filament_unavailable.php';
@@ -226,7 +226,9 @@ function shop_render_bundle_card(?array $rule): void
 <?php if (!$section['items']) { continue; } ?>
         <section class="shop-section"<?= $sectionKey === 'printed' ? ' aria-label="3D-printed gadgets"' : ' aria-labelledby="shop-sec-' . $sectionKey . '"' ?>>
           <?php if ($sectionKey === 'printed'): ?>
-          <?php $shopAnnouncement = trim(merch_load_string('pages/merch-announcement')); ?>
+          <?php $shopAnnouncement = trim(merch_load_string('pages/merch-announcement'));
+          // 2026-10-31: while Stripe checkout is on, its announcement leads the band.
+          if ($shopStripe) { $shopAnnouncement = trim(trim(merch_load_string('pages/merch-announcement-stripe')) . ($shopAnnouncement !== '' ? '<br />' . $shopAnnouncement : '')); } ?>
           <?php if ($shopAnnouncement !== ''): ?>
           <p class="shop-announce" id="shop-sec-<?= $sectionKey ?>"><?= $shopAnnouncement ?></p>
           <?php endif; ?>
@@ -260,7 +262,7 @@ function shop_render_bundle_card(?array $rule): void
         <div id="list-groups"></div>
         <div class="shop-list-hint" id="list-set-hint"><span class="shop-spark" aria-hidden="true">&#10022;</span><div id="list-set-text"></div></div>
 
-        <button type="button" class="shop-primary-btn" id="request-btn" disabled>Request this list <span aria-hidden="true">&rarr;</span></button>
+        <button type="button" class="shop-primary-btn" id="request-btn" disabled><?= $shopStripe ? 'Check out' : 'Request this list' ?> <span aria-hidden="true">&rarr;</span></button>
         <p class="shop-list-note" id="list-invoice-note" hidden></p>
 
         <form action="merch_order.php" method="POST" id="merch-checkout-form" class="shop-checkout" novalidate hidden>
@@ -379,10 +381,10 @@ function shop_render_bundle_card(?array $rule): void
                landing in customers' spam/junk folders. The sender address
                comes from config.php's MAIL_FROM_ADDRESS so it can never
                drift from what the emails are actually sent from. -->
-          <p class="shop-list-note" id="list-spam-note">We'll email you a confirmation of this request, and your invoice later on. Those emails sometimes land in spam or junk folders, so if you don't see them, please check there<?= defined('MAIL_FROM_ADDRESS') ? ' for messages from <strong>' . htmlspecialchars(MAIL_FROM_ADDRESS, ENT_QUOTES, 'UTF-8') . '</strong>' : '' ?>.</p>
+          <p class="shop-list-note" id="list-spam-note"><?= $shopStripe ? 'We\'ll email you a confirmation of your order, and an invoice if your order needs one.' : 'We\'ll email you a confirmation of this request, and your invoice later on.' ?> Those emails sometimes land in spam or junk folders, so if you don't see them, please check there<?= defined('MAIL_FROM_ADDRESS') ? ' for messages from <strong>' . htmlspecialchars(MAIL_FROM_ADDRESS, ENT_QUOTES, 'UTF-8') . '</strong>' : '' ?>.</p>
 
           <p class="shop-submit-hint" id="submit-hint" role="status" aria-live="polite"></p>
-          <button type="submit" class="shop-primary-btn" id="list-submit-btn" disabled>Submit my request</button>
+          <button type="submit" class="shop-primary-btn" id="list-submit-btn" disabled><?= $shopStripe ? 'Place my order' : 'Submit my request' ?></button>
           <button type="button" class="shop-link-btn" id="checkout-back-btn">&larr; Back to my list</button>
         </form>
       </aside>
@@ -553,7 +555,7 @@ function shop_render_bundle_card(?array $rule): void
   <!-- Small info dialogs opened from the list panel ("How this works",
        "Shipping"). Text comes from strings/pages/merch-how-it-works and
        merch-shipping-note; both are rendered here hidden and copied in. -->
-  <template id="tpl-info-how"><?= merch_load_string('pages/merch-how-it-works') ?></template>
+  <template id="tpl-info-how"><?= merch_load_string($shopStripe ? 'pages/merch-how-it-works-stripe' : 'pages/merch-how-it-works') ?></template>
   <template id="tpl-info-shipping"><?= merch_load_string('pages/merch-shipping-note') ?></template>
   <div id="info-modal" class="lightbox" role="dialog" aria-modal="true" aria-labelledby="info-title" hidden>
     <div class="shop-details">
@@ -587,6 +589,8 @@ function shop_render_bundle_card(?array $rule): void
     // shipping tiers, bundle and full-set discounts) are NOT mirrored
     // here - they're priced server-side by merch_list_price.php.
     const MERCH_PRICING = <?php echo json_encode(merch_pricing_for_js()); ?>;
+    // 2026-10-31: true while Stripe checkout is on (config.php switch) - the page then says "order"/"check out" instead of "request".
+    const SHOP_STRIPE = <?= $shopStripe ? 'true' : 'false' ?>;
     // The "buy the whole set" rule, for the nudge in the list (the discount
     // itself is applied server-side).
     const FULL_SET_RULE = <?php echo json_encode($shopFullSetRule); ?>;
@@ -1010,7 +1014,9 @@ function shop_render_bundle_card(?array $rule): void
         const isSame = (l, item) => l.item === item && l.color === color && l.size === '' && l.sleeve === '';
         const newLines = setItems.filter((item) => !list.some((l) => isSame(l, item))).length;
         if (list.length + newLines > MERCH_PRICING.listMaxLines) {
-          msg.textContent = `One request can hold up to ${MERCH_PRICING.listMaxLines} different lines - please send this one first, or remove something.`;
+          msg.textContent = SHOP_STRIPE
+            ? `One order can hold up to ${MERCH_PRICING.listMaxLines} different lines - please place this order first, or remove something.`
+            : `One request can hold up to ${MERCH_PRICING.listMaxLines} different lines - please send this one first, or remove something.`;
           msg.classList.add('is-error');
           return;
         }
@@ -1180,7 +1186,9 @@ function shop_render_bundle_card(?array $rule): void
         existing.quantity = Math.min(MAX_QTY, existing.quantity + quantity);
       } else {
         if (list.length >= MERCH_PRICING.listMaxLines) {
-          msg.textContent = `One request can hold up to ${MERCH_PRICING.listMaxLines} different lines - please send this one first, or remove something.`;
+          msg.textContent = SHOP_STRIPE
+            ? `One order can hold up to ${MERCH_PRICING.listMaxLines} different lines - please place this order first, or remove something.`
+            : `One request can hold up to ${MERCH_PRICING.listMaxLines} different lines - please send this one first, or remove something.`;
           msg.classList.add('is-error');
           return;
         }
@@ -1379,6 +1387,12 @@ function shop_render_bundle_card(?array $rule): void
       if (list.length === 0 || !checkoutForm.hidden) { listInvoiceNote.hidden = true; return; }
       const groups = GROUPS.filter((g) => list.some((l) => groupKeyFor(l.item) === g.key));
       listInvoiceNote.hidden = false;
+      if (SHOP_STRIPE) {
+        listInvoiceNote.textContent = groups.length > 1
+          ? 'Next you’ll pay by card for everything in one payment. Your 3D-printed items and your shirts & hats are made and shipped on different schedules, so they’ll arrive separately. (If your order needs a custom shipping quote, we’ll email you an invoice instead.)'
+          : 'Next you’ll pay by card. (If your order needs a custom shipping quote, we’ll email you an invoice instead.)';
+        return;
+      }
       listInvoiceNote.textContent = groups.length > 1
         ? 'Nothing is charged yet. You’ll get one invoice for the 3D-printed items and a separate one for the shirts & hats, since they’re made and shipped on different schedules.'
         : 'Nothing is charged yet. We’ll email your invoice with the final total and payment instructions.';
@@ -1471,7 +1485,7 @@ function shop_render_bundle_card(?array $rule): void
       pricingByGroup = {};
       document.querySelectorAll('.shop-totals').forEach((el) => {
         el.classList.remove('is-stale');
-        el.innerHTML = '<div class="shop-totals-note">We couldn’t work out tax and shipping just now — you can still send your request, and we’ll confirm the total by email.</div>';
+        el.innerHTML = '<div class="shop-totals-note">We couldn’t work out tax and shipping just now — you can still ' + (SHOP_STRIPE ? 'place your order' : 'send your request') + ', and we’ll confirm the total by email.</div>';
       });
     }
 

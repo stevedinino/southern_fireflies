@@ -1,0 +1,2 @@
+<h2>Your request is saved and no payment was taken.</h2>
+<p>We’ll email you an invoice shortly, and you can pay by card, Venmo, PayPal, Zelle or check, whichever is easiest.</p>

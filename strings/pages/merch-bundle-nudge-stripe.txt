@@ -1,0 +1,1 @@
+Ordering the {{otherItems}} too? Add both to your list and we&rsquo;ll take ${{discount}} off your total.

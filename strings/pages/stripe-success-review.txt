@@ -1,0 +1,3 @@
+<h2>Thank you!</h2>
+<p>Your payment went through, and we are double-checking a detail on our end.</p>
+<p>We will email you shortly. There is no need to pay again.</p>
