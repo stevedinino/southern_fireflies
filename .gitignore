@@ -74,3 +74,9 @@ merch_order_rate.json
 merch_notes_handled.csv
 # "Currently printing" marks on the Create view plates (2026-10-23)
 merch_printing.csv
+
+# Stripe checkout records (2026-10-30): session and webhook logs hold
+# customer emails and payment ids - live server state, never committed.
+stripe_sessions.csv
+stripe_events.csv
+stripe_webhook.lock

@@ -1,5 +1,12 @@
 <?php
-// Build: 2026-10-21-A
+// Build: 2026-10-30-A
+// 2026-10-30 (Stripe checkout): once the rows are safely written, a Ship
+// order that can be priced automatically is sent to a Stripe payment page
+// instead of the "we'll invoice you" page - see stripe_lib.php for the
+// whole design, the off switch (STRIPE_CHECKOUT_ENABLED in config.php) and
+// why nothing is stamped invoiced/paid until Stripe confirms the payment.
+// With the switch off, or for any order Stripe can't take (manual quote,
+// pickup, a Stripe error), everything below behaves exactly as before.
 // 2026-09-22 (production incident): every live order was failing with
 // "Unable to write to file" as soon as Qty Created was added to the live
 // merchandise.csv's header (same straight-to-the-live-CSV pattern
@@ -56,6 +63,7 @@ require __DIR__ . '/merch_notify.php';
 require_once __DIR__ . '/strings.php';
 require_once __DIR__ . '/id_sequence.php';
 require_once __DIR__ . '/merch_rate_limit.php';
+require_once __DIR__ . '/stripe_lib.php';
 
 /**
  * Wraps an error string in the same page shell the success response
@@ -390,7 +398,7 @@ if ($header === null) {
 // historical max to seed from - the counter file starts fresh at 0.
 $orderGroupId = merch_next_persistent_id(__DIR__ . '/merchandise_ordergroupid_counter.txt', 0);
 
-foreach ($pricedLines as $line) {
+foreach ($pricedLines as $lineIdx => $line) {
     // 2026-08-29 (Finding 3): the counter file, not $csvMaxOrderId
     // alone, is the real source of truth here - see id_sequence.php.
     // $csvMaxOrderId only matters the very first time this runs
@@ -399,6 +407,8 @@ foreach ($pricedLines as $line) {
     // still gets its own distinct OrderID, same as if each had been
     // submitted separately.
     $nextOrderId = merch_next_persistent_id(__DIR__ . '/merchandise_orderid_counter.txt', $csvMaxOrderId);
+    // 2026-10-30: remember which OrderID this line got, for the Stripe checkout below.
+    $pricedLines[$lineIdx]['orderId'] = $nextOrderId;
 
     // Build the row keyed by column NAME, driven by the file's own
     // header, instead of a hardcoded position list. A positional writer
@@ -493,6 +503,20 @@ foreach ($pricedLines as $line) {
 fflush($handle);
 flock($handle, LOCK_UN);
 fclose($handle);
+
+// ---- Stripe checkout (2026-10-30) ----
+// The rows are on disk and the lock is released. If Stripe checkout is on and
+// this order can be priced automatically, send the customer to pay now. No
+// "we'll invoice you" email in that case - they get the payment-received
+// email once Stripe confirms. If checkout isn't available for any reason
+// merch_stripe_checkout_url() returns null and we carry on exactly as before.
+if ($isShipping && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $checkoutUrl = merch_stripe_checkout_url($name, $email, $pricedLines);
+    if ($checkoutUrl !== null) {
+        merch_stripe_redirect($checkoutUrl);
+        exit;
+    }
+}
 
 // ---- Respond to the customer FIRST, then send the notification ----
 // Previously the ack email was sent before this page was echoed, so a

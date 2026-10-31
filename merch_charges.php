@@ -91,8 +91,11 @@ function merch_charges_shipping_basis(float $amount, bool $isShipping, bool $has
     if ($hasStand && abs($amount - 12.0) < 0.005) {
         return 'box $12 (Tool Stand + 3-4 small)';
     }
+    if (abs($amount - 7.0) < 0.005 && !$hasStand) {
+        return 'standard $7';
+    }
     if (abs($amount - 6.0) < 0.005 && !$hasStand) {
-        return 'standard $6';
+        return 'standard $6'; // the rate before 2026-10-31; kept so a re-sent old invoice still classifies
     }
     if (abs($amount - 10.0) < 0.005 && !$hasStand && $totalQty >= 3) {
         return 'box $10 (3-4 small items)';

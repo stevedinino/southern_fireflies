@@ -1,0 +1,1 @@
+<strong>At long last, we take credit card payments through Stripe!</strong>

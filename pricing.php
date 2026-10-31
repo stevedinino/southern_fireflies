@@ -1,5 +1,5 @@
 <?php
-// Build: 2026-10-05-A
+// Build: 2026-10-30-A
 // ============================================================
 // SINGLE SOURCE OF TRUTH for Southern Fireflies merch pricing.
 //
@@ -495,7 +495,7 @@ function merch_color_options_for_item(string $item): array
 // small items ride along inside it for free/cheap. Tiers, per Steve
 // (2026-07-24, expanded 2026-08-10 with real weights once order
 // volume gave him enough data to calibrate):
-//   - 0 Tool Stands, 1-2 small items  -> small mailer,  $6
+//   - 0 Tool Stands, 1-2 small items  -> small mailer,  $7
 //   - 0 Tool Stands, 3-4 small items  -> bigger mailer, $10
 //   - 0 Tool Stands, 5+ small items   -> manual quote
 //   - 1 Tool Stand,  0-2 small items  -> one box,       $10
@@ -519,8 +519,9 @@ function merch_color_options_for_item(string $item): array
 // strings/shipping/*.txt note files deliberately KEEPS its old name -
 // renaming it would force the .txt files and this code to deploy in
 // lockstep or customers would see a literal {{token}}; not worth it.)
-const PRINTED_SHIP_RATE_MAILER = 6;  // 1-2 small items, no box-base item
+const PRINTED_SHIP_RATE_MAILER = 7;  // 1-2 small items, no box-base item (2026-10-31, Steve: raised from $6 - real average poly-mailer postage is ~$6.30)
 const PRINTED_SHIP_RATE_BOX = 10;    // a box is involved either way (1 box-base + 0-2 riders, or 3-4 small items alone)
+const PRINTED_SHIP_RATE_COMPLETE_SET = 10; // 2026-10-30 (Steve): The Complete Set alone (one of each of the five full-set holders) ships in a box for $10 - 5 small items would otherwise be a manual quote
 const PRINTED_SHIP_RATE_BOX_EXPANDED = 12; // 1 box-base + 3-4 riders - bigger box needed (new 2026-08-10)
 const MAILER_TIER_MAILER_MAX = 2;
 const MAILER_TIER_ALONE_MAX = 4;     // above this, even with no box-base item, it's a manual quote
@@ -759,7 +760,7 @@ const RAINBOW_SURCHARGE = 2;
 // Holder ($15) despite their different base prices too.
 const STARS_STRIPES_SURCHARGE = 7;
 const TAX_RATE = 0.07; // South Carolina - not accounting for other-state nexus rules
-const FLAT_SHIPPING_RATE = 6;
+const FLAT_SHIPPING_RATE = 7; // 2026-10-31, Steve: raised from $6, same poly-mailer postage reason as PRINTED_SHIP_RATE_MAILER
 const FLAT_SHIPPING_MAX_QTY = 2; // orders above this need a manual shipping quote instead
 
 // Sanity caps - not pricing rules exactly, but they live here so
@@ -918,7 +919,7 @@ function merch_pricing_for_js(): array
             foreach (MERCH_BUNDLES as $bundle) {
                 foreach ($bundle['items'] as $bundleItem) {
                     $others = array_values(array_diff($bundle['items'], [$bundleItem]));
-                    $nudges[$bundleItem] = merch_load_string('pages/merch-bundle-nudge', [
+                    $nudges[$bundleItem] = merch_load_string((function_exists('merch_stripe_enabled') && merch_stripe_enabled()) ? 'pages/merch-bundle-nudge-stripe' : 'pages/merch-bundle-nudge', [
                         'otherItems' => implode(' & ', $others),
                         'discount' => $bundle['discount'],
                     ]);
@@ -1057,6 +1058,22 @@ function merch_group_calculate(array $items, bool $isShipping, bool $isPrinted):
             $shipInfo = merch_printed_shipping($boxBaseQty, $mailerTierQty, merch_shipment_cap_note($qtyByItem));
             $shipping = $shipInfo['amount'];
             $shippingNote = $shipInfo['note'];
+            // 2026-10-30 (Steve): The Complete Set on its own is a flat $10
+            // box. 5 small items alone is a manual quote in the tiers
+            // above, so without this the set would land in review every
+            // time. Narrow on purpose: the full-set discount only applies
+            // when all five holders are present, five small items in total
+            // means exactly one of each, and no bulky-item cap is in play.
+            // Anything bigger (two sets, a Tool Stand, extras) still gets
+            // a manual quote.
+            if ($shipping === null
+                && $fullSetDiscount > 0
+                && $boxBaseQty === 0
+                && $mailerTierQty === 5
+                && merch_shipment_cap_note($qtyByItem) === null) {
+                $shipping = (float) PRINTED_SHIP_RATE_COMPLETE_SET;
+                $shippingNote = '';
+            }
         } elseif ($totalQuantity <= FLAT_SHIPPING_MAX_QTY) {
             $shipping = FLAT_SHIPPING_RATE;
         } else {
