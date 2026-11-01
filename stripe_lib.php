@@ -48,6 +48,7 @@
 //     the payments.csv note says so.
 // ============================================================
 
+require_once __DIR__ . '/sff_timezone.php'; // 2026-10-31: Eastern time, so a payment made after 8 PM gets TODAY's Invoice/Pymt Date, not tomorrow's (the webhook is its own entry point)
 require_once __DIR__ . '/csv_safety.php';
 require_once __DIR__ . '/merch_charges.php';  // merch_charges_append(), merch_charges_record()
 require_once __DIR__ . '/merch_payments.php'; // merch_payments_record()
@@ -559,16 +560,45 @@ function merch_stripe_stamp_paid_rows(string $csvFile, array $orderIds, string $
     return ['ok' => true];
 }
 
+/**
+ * Why the last merch_stripe_fee_cents() call came back empty (2026-10-31): the
+ * reason goes into the payments.csv note, so a failed fee lookup explains
+ * itself without anyone digging through server logs. Pass a string to set it.
+ */
+function merch_stripe_fee_failure_reason(?string $set = null): string
+{
+    static $why = '';
+    if ($set !== null) {
+        $why = trim(preg_replace('/\s+/', ' ', $set));
+        if (strlen($why) > 200) {
+            $why = substr($why, 0, 200) . '...';
+        }
+    }
+    return $why;
+}
+
 /** Actual Stripe fee in whole cents for a PaymentIntent, or null if unavailable. */
 function merch_stripe_fee_cents(\Stripe\StripeClient $client, string $paymentIntentId): ?int
 {
+    merch_stripe_fee_failure_reason('');
     try {
         $pi = $client->paymentIntents->retrieve($paymentIntentId, ['expand' => ['latest_charge.balance_transaction']]);
-        $bt = $pi->latest_charge->balance_transaction ?? null;
+        $charge = $pi->latest_charge ?? null;
+        $bt = is_object($charge) ? ($charge->balance_transaction ?? null) : null;
         if (is_object($bt) && isset($bt->fee) && is_numeric($bt->fee)) {
             return (int) $bt->fee;
         }
+        if ($charge === null) {
+            merch_stripe_fee_failure_reason('the payment has no charge yet');
+        } elseif (!is_object($charge)) {
+            merch_stripe_fee_failure_reason('the charge came back as an id only, not expanded');
+        } elseif ($bt === null) {
+            merch_stripe_fee_failure_reason('the charge has no balance transaction yet (status ' . (string) ($charge->status ?? '?') . ')');
+        } else {
+            merch_stripe_fee_failure_reason('the balance transaction had no usable fee');
+        }
     } catch (\Throwable $e) {
+        merch_stripe_fee_failure_reason(get_class($e) . ': ' . $e->getMessage());
         error_log('Southern Fireflies Stripe: fee lookup failed: ' . $e->getMessage());
     }
     return null;
@@ -633,8 +663,14 @@ function merch_stripe_handle_paid(array $session, ?\Stripe\StripeClient $client 
 
     // Fee first, before taking any lock (it's a network call).
     $feeCents = null;
-    if ($client !== null && $paymentIntent !== '') {
+    $feeWhy = '';
+    if ($client === null) {
+        $feeWhy = 'no Stripe client';
+    } elseif ($paymentIntent === '') {
+        $feeWhy = 'the session had no payment_intent';
+    } else {
         $feeCents = merch_stripe_fee_cents($client, $paymentIntent);
+        $feeWhy = merch_stripe_fee_failure_reason();
     }
 
     // One webhook at a time per site: a separate lock file, because the
@@ -683,7 +719,7 @@ function merch_stripe_handle_paid(array $session, ?\Stripe\StripeClient $client 
         $feeNote = '';
         if ($feeCents === null) {
             $feeCents = (int) round($amountPaid * 0.029) + 30;
-            $feeNote = 'Stripe fee ESTIMATED 2.9% + 30c (real fee lookup failed)';
+            $feeNote = 'Stripe fee ESTIMATED 2.9% + 30c (real fee lookup failed' . ($feeWhy !== '' ? ': ' . $feeWhy : '') . ')';
         }
         $feeShares = merch_stripe_split_cents($feeCents, $weights);
 
