@@ -455,18 +455,24 @@ function merch_stripe_state_is_final(string $state): bool
 }
 
 /** Best-effort internal alert to Steve; never throws. */
-function merch_stripe_alert_admin(string $subject, string $body): void
+function merch_stripe_alert_admin(string $subject, string $body, bool $urgent = true): void
 {
     try {
         require_once __DIR__ . '/merch_notify.php';
-        if (!defined('NOTIFY_ADMIN_EMAIL') || NOTIFY_ADMIN_EMAIL === '') {
+        // 2026-11-01: this goes to STEVE's address, NOT NOTIFY_ADMIN_EMAIL - that one
+        // is Janet's (registration notifications), and Stripe alerts (payments needing
+        // review, failed receipts) are Steve's to handle. Until today they were
+        // wrongly addressed to NOTIFY_ADMIN_EMAIL.
+        if (!defined('NOTIFY_MRFIREFLY_EMAIL') || NOTIFY_MRFIREFLY_EMAIL === '') {
             return;
         }
         $mail = merch_mailer();
-        $mail->addAddress(NOTIFY_ADMIN_EMAIL);
+        $mail->addAddress(NOTIFY_MRFIREFLY_EMAIL);
         $mail->Subject = $subject;
         $mail->Body = $body;
-        $mail->Priority = 1;
+        if ($urgent) {
+            $mail->Priority = 1;
+        }
         $mail->send();
     } catch (\Throwable $e) {
         error_log('Southern Fireflies Stripe: admin alert failed: ' . $e->getMessage());
@@ -746,6 +752,7 @@ function merch_stripe_handle_paid(array $session, ?\Stripe\StripeClient $client 
     }
 
     // The usual "payment received" email - after the lock is released (SMTP can be slow).
+    $receiptStatus = 'sent';
     try {
         require_once __DIR__ . '/merch_notify.php';
         $emailItems = [];
@@ -756,11 +763,37 @@ function merch_stripe_handle_paid(array $session, ?\Stripe\StripeClient $client 
         }
         $sent = merch_send_payment_received($emailItems, $name !== '' ? $name : 'there', $email);
         if (!$sent['sent']) {
+            $receiptStatus = 'FAILED';
             merch_stripe_append_session_row($sessionId, 'email-failed', $email, $name, $amountPaid, $paymentIntent, '', '', (string) $sent['error']);
             merch_stripe_alert_admin('Stripe order paid, receipt email failed: ' . $email, "The order was recorded as paid, but the payment-received email did not send: {$sent['error']}\n");
         }
     } catch (\Throwable $e) {
+        $receiptStatus = 'FAILED';
         error_log('Southern Fireflies Stripe: receipt email failed: ' . $e->getMessage());
+    }
+
+    // Optional "you got paid" note to Steve (2026-11-01). Off unless config.php says
+    // define('STRIPE_NOTIFY_ADMIN_ON_PAYMENT', true); - the same place every other
+    // switch lives. Normal priority (the failure alerts above stay high priority),
+    // sent to NOTIFY_MRFIREFLY_EMAIL (Steve's), and no CC to anyone. Never affects the payment.
+    if (defined('STRIPE_NOTIFY_ADMIN_ON_PAYMENT') && STRIPE_NOTIFY_ADMIN_ON_PAYMENT === true) {
+        $lines = [];
+        foreach ($groups as $g) {
+            foreach ($g['items'] as $it) {
+                $lines[] = '  ' . (int) $it['quantity'] . ' x ' . $it['item'] . (($it['color'] ?? '') !== '' ? ' (' . $it['color'] . ')' : '');
+            }
+        }
+        merch_stripe_alert_admin(
+            'Stripe payment: $' . number_format($amountPaid / 100, 2) . ' from ' . ($name !== '' ? $name : $email),
+            "Paid by card: $" . number_format($amountPaid / 100, 2) . "\n"
+            . 'Customer: ' . ($name !== '' ? $name : '(no name)') . " <{$email}>\n"
+            . 'OrderIDs: ' . implode(', ', $allOrderIds) . "\n"
+            . "Items:\n" . implode("\n", $lines) . "\n"
+            . 'Receipt email to customer: ' . $receiptStatus . "\n"
+            . "Stripe payment: {$paymentIntent}\n"
+            . "Already marked paid in merchandise.csv - nothing for you to do.\n",
+            false
+        );
     }
     return 'paid';
 }
